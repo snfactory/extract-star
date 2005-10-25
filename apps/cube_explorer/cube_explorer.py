@@ -30,46 +30,32 @@ class graph_interact:
 	print('etape 1')
         # Prepare text strings
         self.text = {}
-        self.text['nbspec'] = ax3.text(0.02,0.85,'',fontname='Times')
-        self.text['sl_stat'] = ax3.text(0.02,0.7,'Current slice statistics')
-        self.text['sl_stat'].set_fontweight('Bold')
-        self.text['mean'] = ax3.text(0.04,0.6,'')
-        self.text['mean'].set_text(    'Mean ....... ')
-	self.text['mean1'] = ax3.text(0.25,0.6,'')
-        self.text['sigma'] = ax3.text(0.04,0.51,'')
-        self.text['sigma'].set_text(   'RMS ........ ')
-        self.text['sigma1'] = ax3.text(0.25,0.51,'')
-        self.text['median'] = ax3.text(0.04,0.41,'')
-        self.text['median'].set_text(  'Median ..... ')
-        self.text['median1'] = ax3.text(0.25,0.41,'')
-        self.text['med_disp'] = ax3.text(0.04,0.295,'')
-        self.text['med_disp'].set_text('Med. disp .. ')
-        self.text['med_disp1'] = ax3.text(0.25,0.295,'')
-        self.text['wav_range'] = ax3.text(0.04,0.2,'')
-        self.text['wav_range'].set_text('Wav. range:  ')
-        self.text['wav_range1'] = ax3.text(0.25,0.2,'')
-        self.text['current_int'] = ax3.text(0.04,0.1,'')
-        self.text['current_int'].set_text('Current int: ')
-        self.text['current_int1'] = ax3.text(0.25,0.1,'')
-        self.text['sp_stat'] = ax3.text(0.52,0.7,'Current spectrum statistics')
-        self.text['sp_stat'].set_fontweight('Bold')
-        self.text['mean_sp'] = ax3.text(0.54,0.6,'')
-        self.text['mean_sp'].set_text(    'Mean ....... ')
-        self.text['mean_sp1'] = ax3.text(0.75,0.6,'')
-        self.text['sigma_sp'] = ax3.text(0.54,0.51,'')
-        self.text['sigma_sp'].set_text(   'RMS ........ ')
-        self.text['sigma_sp1'] = ax3.text(0.75,0.51,'')
-        self.text['median_sp'] = ax3.text(0.54,0.41,'')
-        self.text['median_sp'].set_text(  'Median ..... ')
-        self.text['median_sp1'] = ax3.text(0.75,0.41,'')
-        self.text['med_disp_sp'] = ax3.text(0.54,0.295,'')
-        self.text['med_disp_sp'].set_text('Med. disp .. ')
-        self.text['med_disp_sp1'] = ax3.text(0.75,0.295,'')
-	self.text['numslice'] = ax3.text(0.54,0.18,'')
-	self.text['numslice'].set_text('Slice :')
-	self.text['numslice1'] = ax3.text(0.65,0.17,'')
-	self.text['numlens'] = ax3.text(0.54,0.08,'')
-	self.text['numlens'].set_text('Lens :')
+	self.text['stat'] = ax3.text(0.4,0.92,'statistics')
+	self.text['stat'].set_fontweight('Bold')
+	self.text['sl'] = ax3.text(0.04,0.86,'current slice')
+	self.text['sp'] = ax3.text(0.65,0.85,'current spectrum')
+	self.text['mean'] = ax3.text(0.35,0.75,    '......Mean......',color="r")
+        self.text['sigma'] = ax3.text(0.35,0.65,   '.......RMS......',color="b")
+        self.text['median'] = ax3.text(0.35,0.55,  '.....Median.....',color="r")
+        self.text['med_disp'] = ax3.text(0.35,0.45,   '...Med. disp....',color="b")
+        self.text['wav_range'] = ax3.text(0.45,0.35,  '...Wav. range',color="r")
+        self.text['current_int'] = ax3.text(0.35,0.25,'...Current int',color="b")
+        self.text['nbspec'] = ax3.text(0.04,0.10,'',fontname='Times')
+	self.text['numslice'] = ax3.text(0.5,0.15,'Slice : ')
+	self.text['numlens'] = ax3.text(0.5,0.05,'Lens : ')
+	
+        self.text['nbspec'] = ax3.text(0.02,0.1,'',fontname='Times')
+	self.text['mean1'] = ax3.text(0.05,0.75,'',color="r")
+        self.text['sigma1'] = ax3.text(0.05,0.65,'',color="b")
+        self.text['median1'] = ax3.text(0.05,0.55,'',color="r")
+        self.text['med_disp1'] = ax3.text(0.05,0.45,'',color="b")
+        self.text['wav_range1'] = ax3.text(0.05,0.35,'',color="r")
+        self.text['current_int1'] = ax3.text(0.05,0.25,'',color="b")
+        self.text['mean_sp1'] = ax3.text(0.7,0.75,'',color="r")
+        self.text['sigma_sp1'] = ax3.text(0.7,0.65,'',color="b")
+        self.text['median_sp1'] = ax3.text(0.7,0.55,'',color="r")
+        self.text['med_disp_sp1'] = ax3.text(0.7,0.45,'',color="b")
+	self.text['numslice1'] = ax3.text(0.65,0.15,'')
 	self.text['numlens1'] = ax3.text(0.65,0.07,'')
 
         self.lcut0=-3
@@ -92,9 +78,20 @@ class graph_interact:
         # Display statistics of the reconstructed image
         ind = [0,self.cube.nslice-1]
         self.update_sl_stat(ind)
-#        self.update_current_int()
-        
-	cursor = Cursor(ax1, useblit=False, color='blue', linewidth=1)
+
+#	try:
+#	    from pySNIFS_special import Cursor, HorizontalSpanSelector
+#	except ImportError:
+#	    print "Dowload the module pySNIFS_special to use cube_explorer correctly"
+#	    print "Trying to import matplotlib.widgets"
+	try:
+	    from matplotlib.widgets import Cursor, HorizontalSpanSelector
+	except ImportError:
+	    print "Download the last version of matplotlib to have the widget library"
+	else:
+	    cursor = Cursor(ax1, useblit=False, color='blue', linewidth=1)
+	#else:
+	    #cursor = Cursor(ax1, useblit=False, color='blue', linewidth=1)
 
 
 	print('etape 4')
@@ -113,6 +110,13 @@ class graph_interact:
         self.miny0,self.maxy0 = ax0.get_ylim()
         self.minx1,self.maxx1 = ax1.get_xlim()
         self.miny1,self.maxy1 = ax1.get_ylim()
+
+	print('etape 6')
+        # Initialize the horizontal/vertical cursor
+        self.pick_image = True
+        self.pick_spectrum = False
+        self.lx, = ax1.plot((self.minx1,self.minx1),(self.miny1,self.miny1),'w-',linewidth=2)
+        self.ly, = ax1.plot((self.minx1,self.minx1),(self.miny1,self.miny1),'w-',linewidth=2)
 
 	print('etape 8')
         # Initialize the dot on the slice window showing the selected spectrum
@@ -150,27 +154,144 @@ class graph_interact:
 	pylab.draw()
 
 
-#	def onselectvert(ymin, ymax):
-#		ym = int(ymin)
-#		yM = int(ymax)
-#		self.text['numlens1'].set_text('[%3.0d:%3.0d]'%(ym,yM))
-#		#self.lx.set_data( (self.minx1, self.maxx1), (ym,ym) )
-#                #pylab.draw()
-#
-#        
-#	span = VerticalSpanSelector(ax1, onselectvert, useblit=False,rectprops=dict(alpha=0.5, facecolor='green') )
-#	pylab.show
-
-
 	def onselecthori(xmin, xmax):
-		xm = int(xmin)
-		xM = int(xmax)
-		self.text['numslice1'].set_text('[%4.0d:%4.0d]'%(xm,xM))
-		pylab.draw()
+	    xm = int(xmin)
+	    xM = int(xmax)
+	    self.text['numslice1'].set_text('[%4.0d:%4.0d]'%(xm,xM))
+	    ind = [xm,xM]
+	    self.update_slice(ind)
 
 	span1 = HorizontalSpanSelector(ax1, onselecthori, useblit=False,rectprops=dict(alpha=0.5, facecolor='blue') )
 	pylab.show
 	
+
+
+    def on_click(self,event):
+        fig = self.fig
+        x,y = event.xdata,event.ydata
+        ax0 = self.axes[0]
+        ax1 = self.axes[1]
+        ax2 = self.axes[2]
+
+	self.reset_draw()
+        pylab.draw()
+        
+    def on_move(self,event):
+        fig = self.fig
+        x,y = event.xdata,event.ydata
+        ax = event.inaxes
+        ax0 = self.axes[0]
+        ax1 = self.axes[1]
+                
+        if ax == ax0: # Motion in the reconstructed image window
+            if event.button == 1 or event.button == 2:
+                if self.begin_sel_ax0: # Test if it is the first move after button 1/2 pressed
+                    self.center = [x,y] # Then initialize the aperture selection
+                    self.begin_sel_ax0 = False
+                    self.circle.xy = self.center
+                    self.unit_verts = [(v[0] + self.center[0],v[1] + self.center[1]) for v in self.unit_verts]
+                    self.comp_new_verts(self.center,0)
+                    pylab.draw()
+                self.radius = sqrt((x-self.center[0])**2 + (y-self.center[1])**2)
+                if self.radius > 0.5: # The aperture is visible only if it is larger than a spaxel
+                    self.circle.set_visible(True)
+                else:
+                    self.circle.set_visible(False)
+                self.print_nbspec()
+                self.comp_new_verts(self.center,self.radius)
+                pylab.draw()
+            else:
+                i = int(x)
+                j = int(y)
+		ind = self.cube.get_lindex((i,j))
+		self.text['numlens1'].set_text('%3.0d'%int(ind))
+                self.update_current_int(ind=[i,j])
+                
+        if ax == ax1: # Motion in the stacked spectra window	(14-10-05) Show which slide or lens chosen
+            #if event.button == None: # No selection, only cursor motion
+                #if self.pick_image: # Move the vertical line
+	    self.text['numslice1'].set_text('[%4.0d]'%int(x))
+                    #self.ly.set_data( (x, x), (self.miny1, self.maxy1) )
+                #pylab.draw()
+                #elif self.pick_spectrum: # Move the horizontal line
+	    self.text['numlens1'].set_text('%3.0d'%int(y))
+                    #self.lx.set_data( (self.minx1, self.maxx1), (y,y) )
+            pylab.draw()
+
+#	    elif event.button == 1 or event.button == 2: # Area selection
+#                if self.pick_image: #Select an area in the wavelength direction
+#                    self.ly.set_data( (x, x), (self.miny1, self.maxy1) )
+#                    pylab.draw()
+#                    if self.begin_sel_ax1: # Test if it is the first move after button 1/2 pressed
+#                        self.wmin = int(x) # Then initialize the rectangle area
+#                        self.begin_sel_ax1=False
+#                        ax1.patches[0].xy = [(x,self.miny1),(x,self.maxy1),(x,self.maxy1),(x,self.miny1)]
+#                        pylab.draw()
+#                    ax1.patches[0].xy[2] = (x,self.maxy1) # Compute the new edge of the rectangle area
+#                    ax1.patches[0].xy[3] = (x,self.miny1)
+#                    pylab.draw() # Then display it
+#                if self.pick_spectrum: #select an area in the slices direction
+#                    if event.button == 2:
+#			self.erase_flag = False
+#                    self.lx.set_data( (self.minx1, self.maxx1), (y,y) )
+#                    pylab.draw()
+#                    if self.begin_sel_ax1: # Test if it is the first move after button 1/2 pressed
+#                        self.lmin = int(y) # Then initialize the rectangle area
+#                        self.begin_sel_ax1=False
+#                        ax1.patches[0].xy = [(self.minx1,y),(self.maxx1,y),(self.maxx1,y),(self.minx1,y)]
+#                        pylab.draw()
+#                    ax1.patches[0].xy[2] = (self.maxx1,y) # Compute the new edge of the rectangle area
+#                    ax1.patches[0].xy[3] = (self.miny1,y)
+#                    self.print_nbspec(abs(int(y)-self.lmin+1))
+#                    pylab.draw() # Then display it
+            
+    def on_release(self,event):
+        fig = self.fig
+        x,y = event.xdata,event.ydata
+        ax = event.inaxes
+        ax0 = self.axes[0]
+        ax1 = self.axes[1]
+        ax2 = self.axes[2]
+        if ax == ax0: # Selection in the reconstructed image window
+            if event.button == 2:
+		self.erase_flag = False
+            if self.begin_sel_ax0 or self.radius < 0.5: # Test if there has been no motion before release or
+                i,j = int(x),int(y)                     # the selected area is smaller than a spaxel
+                ind = self.cube.get_lindex((i,j))       # In that case we display the spectrum corresponding to 
+                self.update_spec(ind)                   # the spaxel where the mouse button has been released. 
+                self.dot.set_visible(True)              # We also display a dot on this spaxel on the image window
+                self.print_nbspec(1)
+                self.dot.set_data((i+0.5,i+0.5),(j+0.5,j+0.5))
+                #self.pick_spectrum = True               # And a horizontal line on the stacked spectra window
+                #self.pick_image = False
+                #self.lx.set_data( (self.minx1, self.maxx1), (ind,ind) )
+                #self.ly.set_data((self.minx1,self.minx1),(self.miny1,self.miny1))
+                # Then we reinitialize the aperture coordinates and radius to [0,0],1
+                #self.reset_circle()
+                self.begin_sel_ax0 = True
+                pylab.show()
+            else: # Else we compute the final aperture radius and plot the summed spectrum of the corresponding region 
+                self.radius = sqrt((x-self.center[0])**2 + (y-self.center[1])**2)
+                self.begin_sel_ax0 = True
+                self.integ_aperture()
+                self.print_nbspec()
+                self.dot.set_visible(False)
+                self.dot.set_data((self.center[0],self.center[0]),(self.center[1],self.center[1]))
+                #self.update_stacked_spec()
+                pylab.show()
+                self.reset_draw()
+
+	if ax == ax1: #selection in the stacked image
+	    self.update_spec(ind=int(y))
+	    i = self.cube.i[int(y)]
+	    j = self.cube.j[int(y)]
+	    self.dot.set_visible(True)
+	    #self.begin_sel_ax1 = True
+	    self.dot.set_data((i+0.5,i+0.5),(j+0.5,j+0.5))
+	    self.print_nbspec(1)
+	    pylab.show()
+                
+                
     def update_slice(self,ind=None):
         if ind != None:
             self.slice = transpose(self.cube.slice2d(ind,coord='p'))
@@ -251,8 +372,10 @@ class graph_interact:
         pylab.show()
 
     def reset_draw(self):
-	self.axes[1].patches[0].xy = [(self.minx1,self.minx1),(self.minx1,self.minx1),(self.minx1,self.minx1),(self.minx1,self.minx1)]
 	self.unit_verts = [(v[0] - self.center[0],v[1] - self.center[1]) for v in self.unit_verts]
+	self.center = [0,0]
+	self.radius = 0
+	self.circle.verts = self.unit_verts
 	self.circle.set_visible(False)
 
    
@@ -261,19 +384,36 @@ class explore_cube:
     def __init__(self,cube,cmap=pylab.cm.hot):
         fig = pylab.figure(figsize=(12,9))
         q = fig.get_figheight()/fig.get_figwidth()
-        ax0 = fig.add_axes((0.05,0.3,0.65*q,0.65))
-        ax1 = fig.add_axes((0.05+0.7*q,0.3,0.9-0.65*q,0.65))
-        ax2 = fig.add_axes((0.05+0.7*q,0.05,0.9-0.65*q,0.2))
-        ax3 = fig.add_axes((0.05,0.05,0.65*q,0.2))
-        ax3.set_xticks([])
+        ax0 = fig.add_axes((0.05,0.45,0.5*q,0.5))
+        ax1 = fig.add_axes((0.05+0.55*q,0.4,0.9-0.5*q,0.55))
+        ax2 = fig.add_axes((0.05+0.55*q,0.05,0.9-0.5*q,0.3))
+        ax3 = fig.add_axes((0.05,0.05,0.5*q,0.35))
+#        ax3 = fig.add_axes((0.05,0.05,0.5*q,0.35))
+	ax3.set_xticks([])
         ax3.set_yticks([])
-#        ax3.set_axis_bgcolor('#e7e0c8')
+        ax3.set_axis_bgcolor('#e7e0c8')
+#        ax4 = fig.add_axes((0.05+0.16*q,0.13,0.17*q,0.27))
+#        ax4.set_xticks([])
+#        ax4.set_yticks([])
+#        ax4.set_axis_bgcolor('#e7e0a8')
+#        ax5 = fig.add_axes((0.05+0.33*q,0.20,0.17*q,0.20))
+#        ax5.set_xticks([])
+#        ax5.set_yticks([])
+#        ax5.set_axis_bgcolor('#e7e0a8')
+#        ax6 = fig.add_axes((0.05,0.05,0.33*q,0.08))
+#        ax6.set_xticks([])
+#        ax6.set_yticks([])
+#        ax6.set_axis_bgcolor('#e7e068')
+#        ax7 = fig.add_axes((0.05+0.33*q,0.05,0.17*q,0.15))
+#        ax7.set_xticks([])
+#        ax7.set_yticks([])
+#        ax7.set_axis_bgcolor('#e7e068')
 	
         print('juste avant graph')
         graph = graph_interact(fig,cube)
         #pylab.connect('button_press_event', graph.on_click)
-        #pylab.connect('motion_notify_event', graph.on_move)
-        #pylab.connect('button_release_event', graph.on_release)
+        pylab.connect('motion_notify_event', graph.on_move)
+        pylab.connect('button_release_event', graph.on_release)
         #self.spec_axe = ax2
 
     def get_spec(self,n):
