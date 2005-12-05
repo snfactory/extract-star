@@ -235,7 +235,7 @@ class SNIFS_cube:
             else:
                 raise ValueError, "Coordinates flag should be either \'p\' or \'w\'"
 
-        if n1 >= 0 and n2 < numarray.shape(self.data)[0]:
+        if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
             slice_2D = numarray.zeros((15,15),Float32) * nan
             i = numarray.array(self.i)
             j = numarray.array(self.j)
@@ -346,3 +346,31 @@ class SNIFS_cube:
             ind = argmax(self.no == val)
 
         return(ind)
+
+
+#####################  Utility functions  ########################
+       
+def convert_tab(table,colx,coly,ref_pos):
+    tck = scipy.interpolate.splrep(table[1].data.field(colx),\
+                                   table[1].data.field(coly),s=0)
+    tab = scipy.interpolate.splev(ref_pos,tck)
+    return tab
+
+def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
+    if Min == None:
+        Min = min(data)
+    if Max == None:
+        Max = max(data)
+    if bin == None:
+        bin = (Max-Min)/nbin
+        
+    bin_array = arange(nbin)*bin + Min
+    n = searchsorted(sort(data), bin_array)
+    n = concatenate([n, [len(data)]])
+    hist = spectrum()
+    hist.data = n[1:]-n[:-1]
+    hist.x = bin_array
+    hist.len = len(bin_array)
+    if cumul:
+        hist.data = numarray.array([float(sum(hist.data[0:i+1])) for i in arange(hist.len)])/float(sum(hist.data))
+    return hist
