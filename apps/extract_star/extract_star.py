@@ -2,6 +2,7 @@
 import os
 import sys
 import pySNIFS
+import pySNIFS_fit
 from optparse import OptionParser
 import pyfits
 import pylab
@@ -32,7 +33,7 @@ def comp_spec(cube,psf_param,intpar=[None,None]):
     var = pySNIFS.SNIFS_cube(cube,noise=True,num_array=True)
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     var.data = numarray.where(var.data>1e20,0.,var.data)
-    model = pySNIFS.SNIFS_psf_3D(intpar,signal)
+    model = pySNIFS_fit.SNIFS_psf_3D(intpar,signal)
     # The PSF parameters are only the shape parameters. We set the intensity of each slice to 1.
     param = psf_param+[1. for i in arange(signal.nslice)]
     
@@ -103,8 +104,14 @@ if __name__ == "__main__":
         slices=[10,1500,30]
         first_slice = 10
         lstep = 30
-    signal = pySNIFS.SNIFS_cube(cube,l=slices,num_array=False,s=True)
-    var = pySNIFS.SNIFS_cube(cube,l=slices,num_array=False,noise=True,s=True)
+
+    signal = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,s=True)
+    var = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,noise=True,s=True)
+    # Normalisation of the signal and variance in order to avoid numerical problems withh too small numbers
+    norm = scipy.mean(scipy.mean(signal.data))
+    signal.data = signal.data / norm
+    var.data = var.data / (norm**2)
+    
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     # var.data = scipy.where(var.data>1e20,1.,var.data)
 
@@ -125,7 +132,7 @@ if __name__ == "__main__":
     var.lbda = scipy.array(tmp_lbda)
     var.nslice = len(signal.lbda)
 
-    # Computing guess parameters from 2D fit
+    ##### Computing guess parameters from slice by slice 2D fitting #####
     print_msg("Slice by slice 2D fitting...",opts.verbosity_level,0)
     
     nslice = signal.nslice
@@ -157,13 +164,22 @@ if __name__ == "__main__":
         var2.x = var.x
         var2.y = var.y
         var2.lbda = scipy.array([var.lbda[i]])
-        #signal2 = pySNIFS.SNIFS_cube(cube,l=[i+first_slice,i+first_slice+lstep-1,lstep],num_array=False,s=True)
-        #var2 = pySNIFS.SNIFS_cube(cube,l=[i+first_slice,i+first_slice+lstep-1,lstep],num_array=False,noise=True,s=True)
+
+        signal2.data = signal2.data
+        var2.data = var2.data 
+        
+        # Evaluation of the background for the current slice
         sky = min(signal2.data[0]+5*var2.data[0])
+
+        # Evaluation of the centroid of the current slice
         sl_int = N.filters.median_filter(signal2.data[0],3)
         xc = sum(signal2.x*(sl_int-sky))/sum(sl_int-sky)
         yc = sum(signal2.y*(sl_int-sky))/sum(sl_int-sky)
+
+        # Evaluation of the intensity of the current slice
         imax = max(sl_int)
+
+        # Filling of the guess parameters arrays and of the bounds arrays
         p1 = [0,0,xc,yc,0.3,-0.2,2.2,0.1,0.2,1.,0.,imax]
         p2 = [sky]
         b1 = [None]*(11+signal2.nslice)
@@ -173,13 +189,19 @@ if __name__ == "__main__":
         b2 = [[0.,None]]
         p = [p1,p2]
         b = [b1,b2]
+
+        # Instanciating of a model class
         lbda_ref = signal2.lbda[0]
         f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
-        sl_model = pySNIFS.model(data=signal2,var=var2,param=p,func=f,bounds=b)
+        sl_model = pySNIFS_fit.model(data=signal2,var=var2,param=p,func=f,bounds=b)
+
+        # Fit of the current slice
         if opts.verbosity_level == 2:
             sl_model.fit(maxfun=200,msge=1)
         else:
             sl_model.fit(maxfun=200)
+
+        # Storing the result of the current slice parameters
         xc_vec[i] = sl_model.fitpar[2]
         yc_vec[i] = sl_model.fitpar[3]
         sigc_vec[i] = sl_model.fitpar[4]
@@ -190,9 +212,15 @@ if __name__ == "__main__":
         theta_vec[i] = sl_model.fitpar[10]
         int_vec[i] = sl_model.fitpar[11]
         sky_vec[i] = sl_model.fitpar[12]
+
+
+    ##### 3D model fitting #####
         
-        
+    # Computing the initial guess for the 3D fitting from the results of the slic by slice 2D fit
     lbda_ref = numarray.array(signal.lbda).mean()
+    #1) Position parameters:
+    #   the xc,yc vectors obtained from 2D fit are smoothed, then the position corresponding to the reference wavelength is read in the filtered
+    #   vectors. Finally, the parameters theta and alpha are determined from the xc,yc vectors.
     xc_vec = N.filters.median_filter(xc_vec,5)
     yc_vec = N.filters.median_filter(yc_vec,5)
     x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
@@ -211,14 +239,16 @@ if __name__ == "__main__":
         alpha_x = scipy.median(alpha_x_vec)
         alpha_y = scipy.median(alpha_y_vec)
         alpha = scipy.mean([alpha_x,alpha_y])
-    print alpha
+
+    #2) Other parameters:
     sigc = scipy.median(sigc_vec*(signal.lbda/lbda_ref)*0.2)
     q = scipy.median(q_vec)
     qk = scipy.median(qk_vec)
     eps = scipy.median(eps_vec)
     sigk = scipy.median(sigk_vec)
     theta_k = scipy.median(theta_vec)
-    
+
+    # Filling the guess solution and bounds arrays
     p1 = [None]*(11+signal.nslice)
     b1 = [None]*(11+signal.nslice)
     
@@ -227,15 +257,14 @@ if __name__ == "__main__":
                 [0,None],[0.01,None],[1.,None],[0.,pi]]
     p1[11:11+signal.nslice] = int_vec.tolist()
     b1[11:11+signal.nslice] = [[0,None] for i in range(signal.nslice)]
-    #p2 = [sky for i in range(signal.nslice)]
     p2 = sky_vec.tolist()
     b2 = [[0.,None] for i in range(signal.nslice)]
     p = [p1,p2]
     b = [b1,b2]
     f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
-    #p,b,f = pySNIFS.init_param(cube,l=slices,func='SNIFS_psf_3D+background')
 
-    data_model = pySNIFS.model(data=signal,var=var,param=p,func=f,bounds=b)
+    # Instanciating the model class
+    data_model = pySNIFS_fit.model(data=signal,var=var,param=p,func=f,bounds=b)
     
     print_msg("Fitting the data...",opts.verbosity_level,0)
     
@@ -247,14 +276,16 @@ if __name__ == "__main__":
         data_model.fit(maxfun=200,save=True) 
         data_model.fit()
         
-    
+    # Storing result and guess parameters
     fitpar = data_model.fitpar
     guesspar = data_model.flatparam
     print_msg("Extracting the spectrum...",opts.verbosity_level,0)
-    spec = comp_spec(cube,data_model.fitpar[0:11],intpar=[0.42,lbda_ref])
-    norm = data_model.fitpar[7] + 1
-    spec[1] = spec[1] * norm
 
+    # Computing the final spectra for the object and the background
+    spec = comp_spec(opts.incube,data_model.fitpar[0:11],intpar=[0.42,lbda_ref])
+    # The 3D psf model is not normalized to 1 in integral. The result must be renormalized by (1+eps)
+    spec[1] = spec[1] * (data_model.fitpar[7] + 1)
+    
     # Create png images of spectra and slices fit
     isplot = opts.isplot
     
@@ -267,6 +298,7 @@ if __name__ == "__main__":
         plot6 = os.path.splitext(opts.outspec)[0]+"_fit5.png"
         
         # Plot of the star and sky spectra
+        
         pylab.figure()
         pylab.subplot(2,1,1)
         pylab.plot(spec[0],spec[1])
@@ -298,15 +330,17 @@ if __name__ == "__main__":
         pylab.figure()
         # Creating a standard SNIFS cube with the fitted data
         cube_fit = pySNIFS.SNIFS_cube(lbda=signal.lbda)
-        func1 = pySNIFS.SNIFS_psf_3D(intpar=[data_model.func[0].pix,data_model.func[0].lbda_ref],cube=cube_fit)
-        func2 = pySNIFS.poly2D(0,cube_fit)
-        cube_fit.data = func1.comp(fitpar[0:func1.npar]) + func2.comp(fitpar[func1.npar:func1.npar+func2.npar])        
+        func1 = pySNIFS_fit.SNIFS_psf_3D(intpar=[data_model.func[0].pix,data_model.func[0].lbda_ref],cube=cube_fit)
+        func2 = pySNIFS_fit.poly2D(0,cube_fit)
+        cube_fit.data = func1.comp(fitpar[0:func1.npar]) + func2.comp(fitpar[func1.npar:func1.npar+func2.npar])
+        print signal.nslice
+        print numarray.shape(signal.data)
         for i in range(signal.nslice):                 
             pylab.subplot(nrow,ncol,i+1)
-            pylab.plot(sum(signal.slice2d(i),0),'bo',markersize=3)
-            pylab.plot(sum(cube_fit.slice2d(i),0),'b-')
-            pylab.plot(sum(signal.slice2d(i),1),'r^',markersize=3)
-            pylab.plot(sum(cube_fit.slice2d(i),1),'r-')
+            pylab.plot(sum(signal.slice2d(i,coord='p'),0),'bo',markersize=3)
+            pylab.plot(sum(cube_fit.slice2d(i,coord='p'),0),'b-')
+            pylab.plot(sum(signal.slice2d(i,coord='p'),1),'r^',markersize=3)
+            pylab.plot(sum(cube_fit.slice2d(i,coord='p'),1),'r-')
             pylab.xticks(fontsize=4)
             pylab.yticks(fontsize=4)    
         pylab.savefig(plot3,dpi=150,facecolor='w',edgecolor='w',orientation='portrait')
