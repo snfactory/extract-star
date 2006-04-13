@@ -30,12 +30,13 @@ def plot_non_chromatic_param(ax,par_vec,lbda,guess_par,fitpar,str_par):
 
 def comp_spec(cube,psf_param,intpar=[None,None]):
     signal = pySNIFS.SNIFS_cube(cube,num_array=True)
-    var = pySNIFS.SNIFS_cube(cube,noise=True,num_array=True)
+    # var = pySNIFS.SNIFS_cube(cube,noise=True,num_array=True)
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
-    var.data = numarray.where(var.data>1e20,0.,var.data)
+    # var.data = numarray.where(var.data>1e20,0.,var.data)
+    signal.var = numarray.where(signal.var>1e20,0.,signal.var)
     model = pySNIFS_fit.SNIFS_psf_3D(intpar,signal)
     # The PSF parameters are only the shape parameters. We set the intensity of each slice to 1.
-    param = psf_param+[1. for i in arange(signal.nslice)]
+    param = psf_param.tolist()+[1. for i in arange(signal.nslice)]
     
 
     # Linear khi2 minimization
@@ -58,8 +59,10 @@ def comp_spec(cube,psf_param,intpar=[None,None]):
     threshold = hist.x[numarray.argmax(numarray.where(hist.data<0.9999,0,1))]
     mask = numarray.where(abs(lapl)>threshold,0.,1.)
     #signal.data = signal.data * mask + fdata*(1.-mask)
-    var.data = var.data*mask
-    weight = numarray.where(var.data!=0,1./var.data,0)
+    # var.data = var.data*mask
+    signal.var = signal.var*mask
+    # weight = numarray.where(var.data!=0,1./var.data,0)
+    weight = numarray.where(signal.var!=0,1./signal.var,0)
     # Fit on masked data
     
     psf = numarray.array(model.comp(param),'d')
@@ -106,14 +109,16 @@ if __name__ == "__main__":
         lstep = 30
 
     signal = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,s=True)
-    var = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,noise=True,s=True)
+    # var = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,noise=True,s=True)
     # Normalisation of the signal and variance in order to avoid numerical problems withh too small numbers
     norm = scipy.mean(scipy.mean(signal.data))
     signal.data = signal.data / norm
-    var.data = var.data / (norm**2)
+    #var.data = var.data / (norm**2)
+    signal.var = signal.var / (norm**2)
     
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
-    # var.data = scipy.where(var.data>1e20,1.,var.data)
+    #var.data = scipy.where(var.data>1e20,1.,var.data)
+    #var.data = scipy.where(isnan(var.data),0.,var.data)
 
     
     # Rejection of bad points
@@ -123,14 +128,16 @@ if __name__ == "__main__":
     tmp1 = numarray.where(abs(max_spec-med)<5*sqrt(scipy.median((max_spec - med)**2)),0,1)
     indice = (compress(arange(len(tmp1))*(1-tmp1)!=0,arange(len(tmp1)))).tolist()
     tmp_signal = numarray.array(signal.data)[indice]
-    tmp_var = numarray.array(var.data)[indice]
+    #tmp_var = numarray.array(var.data)[indice]
+    tmp_var = numarray.array(signal.var)[indice]
     tmp_lbda = numarray.array(signal.lbda)[indice]
     signal.data = scipy.array(tmp_signal)
     signal.lbda = scipy.array(tmp_lbda)
     signal.nslice = len(signal.lbda)
-    var.data = scipy.array(tmp_var)
-    var.lbda = scipy.array(tmp_lbda)
-    var.nslice = len(signal.lbda)
+    signal.var = scipy.array(tmp_var)
+    #var.data = scipy.array(tmp_var)
+    #var.lbda = scipy.array(tmp_lbda)
+    #var.nslice = len(signal.lbda)
 
     ##### Computing guess parameters from slice by slice 2D fitting #####
     print_msg("Slice by slice 2D fitting...",opts.verbosity_level,0)
@@ -149,7 +156,7 @@ if __name__ == "__main__":
     for i in arange(signal.nslice):
         print_msg("2D Fitting of slice %d"%(i),opts.verbosity_level,2)
         signal2 = pySNIFS.SNIFS_cube()
-        var2 = pySNIFS.SNIFS_cube()
+        #var2 = pySNIFS.SNIFS_cube()
         signal2.nslice = 1
         signal2.nlens = signal.nlens
         data = numarray.array(signal.data)[i,NewAxis]
@@ -157,20 +164,20 @@ if __name__ == "__main__":
         signal2.x = signal.x
         signal2.y = signal.y
         signal2.lbda = scipy.array([signal.lbda[i]])
-        var2.nslice = 1
-        var2.nlens = var.nlens
-        data = numarray.array(var.data)[i,NewAxis]
-        var2.data = scipy.array(data)
-        var2.x = var.x
-        var2.y = var.y
-        var2.lbda = scipy.array([var.lbda[i]])
+        #var2.nslice = 1
+        #var2.nlens = var.nlens
+        var = numarray.array(signal.var)[i,NewAxis]
+        signal2.var = scipy.array(var)
+        #var2.x = var.x
+        #var2.y = var.y
+        #var2.lbda = scipy.array([var.lbda[i]])
 
-        signal2.data = signal2.data
-        var2.data = var2.data 
+        #signal2.data = signal2.data
+        #var2.data = var2.data 
         
         # Evaluation of the background for the current slice
-        sky = min(signal2.data[0]+5*var2.data[0])
-
+        #sky = min(signal2.data[0]+5*var2.data[0])
+        sky = min(signal2.data[0]+5*signal2.var[0])
         # Evaluation of the centroid of the current slice
         sl_int = N.filters.median_filter(signal2.data[0],3)
         xc = sum(signal2.x*(sl_int-sky))/sum(sl_int-sky)
@@ -189,11 +196,11 @@ if __name__ == "__main__":
         b2 = [[0.,None]]
         p = [p1,p2]
         b = [b1,b2]
-
+        
         # Instanciating of a model class
         lbda_ref = signal2.lbda[0]
         f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
-        sl_model = pySNIFS_fit.model(data=signal2,var=var2,param=p,func=f,bounds=b)
+        sl_model = pySNIFS_fit.model(data=signal2,param=p,func=f,bounds=b)
 
         # Fit of the current slice
         if opts.verbosity_level == 2:
@@ -223,12 +230,23 @@ if __name__ == "__main__":
     #   vectors. Finally, the parameters theta and alpha are determined from the xc,yc vectors.
     xc_vec = N.filters.median_filter(xc_vec,5)
     yc_vec = N.filters.median_filter(yc_vec,5)
-    x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
-    y0 = yc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
     n_ref = 1e-6*(64.328 + 29498.1/(146.-1./(lbda_ref*1e-4)**2) + 255.4/(41.-1./(lbda_ref*1e-4)**2)) + 1.
     ADR_coef = numarray.array(206265*(1e-6*(64.328 + 29498.1/(146.-1./(signal.lbda*1e-4)**2) + 255.4/(41.-1./(signal.lbda*1e-4)**2)) + 1. - n_ref))
-    theta = scipy.arctan(scipy.median(numarray.compress(numarray.logical_not(scipy.isnan((yc_vec-y0)/(xc_vec-x0))),(yc_vec-y0)/(xc_vec-x0))))
+    #theta = scipy.arctan(scipy.median(numarray.compress(numarray.logical_not(scipy.isnan((yc_vec-y0)/(xc_vec-x0))),(yc_vec-y0)/(xc_vec-x0))))
 
+
+    #A = scipy.ones((2,len(xc_vec)), xc_vec.typecode())
+    #A[1] = xc_vec
+    #A = A
+    #A = scipy.transpose(A)
+    #sol, res, rank, s = scipy.linalg.lstsq(A, yc_vec)
+    P = pySNIFS.fit_poly(yc_vec,3,1,xc_vec)
+    theta = scipy.arctan(P[1])
+    #x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    #y0 = yc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    y0 = scipy.poly1d(P)(x0)
+    
     alpha_x_vec = compress(ADR_coef!=0,(xc_vec-x0)/(numarray.cos(theta)*ADR_coef))
     alpha_y_vec = compress(ADR_coef!=0,(yc_vec-y0)/(numarray.sin(theta)*ADR_coef))
     if theta == 0:
@@ -241,7 +259,7 @@ if __name__ == "__main__":
         alpha = scipy.mean([alpha_x,alpha_y])
 
     #2) Other parameters:
-    sigc = scipy.median(sigc_vec*(signal.lbda/lbda_ref)*0.2)
+    sigc = scipy.median(sigc_vec*(signal.lbda/lbda_ref)**0.2)
     q = scipy.median(q_vec)
     qk = scipy.median(qk_vec)
     eps = scipy.median(eps_vec)
@@ -264,8 +282,8 @@ if __name__ == "__main__":
     f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
 
     # Instanciating the model class
-    data_model = pySNIFS_fit.model(data=signal,var=var,param=p,func=f,bounds=b)
-    
+    data_model = pySNIFS_fit.model(data=signal,param=p,func=f,bounds=b)
+    guesspar = data_model.flatparam
     print_msg("Fitting the data...",opts.verbosity_level,0)
     
     # The fit is launched twice. This is a dirty trick to avoid it to get quickly stuck on a bad solution... 
@@ -278,7 +296,7 @@ if __name__ == "__main__":
         
     # Storing result and guess parameters
     fitpar = data_model.fitpar
-    guesspar = data_model.flatparam
+    #guesspar = data_model.flatparam
     print_msg("Extracting the spectrum...",opts.verbosity_level,0)
 
     # Computing the final spectra for the object and the background
@@ -333,8 +351,6 @@ if __name__ == "__main__":
         func1 = pySNIFS_fit.SNIFS_psf_3D(intpar=[data_model.func[0].pix,data_model.func[0].lbda_ref],cube=cube_fit)
         func2 = pySNIFS_fit.poly2D(0,cube_fit)
         cube_fit.data = func1.comp(fitpar[0:func1.npar]) + func2.comp(fitpar[func1.npar:func1.npar+func2.npar])
-        print signal.nslice
-        print numarray.shape(signal.data)
         for i in range(signal.nslice):                 
             pylab.subplot(nrow,ncol,i+1)
             pylab.plot(sum(signal.slice2d(i,coord='p'),0),'bo',markersize=3)
@@ -357,7 +373,7 @@ if __name__ == "__main__":
         yguess = guesspar[0]*data_model.func[0].ADR_coef[:,0]*numarray.sin(guesspar[1]) + guesspar[3]
         pylab.plot(xfit,yfit)
         pylab.plot(xguess,yguess,'k--')
-        pylab.legend(("Fitted 2D PSF center","Guess 3D PSF center","Fitted 3D PSF center"),loc='lower right')
+        pylab.legend(("Fitted 2D PSF center","Fitted 3D PSF center","Guess 3D PSF center"),loc='lower right')
         pylab.text(0.05,0.9,r'$\rm{Guess:}\hspace{1} x_{0} = %4.2f\hspace{0.5} y_{0} = %4.2f \hspace{0.5} \alpha = %5.2f \hspace{0.5} \theta = %6.2f^o$'%(x0,y0,alpha,theta*180/scipy.pi),transform=ax.transAxes)
         pylab.text(0.05,0.8,r'$\rm{Fit:}\hspace{1} x_{0} = %4.2f\hspace{0.5} y_{0} = %4.2f\hspace{0.5} \alpha = %5.2f \hspace{0.5} \theta = %6.2f^o$'%(fitpar[2],fitpar[3],fitpar[0],fitpar[1]*180/scipy.pi),transform=ax.transAxes)
         pylab.xlabel("X center",fontsize=8)
@@ -449,6 +465,9 @@ if __name__ == "__main__":
                desc[0] != 'CDELTS' and desc[0] != 'CRPIXS':
             hdu.header.update(desc[0],desc[1])
     hdulist = pyfits.HDUList()
+    for i,par in enumerate(fitpar[0:11]):
+        key = 'FITPAR%0.2d'%i
+        hdu.header.update(key,par)
     hdulist.append(hdu)
     if os.path.isfile(opts.outspec):
         os.system('rm %s'%opts.outspec)

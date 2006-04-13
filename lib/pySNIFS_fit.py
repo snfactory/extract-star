@@ -1,3 +1,10 @@
+import pySNIFS
+from pySNIFS import *
+import numarray
+import scipy
+import numpy
+import copy
+
 #####################  Fitting Package  ##########################
 
 
@@ -6,11 +13,10 @@
 #######################################################
 
 class gaus1D:
-    def __init__(self,cube=None):            
-        self.cube = cube
-	self.npar_ind = 0
+    def __init__(self,cube=None):
+        self.npar_ind = 0
         self.npar_cor = 3
-        self.npar = self.npar_ind*self.cube.nslice + self.npar_cor
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
         #self.l = zeros(shape(transpose(cube.data)),Float64)
         self.name = 'gaus1D'
         #self.l[:][:] = cube.lbda
@@ -31,34 +37,54 @@ class gaus1D:
         grad[2] = expo
         return grad
     
+class poly1D:
+    def __init__(self,deg=None,cube=None):
+        self.deg = deg
+        self.npar_ind = 0
+        self.npar_cor = deg+1
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.name = 'poly1D'
+        self.l = reshape(cube.lbda,shape(cube.data))
+        
+    def comp(self,param):
+        val = scipy.poly1d(param[::-1])(self.l)
+        return val
     
+    def deriv(self,param):
+        grad = [(self.l)**i for i in arange(self.npar_cor)]
+        grad = scipy.array(grad)
+        #grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),Float64)
+        #for i in arange(self.npar_cor):
+        #    grad[i] = l**i
+        return grad
 
 #######################################################
 #                   2D Functions                      #
 #######################################################
 
 class gaus2D:
-    def __init__(self,cube=None):            
-        self.cube = cube
-	self.npar_ind = 5
+    def __init__(self,cube=None):
+        self.nslice = cube.nslice
+        self.npar_ind = 5
         self.npar_cor = 0
-        self.npar = self.npar_ind*self.cube.nslice + self.npar_cor
+        self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gaus2D'
-        self.x = zeros(shape(self.cube.data),Float64)
-        self.y = zeros(shape(self.cube.data),Float64)
-        self.x[:][:] = self.cube.x
-        self.y[:][:] = self.cube.y
-        
+        self.x = zeros(shape(cube.data),Float64)
+        self.y = zeros(shape(cube.data),Float64)
+        self.x[:][:] = cube.x
+        self.y[:][:] = cube.y
+
     def comp(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param[self.npar_cor:],(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
         val = tab_param_ind[:,4:5] * scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         return val
+    
     def deriv(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
-        
+
         expo = scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         val = expo * tab_param_ind[:,4:5] * (self.x-tab_param_ind[:,0:1])/(tab_param_ind[:,2:3])**2
         grad[0] = val
@@ -74,19 +100,19 @@ class gaus2D:
 
 class gaus2D_integ:
     def __init__(self,pix=None,cube=None):
-        self.cube = cube
+        self.nslice = cube.nslice
         self.pix = pix
-	self.npar_ind = 5
+        self.npar_ind = 5
         self.npar_cor = 0
-        self.npar = self.npar_ind*self.cube.nslice + self.npar_cor
+        self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gauss2D_integ'
-        self.x = zeros(shape(self.cube.data),Float64)
-        self.y = zeros(shape(self.cube.data),Float64)
-        self.x[:][:] = self.cube.x
-        self.y[:][:] = self.cube.y 
+        self.x = zeros(shape(cube.data),Float64)
+        self.y = zeros(shape(cube.data),Float64)
+        self.x[:][:] = cube.x
+        self.y[:][:] = cube.y 
     def comp(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         sq2 = sqrt(2)
         xpcn = (self.x + self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
         xmcn = (self.x - self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
@@ -96,7 +122,7 @@ class gaus2D_integ:
         return val
     def deriv(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
         sqpi_2 = sqrt(pi/2.)
         sq2 = sqrt(2.)
@@ -123,19 +149,20 @@ class gaus2D_integ:
 
 class poly2D:
     def __init__(self,deg=None,cube=None):
-        self.cube = cube
+        self.nslice = cube.nslice
         self.deg = deg
         self.npar_ind = int((deg+1)*(deg+2)/2)
         self.npar_cor = 0
-        self.npar = self.npar_ind*self.cube.nslice + self.npar_cor
+        self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'poly2D'
-        self.x = zeros(shape(self.cube.data),Float64)
-        self.y = zeros(shape(self.cube.data),Float64)
-        self.x[:][:] = self.cube.x
-        self.y[:][:] = self.cube.y    
+        self.x = zeros(shape(cube.data),Float64)
+        self.y = zeros(shape(cube.data),Float64)
+        self.x[:][:] = cube.x
+        self.y[:][:] = cube.y
+        
     def comp(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
         val = scipy.ones(shape(self.x),Float64) * tab_param_ind[:,0:1]
         #print str(self.param[0])
@@ -145,9 +172,10 @@ class poly2D:
                 val = val + tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
                 n=n+1
         return val
+    
     def deriv(self,param):
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.cube.nslice)))
+        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
         grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
         #print str(self.param[0])
@@ -159,12 +187,10 @@ class poly2D:
                 n=n+1
         return grad
     
-
 #######################################################
 #                   3D Functions                      #
 #######################################################
 
-    
 class SNIFS_psf_3D:
     def __init__(self,intpar=[None,None],cube=None):
         #self.cube = cube
@@ -304,7 +330,7 @@ class SNIFS_psf_3D:
 #######################################################	 
  
 class model:
-    def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None,var=None):
+    def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None):
         self.fitpar = None
         
         if param == None:
@@ -317,16 +343,33 @@ class model:
             print "WARNING: Your data are in numarray type. Scipy optimization will be VERY SLOW."
         elif not isinstance(data.data,numeric_type):
             raise TypeError, "data.data must be an array"
-        if (not isinstance(data,SNIFS_cube)) and (not isinstance(data,spectrum)):
-            raise TypeError, "data array must be a SNIFS_cube or spectrum object."
+        if (not isinstance(data,SNIFS_cube)) and (not isinstance(data,spectrum)) and (not isinstance(data,image_array)):
+            raise TypeError, "data array must be a SNIFS_cube, image_array or spectrum object."
         if isinstance(data,SNIFS_cube):
             self.model_1D = False
+            self.model_2D = False
+            self.model_3D = True
             self.data = data
+        elif isinstance(data,image_array):
+            self.model_1D = False
+            self.model_2D = True
+            self.model_3D = False
+            self.data = SNIFS_cube()
+            self.data.data = scipy.ravel(data.data)
+            self.data.lbda = scipy.array([0])
+            self.data.nslice = 1
+            self.data.nlens = data.nx * data.ny
+            self.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
+            self.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
+            self.x = self.i*data.stepx+data.startx
+            self.y = self.j*data.stepy+data.starty
         else:
             self.model_1D = True
+            self.model_2D = False
+            self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = scipy.reshape(data.data,(data.len,1))
-            self.data.lbda = data.x
+            self.data.data = scipy.reshape(data.data[data.index_list],(data.len,1))
+            self.data.lbda = data.x[data.index_list]
             self.data.nslice = data.len
             self.data.nlens = 1
             self.data.x = None
@@ -334,41 +377,55 @@ class model:
             self.data.i = None
             self.data.j = None
             self.data.no = None
-            
-            
         
         func_dict = {}
         func_dict['gaus1D']=gaus1D
+        func_dict['poly1D']=poly1D
         func_dict['gaus2D']=gaus2D
         func_dict['poly2D']=poly2D
         func_dict['gaus2D_integ']=gaus2D_integ
         func_dict['SNIFS_psf_3D']=SNIFS_psf_3D
 
         if self.model_1D:
-            avail_func = ['gaus1D']
+            avail_func = ['gaus1D','poly1D']
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
 
         
-        if var == None:
-            self.weight = SNIFS_cube()
-            self.weight.ones_from(self.data)                
+        if data.var == None:
+            #self.weight = SNIFS_cube()
+            self.weight = scipy.ones(shape(self.data),'d')
+            #self.weight.ones_from(self.data)
         else:
-            if not self.model_1D:
-                self.weight = var
-                self.weight.data = scipy.array(where(var.data!=0,1./abs(var.data),0.),Float64)
-            else:
+            if self.model_3D:
+                #self.weight = SNIFS_cube()
+                #self.weight.data = scipy.array(where(data.var!=0,1./abs(data.var),0.),Float64)
+                self.weight = scipy.array(where(data.var!=0,1./abs(data.var),0.),Float64)
+            elif self.model_2D:# TODO: Implement the variance
                 self.weight = SNIFS_cube()
-                waight_val = scipy.array(where(var.data!=0,1./abs(var.data),0.),Float64)
-                self.weight.data = scipy.reshape(weight_val,(var.len,1))
-                self.var.lbda = var.x
-                self.var.nslice = var.len
-                self.var.nlens = 1
-                self.var.x = None
-                self.var.y = None
-                self.var.i = None
-                self.var.j = None
-                self.var.no = None
+                self.data = SNIFS_cube()
+                self.data.data = scipy.ravel(data.data)
+                self.data.lbda = scipy.array([0])
+                self.data.nslice = 1
+                self.data.nlens = data.nx * data.ny
+                self.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
+                self.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
+                self.x = self.i*data.stepx+data.startx
+                self.y = self.j*data.stepy+data.starty
+                
+            elif self.model_1D:
+                #self.weight = SNIFS_cube()
+                weight_val = scipy.array(where(data.var[data.index_list]!=0,1./abs(data.var[data.index_list]),0.),Float64)
+                #self.weight.data = scipy.reshape(weight_val,(data.len,1))
+                self.weight = scipy.reshape(weight_val,(data.len,1))
+                #self.weight.lbda = data.x
+                #self.weight.nslice = data.len
+                #self.weight.nlens = 1
+                #self.weight.x = None
+                #self.weight.y = None
+                #self.weight.i = None
+                #self.weight.j = None
+                #self.weight.no = None
                 
         self.khi2 = None
 
@@ -488,7 +545,8 @@ class model:
 
     def objfun(self,param=None):
         """ Compute the objective function to be minimized: Sum(weight*(data-model)^2) at the given parameters values."""
-        val = sum(self.res_eval(param=param)**2 * self.weight.data,1)
+        #val = sum(self.res_eval(param=param)**2 * self.weight.data,1)
+        val = sum(self.res_eval(param=param)**2 * self.weight,1)
         val = sum(val)
         return val
         
@@ -496,7 +554,8 @@ class model:
         """ Compute the gradient of the objective function at the given parameters value."""
         if param == None:
             param = self.flatparam
-        val1 = self.res_eval(param=param) * self.weight.data
+        #val1 = self.res_eval(param=param) * self.weight.data
+        val1 = self.res_eval(param=param) * self.weight
         val2 = scipy.zeros(scipy.size(param),scipy.Float64)
         i = 0
         for f in self.func:
@@ -539,7 +598,7 @@ class model:
                                                  approx_grad=True, bounds=self.bounds,
                                                  messages=msge,maxfun=maxfun)
 
-        res = xopt[2]
+        res = scipy.array(xopt[2])
         self.fitpar = res
         
         if disp:
@@ -579,113 +638,137 @@ class model:
 #                   Fit auxilliary functions          #
 #######################################################
 
-def init_param(cube,l,func='gaus'):
-    a = SNIFS_cube(cube,l)
-    sky = max([0,a.data[0,:].min()])
-    intens = a.data.max()/0.42**2
-    x = a.x[argmax(a.data[0,:])]
-    y = a.y[argmax(a.data[0,:])]
-    lbda = a.lbda
-    if func =='gaus':
-        p = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
-        p = p+[0.3 for i in arange(len(a[2:,0]))]
-        p = p+[0.3 for i in arange(len(a[2:,0]))]
-        p = p+numarray.linear_algebra.mlab.max(a[2:,1:],1).tolist()
-        b = [[None,None] for i in arange(len(a[2:,0]))]
-        b = b+[[None,None] for i in arange(len(a[2:,0]))]
-        b = b+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b = b+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b = b+[[0.,None] for i in arange(len(a[2:,0]))]
-        p = [p]
-        b = [b]
-        f = ['gaus2D']
+def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
+    if param==None:
+        param=init_param(func)
+    if not isinstance(spec,pySNIFS.spectrum):
+        raise TypeError, 'spec must be a pySNIFS.spectrum'
+    # copying the input spectrum into a temporary one
+    spec2 = copy.deepcopy(spec)
+    spec2.data = spec2.data/scipy.mean(spec2.data) # Normalisation of the data
+    if spec2.var != None:
+        spec2.var = spec2.var/scipy.mean(spec2.var) # Normalisation of the data
+    mod_spec = model(data=spec2,func=func,param=param,bounds=bounds)
+    mod_spec.fit()
+    return mod_spec.fitpar
 
-    elif func == 'gaus+background':
-        p1 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
-        p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
-        p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
-        p1 = p1+numarray.linear_algebra.mlab.max(a[2:,1:],1).tolist()
-        p2 = [sky for i in arange(len(a[2:,0]))]
-        b1 = [[None,None] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[None,None] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.,None] for i in arange(len(a[2:,0]))]
-        b2 = [[0.,None] for i in arange(len(a[2:,0]))]
+
+def init_param(data,func): 
+    if isinstance(data,pySNIFS.SNIFS_cube):
+        raise TypeError,'Not yet implemented for data cubes'
+    elif isinstance(data,pySNIFS.spectrum):
+        data.plot()
         
-        p = [p1,p2]
-        b = [b1,b2]
-        #f = ['gaus2D_integ;0.42','poly2D;0']
-        f = ['gaus2D','poly2D;0']
+    else:
+        raise TypeError,'data must be a pySNIFS.spectrum'
+        
+#def init_param(cube,l,func='gaus'):
+    #a = SNIFS_cube(cube,l)
+    #sky = max([0,a.data[0,:].min()])
+    #intens = a.data.max()/0.42**2
+    #x = a.x[argmax(a.data[0,:])]
+    #y = a.y[argmax(a.data[0,:])]
+    #lbda = a.lbda
+    #if func =='gaus':
+        #p = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
+        #p = p+[0.3 for i in arange(len(a[2:,0]))]
+        #p = p+[0.3 for i in arange(len(a[2:,0]))]
+        #p = p+numarray.linear_algebra.mlab.max(a[2:,1:],1).tolist()
+        #b = [[None,None] for i in arange(len(a[2:,0]))]
+        #b = b+[[None,None] for i in arange(len(a[2:,0]))]
+        #b = b+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b = b+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b = b+[[0.,None] for i in arange(len(a[2:,0]))]
+        #p = [p]
+        #b = [b]
+        #f = ['gaus2D']
+
+    #elif func == 'gaus+background':
+        #p1 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
+        #p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
+        #p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
+        #p1 = p1+numarray.linear_algebra.mlab.max(a[2:,1:],1).tolist()
+        #p2 = [sky for i in arange(len(a[2:,0]))]
+        #b1 = [[None,None] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[None,None] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.,None] for i in arange(len(a[2:,0]))]
+        #b2 = [[0.,None] for i in arange(len(a[2:,0]))]
+        
+        #p = [p1,p2]
+        #b = [b1,b2]
+        ##f = ['gaus2D_integ;0.42','poly2D;0']
+        #f = ['gaus2D','poly2D;0']
     
-    elif func == '2gaus_integ+background':
-        p1 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
-        p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
-        p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
-        tmp = numarray.linear_algebra.mlab.max(a[2:,1:],1)/0.42**2
-        p1 = p1+tmp.tolist()
-        p2 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
-        p2 = p2+[1. for i in arange(len(a[2:,0]))]
-        p2 = p2+[1. for i in arange(len(a[2:,0]))]
-        tmp = tmp/10.
-        p2 = p2+tmp.tolist()
-        p3 = [sky for i in arange(len(a[2:,0]))]
+    #elif func == '2gaus_integ+background':
+        #p1 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
+        #p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
+        #p1 = p1+[0.3 for i in arange(len(a[2:,0]))]
+        #tmp = numarray.linear_algebra.mlab.max(a[2:,1:],1)/0.42**2
+        #p1 = p1+tmp.tolist()
+        #p2 = a[0,1:][argmax(a[2:,1:]).tolist()].tolist()+a[1,1:][argmax(a[2:,1:]).tolist()].tolist()
+        #p2 = p2+[1. for i in arange(len(a[2:,0]))]
+        #p2 = p2+[1. for i in arange(len(a[2:,0]))]
+        #tmp = tmp/10.
+        #p2 = p2+tmp.tolist()
+        #p3 = [sky for i in arange(len(a[2:,0]))]
         
-        b1 = [[None,None] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[None,None] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
-        b1 = b1+[[0.,None] for i in arange(len(a[2:,0]))]
-        b2 = [[None,None] for i in arange(len(a[2:,0]))]
-        b2 = b2+[[None,None] for i in arange(len(a[2:,0]))]
-        b2 = b2+[[0.3,5.] for i in arange(len(a[2:,0]))]
-        b2 = b2+[[0.3,5.] for i in arange(len(a[2:,0]))]
-        b2 = b2+[[0.,None] for i in arange(len(a[2:,0]))]
-        b3 = [[0.,None] for i in arange(len(a[2:,0]))]
+        #b1 = [[None,None] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[None,None] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.01,2.] for i in arange(len(a[2:,0]))]
+        #b1 = b1+[[0.,None] for i in arange(len(a[2:,0]))]
+        #b2 = [[None,None] for i in arange(len(a[2:,0]))]
+        #b2 = b2+[[None,None] for i in arange(len(a[2:,0]))]
+        #b2 = b2+[[0.3,5.] for i in arange(len(a[2:,0]))]
+        #b2 = b2+[[0.3,5.] for i in arange(len(a[2:,0]))]
+        #b2 = b2+[[0.,None] for i in arange(len(a[2:,0]))]
+        #b3 = [[0.,None] for i in arange(len(a[2:,0]))]
         
-        p = [p1,p2,p3]
-        b = [b1,b2,b3]
-        f = ['gaus2D_integ;0.42','gaus2D_integ;0.42','poly2D;0']
+        #p = [p1,p2,p3]
+        #b = [b1,b2,b3]
+        #f = ['gaus2D_integ;0.42','gaus2D_integ;0.42','poly2D;0']
     
         
-    elif func == 'SNIFS_psf':
-        integ=tolist(sum(a[2])*0.42**2)
-        p = [scipy.array([x,y,0.4,1.,0.1,0.2,1.,0.,intens],Float64),scipy.array([sky],Float64)]
-        b = [[[x-0.5,x+0.5],[y-0.5,y+0.5],[0.1, 0.5],[0.5,2.],[0.,1.],[0.01,0.5],[1.,None],[0.,pi],[0,None]],[[0, None]]]
-        f = ['SNIFS_psf;0.42', 'poly2D;0']
+    #elif func == 'SNIFS_psf':
+        #integ=tolist(sum(a[2])*0.42**2)
+        #p = [scipy.array([x,y,0.4,1.,0.1,0.2,1.,0.,intens],Float64),scipy.array([sky],Float64)]
+        #b = [[[x-0.5,x+0.5],[y-0.5,y+0.5],[0.1, 0.5],[0.5,2.],[0.,1.],[0.01,0.5],[1.,None],[0.,pi],[0,None]],[[0, None]]]
+        #f = ['SNIFS_psf;0.42', 'poly2D;0']
         
-    elif func == 'SNIFS_psf_3D+background':
+    #elif func == 'SNIFS_psf_3D+background':
 
 
-        lbda_ref = numarray.array(a.lbda).mean()
-        integ=numarray.sum(a.data,1)*0.42**2
-        n_ref = 1e-6*(64.328 + 29498.1/(146.-1./(lbda_ref*1e-4)**2) + 255.4/(41.-1./(lbda_ref*1e-4)**2)) + 1.
-        ADR_coef = 206265*(1e-6*(64.328 + 29498.1/(146.-1./(a.lbda*1e-4)**2) + 255.4/(41.-1./(a.lbda*1e-4)**2)) + 1. - n_ref)
-        sky = max([0,numarray.array(a.data[0,:]).min()])
-        xc = numarray.sum(a.x*a.data,1)/numarray.sum(a.data,1)
-        yc = numarray.sum(a.y*a.data,1)/numarray.sum(a.data,1)
-        p1 = [None]*(11+a.nslice)
-        b1 = [None]*(11+a.nslice)
-        x0 = xc[numarray.argmin(numarray.abs(lbda_ref - a.lbda))]
-        y0 = yc[numarray.argmin(numarray.abs(lbda_ref - a.lbda))]
-        theta = scipy.arctan(scipy.median(numarray.compress(numarray.logical_not(scipy.isnan((yc-y0)/(xc-x0))),(yc-y0)/(xc-x0))))   
-        alpha_x = scipy.median((xc-x0)/(numarray.cos(theta)*ADR_coef))
-        alpha_y = scipy.median((yc-y0)/(numarray.sin(theta)*ADR_coef))
-        alpha = scipy.mean([alpha_x,alpha_y])
-        p1[0:11] = [alpha,theta,x0,y0,0.4,-0.2,2.2,0.1,0.2,1.,0.]
-        b1[0:11] = [[None,None],[-pi,pi],[None, None],[None,None],[0.01,None],[-5.,0],[1.,None],\
-                    [0,None],[0.01,None],[1.,None],[0.,pi]]
-        p1[11:11+a.nslice] = integ
-        b1[11:11+a.nslice] = [[0,None] for i in range(a.nslice)]
-        p2 = [sky for i in range(a.nslice)]
-        b2 = [[0.,None] for i in range(a.nslice)]
-        p = [p1,p2]
-        b = [b1,b2]
-        f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
+        #lbda_ref = numarray.array(a.lbda).mean()
+        #integ=numarray.sum(a.data,1)*0.42**2
+        #n_ref = 1e-6*(64.328 + 29498.1/(146.-1./(lbda_ref*1e-4)**2) + 255.4/(41.-1./(lbda_ref*1e-4)**2)) + 1.
+        #ADR_coef = 206265*(1e-6*(64.328 + 29498.1/(146.-1./(a.lbda*1e-4)**2) + 255.4/(41.-1./(a.lbda*1e-4)**2)) + 1. - n_ref)
+        #sky = max([0,numarray.array(a.data[0,:]).min()])
+        #xc = numarray.sum(a.x*a.data,1)/numarray.sum(a.data,1)
+        #yc = numarray.sum(a.y*a.data,1)/numarray.sum(a.data,1)
+        #p1 = [None]*(11+a.nslice)
+        #b1 = [None]*(11+a.nslice)
+        #x0 = xc[numarray.argmin(numarray.abs(lbda_ref - a.lbda))]
+        #y0 = yc[numarray.argmin(numarray.abs(lbda_ref - a.lbda))]
+        #theta = scipy.arctan(scipy.median(numarray.compress(numarray.logical_not(scipy.isnan((yc-y0)/(xc-x0))),(yc-y0)/(xc-x0))))   
+        #alpha_x = scipy.median((xc-x0)/(numarray.cos(theta)*ADR_coef))
+        #alpha_y = scipy.median((yc-y0)/(numarray.sin(theta)*ADR_coef))
+        #alpha = scipy.mean([alpha_x,alpha_y])
+        #p1[0:11] = [alpha,theta,x0,y0,0.4,-0.2,2.2,0.1,0.2,1.,0.]
+        #b1[0:11] = [[None,None],[-pi,pi],[None, None],[None,None],[0.01,None],[-5.,0],[1.,None],\
+                    #[0,None],[0.01,None],[1.,None],[0.,pi]]
+        #p1[11:11+a.nslice] = integ
+        #b1[11:11+a.nslice] = [[0,None] for i in range(a.nslice)]
+        #p2 = [sky for i in range(a.nslice)]
+        #b2 = [[0.,None] for i in range(a.nslice)]
+        #p = [p1,p2]
+        #b = [b1,b2]
+        #f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
 
       
         
-    return p,b,f
+    #return p,b,f
 
 def plot_fit_3D(mod,nslices):
     data = numarray.array(mod.data)

@@ -1,0 +1,14 @@
+lib
+===
+
+* Enlever les self.cube dans les fonctions  -> Fait
+* Rajouter les champs var dans les cubes et les images. Supprimer l'option noise en consequence. -> Fait (pour les spectres et les cubes)
+* Adapter le package fit a cette derniere modif, ainsi que extract_star -> Fait
+* Implementer la sauvegarde de la variance des images lors de l'ecriture en format fits -> Fait pour les spectres et les cubes
+* Ajouter la possibilite de fiter sur des intervalles -> Fait pour les spectres 1D
+* Rajouter la possibilité de fit d'images 2D -> Commencé
+* Rajouter aux classes fonctions elementaires une methode calculant la solution
+  de départ. -> A voir
+* Rajouter les polynomes 1D dans le package de fit -> fait
+* Rajouter des interactions curseur -> Fait pour les spectres
+* Utiliser des classes spectrum et des classes image_array dans les méthodes des SNIFS_cube
