@@ -1,3 +1,7 @@
+2006-04-20  Yannick Copin  <yannick@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: minor changes.
+
 2006-04-18  Yannick Copin  <yannick@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new option '--graph', rewrites.
