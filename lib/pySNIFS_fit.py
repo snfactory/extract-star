@@ -28,7 +28,7 @@ class gaus1D:
         return val
 
     def deriv(self,param):
-        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),Float64)
+        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
         expo = scipy.exp(-0.5*(((self.l-param[0])/param[1])**2))
         val = expo * param[2] * (self.l-param[0])/param[1]**2
         grad[0] = val
@@ -53,7 +53,7 @@ class poly1D:
     def deriv(self,param):
         grad = [(self.l)**i for i in arange(self.npar_cor)]
         grad = scipy.array(grad)
-        #grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),Float64)
+        #grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
         #for i in arange(self.npar_cor):
         #    grad[i] = l**i
         return grad
@@ -69,8 +69,8 @@ class gaus2D:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gaus2D'
-        self.x = zeros(shape(cube.data),Float64)
-        self.y = zeros(shape(cube.data),Float64)
+        self.x = zeros(shape(cube.data),'d')
+        self.y = zeros(shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
 
@@ -83,7 +83,7 @@ class gaus2D:
     def deriv(self,param):
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
+        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
 
         expo = scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         val = expo * tab_param_ind[:,4:5] * (self.x-tab_param_ind[:,0:1])/(tab_param_ind[:,2:3])**2
@@ -106,8 +106,8 @@ class gaus2D_integ:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gauss2D_integ'
-        self.x = zeros(shape(cube.data),Float64)
-        self.y = zeros(shape(cube.data),Float64)
+        self.x = zeros(shape(cube.data),'d')
+        self.y = zeros(shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y 
     def comp(self,param):
@@ -123,7 +123,7 @@ class gaus2D_integ:
     def deriv(self,param):
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
+        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
         sqpi_2 = sqrt(pi/2.)
         sq2 = sqrt(2.)
         xpc = (self.x + self.pix/2 - tab_param_ind[:,0:1])
@@ -155,8 +155,8 @@ class poly2D:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'poly2D'
-        self.x = zeros(shape(cube.data),Float64)
-        self.y = zeros(shape(cube.data),Float64)
+        self.x = zeros(shape(cube.data),'d')
+        self.y = zeros(shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         
@@ -164,7 +164,7 @@ class poly2D:
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
-        val = scipy.ones(shape(self.x),Float64) * tab_param_ind[:,0:1]
+        val = scipy.ones(shape(self.x),'d') * tab_param_ind[:,0:1]
         #print str(self.param[0])
         for d in arange(self.deg)+1:
             for j in arange(d+1):
@@ -177,7 +177,7 @@ class poly2D:
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),Float64)
+        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
         #print str(self.param[0])
 
         for d in arange(self.deg)+1:
@@ -200,9 +200,9 @@ class SNIFS_psf_3D:
         self.npar_cor = 11
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'SNIFS_psf_3D'
-        self.x = zeros((cube.nslice,cube.nlens),Float64)
-        self.y = zeros((cube.nslice,cube.nlens),Float64)
-        self.l = zeros(shape(transpose(cube.data)),Float64)
+        self.x = zeros((cube.nslice,cube.nlens),'d')
+        self.y = zeros((cube.nslice,cube.nlens),'d')
+        self.l = zeros(shape(transpose(cube.data)),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         self.l[:][:] = cube.lbda
@@ -248,7 +248,7 @@ class SNIFS_psf_3D:
     
     def deriv(self,param):
         self.param = param    
-        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.x),Float64)
+        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.x),'d')
         
         costp = cos(self.param[1])
         sintp = sin(self.param[1])
@@ -399,8 +399,8 @@ class model:
         else:
             if self.model_3D:
                 #self.weight = SNIFS_cube()
-                #self.weight.data = scipy.array(where(data.var!=0,1./abs(data.var),0.),Float64)
-                self.weight = scipy.array(where(data.var!=0,1./abs(data.var),0.),Float64)
+                #self.weight.data = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
+                self.weight = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
             elif self.model_2D:# TODO: Implement the variance
                 self.weight = SNIFS_cube()
                 self.data = SNIFS_cube()
@@ -415,7 +415,7 @@ class model:
                 
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
-                weight_val = scipy.array(where(data.var[data.index_list]!=0,1./abs(data.var[data.index_list]),0.),Float64)
+                weight_val = scipy.array(where(data.var[data.index_list]!=0,1./abs(data.var[data.index_list]),0.),'d')
                 #self.weight.data = scipy.reshape(weight_val,(data.len,1))
                 self.weight = scipy.reshape(weight_val,(data.len,1))
                 #self.weight.lbda = data.x
@@ -462,8 +462,8 @@ class model:
                       (f.name, f.npar, len(param[i]))
         self.param = param
         nparam = [len(param[i]) for i in arange(len(param))]
-        #self.flatparam = numarray.zeros(sum(nparam),Float64)]
-        self.flatparam = scipy.zeros(sum(nparam),Float64)
+        #self.flatparam = numarray.zeros(sum(nparam),'d')]
+        self.flatparam = scipy.zeros(sum(nparam),'d')
         self.nparam = sum(nparam)
         n = 0
         for i in arange(len(param)):
@@ -493,7 +493,7 @@ class model:
         if scipy.size(param) != scipy.size(self.param) or len(param) != len(self.param):
             raise ValueError, "param has not the correct size."
         self.param = param
-        self.flatparam = scipy.zeros(sum(nparam),Float64)
+        self.flatparam = scipy.zeros(sum(nparam),'d')
         n = 0
         for i in range(len(param)):
             self.flatparam[n:n+nparam[i]] = param[i]
@@ -501,7 +501,7 @@ class model:
    
     def eval(self):
         """ Evaluate the model at the current parameters stored in the field flatparam."""
-        val = scipy.zeros((self.data.nslice,self.data.nlens),Float64)
+        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val = val + f.comp(self.flatparam[i:i+f.npar])
@@ -512,7 +512,7 @@ class model:
         """ Evaluate the model at the last fitted parameters stored in the field fitpar."""
         if self.fitpar == None:
             raise ValueError, "No fit parameter to evaluate model."
-        val = scipy.zeros((self.data.nslice,self.data.nlens),Float64)
+        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val = val + f.comp(self.fitpar[i:i+f.npar])
@@ -523,7 +523,7 @@ class model:
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
         if param == None:
             param = numarray.copy.deepcopy(self.flatparam)
-        val = scipy.zeros((self.data.nslice,self.data.nlens),Float64)
+        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val = val + f.comp(param[i:i+f.npar])
@@ -535,7 +535,7 @@ class model:
         """ Evaluate the residuals at the last fitted parameters stored in the field fitpar."""
         if self.fitpar == None:
             raise ValueError, "No parameter to estimate function value."
-        val = scipy.zeros((self.data.nslice,self.data.nlens),Float64)
+        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func: 
             val =val+ f.comp(self.fitpar[i:i+f.npar])
@@ -556,7 +556,7 @@ class model:
             param = self.flatparam
         #val1 = self.res_eval(param=param) * self.weight.data
         val1 = self.res_eval(param=param) * self.weight
-        val2 = scipy.zeros(scipy.size(param),scipy.Float64)
+        val2 = scipy.zeros(scipy.size(param),'d')
         i = 0
         for f in self.func:
             deriv = -2*val1 * f.deriv(param[i:i+f.npar])
@@ -581,13 +581,13 @@ class model:
     
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters (flatparam and param)."""
-        self.flatparam = scipy.array(self.fitpar,Float64)
+        self.flatparam = scipy.array(self.fitpar,'d')
         self.param = self.unflat_param(self.fitpar)
     
     def fit(self,disp=False,save=False,deriv=True,maxfun=1000,msge=0):
         
         """ Perform the model fitting by minimizing the objective function objfun."""
-        x0 = scipy.zeros(scipy.size(self.flatparam),scipy.Float64)
+        x0 = scipy.zeros(scipy.size(self.flatparam),'d')
         for i in arange(scipy.size(self.flatparam)): x0[i] = self.flatparam[i]
 
         if deriv: xopt = scipy.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
@@ -604,7 +604,7 @@ class model:
         if disp:
             return res
         if save:
-            self.flatparam = scipy.array(self.fitpar,Float64)
+            self.flatparam = scipy.array(self.fitpar,'d')
         self.khi2 = self.objfun(param=res) / \
                     (self.data.nlens*self.data.nslice + scipy.size(self.flatparam))
      
@@ -733,7 +733,7 @@ def init_param(data,func):
         
     #elif func == 'SNIFS_psf':
         #integ=tolist(sum(a[2])*0.42**2)
-        #p = [scipy.array([x,y,0.4,1.,0.1,0.2,1.,0.,intens],Float64),scipy.array([sky],Float64)]
+        #p = [scipy.array([x,y,0.4,1.,0.1,0.2,1.,0.,intens],'d'),scipy.array([sky],'d')]
         #b = [[[x-0.5,x+0.5],[y-0.5,y+0.5],[0.1, 0.5],[0.5,2.],[0.,1.],[0.01,0.5],[1.,None],[0.,pi],[0,None]],[[0, None]]]
         #f = ['SNIFS_psf;0.42', 'poly2D;0']
         
@@ -813,7 +813,7 @@ def comp_spec2(cube,psf_param,intpar=[None,None]):
     epsilon = sum(signal.data/var.data,1)
     obj = (beta*epsilon-delta*gamma)/(beta**2 - alpha*delta)
     sky = (beta*gamma-alpha*epsilon)/(beta**2 - alpha*delta)
-    spec = scipy.zeros((3,signal.nslice),Float64)
+    spec = scipy.zeros((3,signal.nslice),'d')
     spec[0,:] = signal.lbda
     spec[1,:] = obj
     spec[2,:] = sky    

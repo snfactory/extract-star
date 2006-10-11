@@ -53,17 +53,34 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
     pylab.xticks(fontsize=8)
     pylab.yticks(fontsize=8)
 
+<<<<<<< extract_star.py
+def comp_spec(cube,psf_param,intpar=[None,None]):
+    signal = pySNIFS.SNIFS_cube(cube,num_array=True)
+    # var = pySNIFS.SNIFS_cube(cube,noise=True,num_array=True)
+=======
 
 def comp_spec(cube, psf_param, intpar=[None, None]):
 
     signal = pySNIFS.SNIFS_cube(cube, num_array=True)
     # var = pySNIFS.SNIFS_cube(cube, noise=True, num_array=True)
+>>>>>>> 1.5
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
+<<<<<<< extract_star.py
+    # var.data = numarray.where(var.data>1e20,0.,var.data)
+    signal.var = numarray.where(signal.var>1e20,0.,signal.var)
+    model = pySNIFS_fit.SNIFS_psf_3D(intpar,signal)
+=======
     # var.data = numarray.where(var.data>1e20, 0., var.data)
     signal.var = numarray.where(signal.var>1e20, 0., signal.var)
     model = pySNIFS_fit.SNIFS_psf_3D(intpar, signal)
+>>>>>>> 1.5
     # The PSF parameters are only the shape parameters. We set the intensity of each slice to 1.
+<<<<<<< extract_star.py
+    param = psf_param.tolist()+[1. for i in arange(signal.nslice)]
+    
+=======
     param = psf_param.tolist() + [1.]*signal.nslice    
+>>>>>>> 1.5
 
     # Linear khi2 minimization
     #alpha = sum(model.comp(param)**2/var.data, 1)
@@ -85,10 +102,17 @@ def comp_spec(cube, psf_param, intpar=[None, None]):
     threshold = hist.x[numarray.argmax(numarray.where(hist.data<0.9999, 0, 1))]
     mask = numarray.where(abs(lapl)>threshold, 0., 1.)
     #signal.data = signal.data * mask + fdata*(1.-mask)
+<<<<<<< extract_star.py
+    # var.data = var.data*mask
+    signal.var = signal.var*mask
+    # weight = numarray.where(var.data!=0,1./var.data,0)
+    weight = numarray.where(signal.var!=0,1./signal.var,0)
+=======
     # var.data = var.data*mask
     signal.var = signal.var*mask
     # weight = numarray.where(var.data!=0, 1./var.data, 0)
     weight = numarray.where(signal.var!=0, 1./signal.var, 0)
+>>>>>>> 1.5
     # Fit on masked data
     
     psf = numarray.array(model.comp(param), 'd')
@@ -115,6 +139,10 @@ def comp_spec(cube, psf_param, intpar=[None, None]):
     
 if __name__ == "__main__":
 
+<<<<<<< extract_star.py
+    signal = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,s=True)
+    # var = pySNIFS.SNIFS_cube(opts.incube,l=slices,num_array=False,noise=True,s=True)
+=======
     # Options ==============================
 
     parser = OptionParser()    
@@ -150,12 +178,25 @@ if __name__ == "__main__":
 
     signal = pySNIFS.SNIFS_cube(opts.incube, l=slices, num_array=False, s=True)
 
+>>>>>>> 1.5
     # Normalisation of the signal and variance in order to avoid numerical problems withh too small numbers
     norm = scipy.average(signal.data, axis=None)
     signal.data = signal.data / norm
+<<<<<<< extract_star.py
+    #var.data = var.data / (norm**2)
     signal.var = signal.var / (norm**2)
+=======
+    signal.var = signal.var / (norm**2)
+>>>>>>> 1.5
     
+<<<<<<< extract_star.py
+    # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
+    #var.data = scipy.where(var.data>1e20,1.,var.data)
+    #var.data = scipy.where(isnan(var.data),0.,var.data)
+
+=======
     # Rejection of bad points ==============================
+>>>>>>> 1.5
     
     print_msg("Rejection of slices with bad values...", opts.verbosity_level, 0)
     max_spec = L.mlab.max(signal.data, 1)
@@ -192,6 +233,10 @@ if __name__ == "__main__":
     for i in xrange(signal.nslice):
         print_msg("  Slice %2d/%d" % (i+1, signal.nslice), opts.verbosity_level, 1)
         signal2 = pySNIFS.SNIFS_cube()
+<<<<<<< extract_star.py
+        #var2 = pySNIFS.SNIFS_cube()
+=======
+>>>>>>> 1.5
         signal2.nslice = 1
         signal2.nlens = signal.nlens
         data = numarray.array(signal.data)[i, NewAxis]
@@ -199,12 +244,31 @@ if __name__ == "__main__":
         signal2.x = signal.x
         signal2.y = signal.y
         signal2.lbda = scipy.array([signal.lbda[i]])
+<<<<<<< extract_star.py
+        #var2.nslice = 1
+        #var2.nlens = var.nlens
+        var = numarray.array(signal.var)[i,NewAxis]
+        signal2.var = scipy.array(var)
+        #var2.x = var.x
+        #var2.y = var.y
+        #var2.lbda = scipy.array([var.lbda[i]])
+
+        #signal2.data = signal2.data
+        #var2.data = var2.data 
+        
+        # Evaluation of the background for the current slice
+        #sky = min(signal2.data[0]+5*var2.data[0])
+        sky = min(signal2.data[0]+5*signal2.var[0])
+        # Evaluation of the centroid of the current slice
+        sl_int = N.filters.median_filter(signal2.data[0],3)
+=======
         var = numarray.array(signal.var)[i, NewAxis]
         signal2.var = scipy.array(var)
 
         # Guess parameters for the current slice
         sky = min(signal2.data[0]+5*signal2.var[0]) # Background
         sl_int = N.filters.median_filter(signal2.data[0], 3) # Centroid
+>>>>>>> 1.5
         xc = sum(signal2.x*(sl_int-sky))/sum(sl_int-sky)
         yc = sum(signal2.y*(sl_int-sky))/sum(sl_int-sky)
         imax = max(sl_int)              # Intensity
@@ -216,16 +280,35 @@ if __name__ == "__main__":
                     [0, None], [0.01, None], [1., None], [0., pi]]
         b1[11:11+signal2.nslice] = [[0, None]] * signal2.nslice
 
+<<<<<<< extract_star.py
+        # Filling of the guess parameters arrays and of the bounds arrays
+        p1 = [0,0,xc,yc,0.3,-0.2,2.2,0.1,0.2,1.,0.,imax]
+        p2 = [sky]
+        b1 = [None]*(11+signal2.nslice)
+        b1[0:11] = [[None,None],[-pi,pi],[None, None],[None,None],[0.01,None],[-5.,0],[1.,None],\
+                    [0,None],[0.01,None],[1.,None],[0.,pi]]
+        b1[11:11+signal2.nslice] = [[0,None]]
+        b2 = [[0.,None]]
+        p = [p1,p2]
+        b = [b1,b2]
+        
+=======
         p2 = [sky]                      # poly2D;0
         b2 = [[0., None]]
         
         print_msg("    Initial guess: %s" % [p1,p2], opts.verbosity_level, 2)
 
+>>>>>>> 1.5
         # Instanciating of a model class
         lbda_ref = signal2.lbda[0]
+<<<<<<< extract_star.py
+        f = ['SNIFS_psf_3D;0.42,%f'%(lbda_ref),'poly2D;0']
+        sl_model = pySNIFS_fit.model(data=signal2,param=p,func=f,bounds=b)
+=======
         sl_model = pySNIFS_fit.model(data=signal2,
                                      func=['SNIFS_psf_3D;0.42, %f' % lbda_ref, 'poly2D;0'],
                                      param=[p1,p2], bounds=[b1,b2])
+>>>>>>> 1.5
 
         # Fit of the current slice
         if opts.verbosity_level >= 3:
@@ -253,6 +336,32 @@ if __name__ == "__main__":
     
     # Computing the initial guess for the 3D fitting from the results of the slic by slice 2D fit
     lbda_ref = numarray.array(signal.lbda).mean()
+<<<<<<< extract_star.py
+    #1) Position parameters:
+    #   the xc,yc vectors obtained from 2D fit are smoothed, then the position corresponding to the reference wavelength is read in the filtered
+    #   vectors. Finally, the parameters theta and alpha are determined from the xc,yc vectors.
+    xc_vec = N.filters.median_filter(xc_vec,5)
+    yc_vec = N.filters.median_filter(yc_vec,5)
+    n_ref = 1e-6*(64.328 + 29498.1/(146.-1./(lbda_ref*1e-4)**2) + 255.4/(41.-1./(lbda_ref*1e-4)**2)) + 1.
+    ADR_coef = numarray.array(206265*(1e-6*(64.328 + 29498.1/(146.-1./(signal.lbda*1e-4)**2) + 255.4/(41.-1./(signal.lbda*1e-4)**2)) + 1. - n_ref))
+    #theta = scipy.arctan(scipy.median(numarray.compress(numarray.logical_not(scipy.isnan((yc_vec-y0)/(xc_vec-x0))),(yc_vec-y0)/(xc_vec-x0))))
+
+
+    #A = scipy.ones((2,len(xc_vec)), xc_vec.typecode())
+    #A[1] = xc_vec
+    #A = A
+    #A = scipy.transpose(A)
+    #sol, res, rank, s = scipy.linalg.lstsq(A, yc_vec)
+    P = pySNIFS.fit_poly(yc_vec,3,1,xc_vec)
+    theta = scipy.arctan(P[1])
+    #x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    x0 = xc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    #y0 = yc_vec[numarray.argmin(numarray.abs(lbda_ref - signal.lbda))]
+    y0 = scipy.poly1d(P)(x0)
+    
+    alpha_x_vec = compress(ADR_coef!=0,(xc_vec-x0)/(numarray.cos(theta)*ADR_coef))
+    alpha_y_vec = compress(ADR_coef!=0,(yc_vec-y0)/(numarray.sin(theta)*ADR_coef))
+=======
     # 1) Position parameters:
     #    the xc, yc vectors obtained from 2D fit are smoothed, then the
     #    position corresponding to the reference wavelength is read in the
@@ -276,6 +385,7 @@ if __name__ == "__main__":
     
     alpha_x_vec = compress(ADR_coef!=0, (xc_vec-x0)/(numarray.cos(theta)*ADR_coef))
     alpha_y_vec = compress(ADR_coef!=0, (yc_vec-y0)/(numarray.sin(theta)*ADR_coef))
+>>>>>>> 1.5
     if theta == 0:
         alpha = scipy.median(alpha_x_vec)
     elif theta == pi/2.:
@@ -285,6 +395,15 @@ if __name__ == "__main__":
         alpha_y = scipy.median(alpha_y_vec)
         alpha = scipy.mean([alpha_x, alpha_y])
 
+<<<<<<< extract_star.py
+    #2) Other parameters:
+    sigc = scipy.median(sigc_vec*(signal.lbda/lbda_ref)**0.2)
+    q = scipy.median(q_vec)
+    qk = scipy.median(qk_vec)
+    eps = scipy.median(eps_vec)
+    sigk = scipy.median(sigk_vec)
+    theta_k = scipy.median(theta_vec)
+=======
     # 2) Other parameters:
     sigc   = scipy.median(sigc_vec*(signal.lbda/lbda_ref)**0.2)
     q      = scipy.median(q_vec)
@@ -292,6 +411,7 @@ if __name__ == "__main__":
     eps    = scipy.median(eps_vec)
     sigk   = scipy.median(sigk_vec)
     theta_k= scipy.median(theta_vec)
+>>>>>>> 1.5
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(11+signal.nslice)
@@ -308,10 +428,16 @@ if __name__ == "__main__":
     print_msg("  Initial guess: %s" % p1[:11], opts.verbosity_level, 2)
 
     # Instanciating the model class
+<<<<<<< extract_star.py
+    data_model = pySNIFS_fit.model(data=signal,param=p,func=f,bounds=b)
+    guesspar = data_model.flatparam
+    print_msg("Fitting the data...",opts.verbosity_level,0)
+=======
     data_model = pySNIFS_fit.model(data=signal,
                                    func=['SNIFS_psf_3D;0.42, %f' % lbda_ref, 'poly2D;0'],
                                    param=[p1,p2], bounds=[b1,b2])
     guesspar = data_model.flatparam
+>>>>>>> 1.5
     
     # The fit is launched twice. This is a dirty trick to avoid it to get quickly stuck on a bad solution... 
     if opts.verbosity_level >= 3:
@@ -323,9 +449,14 @@ if __name__ == "__main__":
         
     # Storing result and guess parameters
     fitpar = data_model.fitpar
+<<<<<<< extract_star.py
+    #guesspar = data_model.flatparam
+    print_msg("Extracting the spectrum...",opts.verbosity_level,0)
+=======
     #guesspar = data_model.flatparam
 
     print_msg("  Fit result: %s" % data_model.fitpar[:11], opts.verbosity_level, 2)
+>>>>>>> 1.5
 
     # Computing the final spectra for the object and the background ==============================
     
@@ -430,12 +561,21 @@ if __name__ == "__main__":
         func1 = pySNIFS_fit.SNIFS_psf_3D(intpar=[data_model.func[0].pix, data_model.func[0].lbda_ref], cube=cube_fit)
         func2 = pySNIFS_fit.poly2D(0, cube_fit)
         cube_fit.data = func1.comp(fitpar[0:func1.npar]) + func2.comp(fitpar[func1.npar:func1.npar+func2.npar])
+<<<<<<< extract_star.py
+        for i in range(signal.nslice):                 
+            pylab.subplot(nrow,ncol,i+1)
+            pylab.plot(sum(signal.slice2d(i,coord='p'),0),'bo',markersize=3)
+            pylab.plot(sum(cube_fit.slice2d(i,coord='p'),0),'b-')
+            pylab.plot(sum(signal.slice2d(i,coord='p'),1),'r^',markersize=3)
+            pylab.plot(sum(cube_fit.slice2d(i,coord='p'),1),'r-')
+=======
         for i in xrange(signal.nslice):                 
             pylab.subplot(nrow, ncol, i+1)
             pylab.plot(sum(signal.slice2d(i, coord='p'), 0), 'bo', markersize=3)
             pylab.plot(sum(cube_fit.slice2d(i, coord='p'), 0), 'b-')
             pylab.plot(sum(signal.slice2d(i, coord='p'), 1), 'r^', markersize=3)
             pylab.plot(sum(cube_fit.slice2d(i, coord='p'), 1), 'r-')
+>>>>>>> 1.5
             pylab.xticks(fontsize=4)
             pylab.yticks(fontsize=4)    
         pylab.savefig(plot3, dpi=150, facecolor='w', edgecolor='w', orientation='portrait')
@@ -452,6 +592,21 @@ if __name__ == "__main__":
         yguess = guesspar[0]*data_model.func[0].ADR_coef[:, 0]*numarray.sin(guesspar[1]) + guesspar[3]
 
         pylab.figure()
+<<<<<<< extract_star.py
+        ax = pylab.subplot(2,1,2)
+        pylab.plot(xc_vec,yc_vec,'bo')
+        xfit = fitpar[0]*data_model.func[0].ADR_coef[:,0]*numarray.cos(fitpar[1]) + fitpar[2]
+        yfit = fitpar[0]*data_model.func[0].ADR_coef[:,0]*numarray.sin(fitpar[1]) + fitpar[3]
+        xguess = guesspar[0]*data_model.func[0].ADR_coef[:,0]*numarray.cos(guesspar[1]) + guesspar[2]
+        yguess = guesspar[0]*data_model.func[0].ADR_coef[:,0]*numarray.sin(guesspar[1]) + guesspar[3]
+        pylab.plot(xfit,yfit)
+        pylab.plot(xguess,yguess,'k--')
+        pylab.legend(("Fitted 2D PSF center","Fitted 3D PSF center","Guess 3D PSF center"),loc='lower right')
+        pylab.text(0.05,0.9,r'$\rm{Guess:}\hspace{1} x_{0} = %4.2f\hspace{0.5} y_{0} = %4.2f \hspace{0.5} \alpha = %5.2f \hspace{0.5} \theta = %6.2f^o$'%(x0,y0,alpha,theta*180/scipy.pi),transform=ax.transAxes)
+        pylab.text(0.05,0.8,r'$\rm{Fit:}\hspace{1} x_{0} = %4.2f\hspace{0.5} y_{0} = %4.2f\hspace{0.5} \alpha = %5.2f \hspace{0.5} \theta = %6.2f^o$'%(fitpar[2],fitpar[3],fitpar[0],fitpar[1]*180/scipy.pi),transform=ax.transAxes)
+        pylab.xlabel("X center",fontsize=8)
+        pylab.ylabel("Y center",fontsize=8)
+=======
         ax = pylab.subplot(2, 1, 2)
         pylab.plot(xc_vec, yc_vec, 'bo', label="Fitted 2D")
         pylab.plot(xguess, yguess, 'k--', label="Guess 3D")
@@ -465,6 +620,7 @@ if __name__ == "__main__":
                    (fitpar[2], fitpar[3], fitpar[0], fitpar[1]*180/pi), transform=ax.transAxes)
         pylab.xlabel("X center", fontsize=8)
         pylab.ylabel("Y center", fontsize=8)
+>>>>>>> 1.5
         pylab.xticks(fontsize=8)
         pylab.yticks(fontsize=8)
         pylab.subplot(2, 2, 1)
@@ -545,4 +701,53 @@ if __name__ == "__main__":
         pylab.savefig(plot6, dpi=150, facecolor='w', edgecolor='w', orientation='portrait')
         pylab.close()
         
+<<<<<<< extract_star.py
+        
+
+    # Save star spectrum
+
+    hdu = pyfits.PrimaryHDU()
+    hdu.data = numarray.array(spec[1])
+    hdu.header.update('NAXIS', 1)
+    hdu.header.update('NAXIS1', len(spec[1]),after='NAXIS')
+    hdu.header.update('CRVAL1', spec[0][0])
+    hdu.header.update('CDELT1', cube[1].header.get('CDELTS'))
+    for desc in cube[1].header.items():
+        if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
+               desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
+               desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
+               desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
+               desc[0] != 'CDELTS' and desc[0] != 'CRPIXS':
+            hdu.header.update(desc[0],desc[1])
+    hdulist = pyfits.HDUList()
+    for i,par in enumerate(fitpar[0:11]):
+        key = 'FITPAR%0.2d'%i
+        hdu.header.update(key,par)
+    hdulist.append(hdu)
+    if os.path.isfile(opts.outspec):
+        os.system('rm %s'%opts.outspec)
+    hdulist.writeto(opts.outspec)
+
+    # Save sky spectrum
+
+    hdu = pyfits.PrimaryHDU()
+    hdu.data = numarray.array(spec[2])
+    hdu.header.update('NAXIS', 1)
+    hdu.header.update('NAXIS1', len(spec[1]),after='NAXIS')
+    hdu.header.update('CRVAL1', spec[0][0])
+    hdu.header.update('CDELT1', cube[1].header.get('CDELTS'))
+    for desc in cube[1].header.items():
+        if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
+               desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
+               desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
+               desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
+               desc[0] != 'CDELTS' and desc[0] != 'CRPIXS':
+            hdu.header.update(desc[0],desc[1])
+    hdulist = pyfits.HDUList()
+    hdulist.append(hdu)
+    if os.path.isfile(opts.outsky):
+        os.system('rm %s'%opts.outsky)
+    hdulist.writeto(opts.outsky)
+=======
+>>>>>>> 1.5
 
