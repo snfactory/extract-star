@@ -13,7 +13,15 @@ import copy
 #######################################################
 
 class gaus1D:
+    """
+    1D gaussian function used by the L{model} class
+    """
     def __init__(self,cube=None):
+        """
+        Initiating the class.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one spaxel. It is built from a
+            L{spectrum} object by the L{model} class.
+        """
         self.npar_ind = 0
         self.npar_cor = 3
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
@@ -23,11 +31,19 @@ class gaus1D:
         self.l = reshape(cube.lbda,shape(cube.data))
             
     def comp(self,param):
+        """
+        Compute the gaussian function.
+        @param param: Input parameters of the gaussian. A list of three number: [xc,sigma,I] 
+        """
         self.param = param
         val = param[2] * scipy.exp(-0.5*(((self.l-param[0])/param[1])**2))
         return val
 
     def deriv(self,param):
+        """
+        Compute the derivative of the gaussian function with respect to the parameters.
+        @param param: Input parameters of the gaussian. A list of three number: [xc,sigma,I] 
+        """
         grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
         expo = scipy.exp(-0.5*(((self.l-param[0])/param[1])**2))
         val = expo * param[2] * (self.l-param[0])/param[1]**2
@@ -38,7 +54,16 @@ class gaus1D:
         return grad
     
 class poly1D:
+    """
+    1D polynomial used by the L{model} class
+    """
     def __init__(self,deg=None,cube=None):
+        """
+        Initiating the class.
+        @param deg: Degree of the polynomial
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one spaxel. It is built from a
+            L{spectrum} object by the L{model} class.
+        """
         self.deg = deg
         self.npar_ind = 0
         self.npar_cor = deg+1
@@ -47,10 +72,18 @@ class poly1D:
         self.l = reshape(cube.lbda,shape(cube.data))
         
     def comp(self,param):
+        """
+        Compute the polynomial.
+        @param param: Input parameters of the polynomial. A list of deg+1 numbers.
+        """
         val = scipy.poly1d(param[::-1])(self.l)
         return val
     
     def deriv(self,param):
+        """
+        Compute the derivative of the polynomial with respect to its parameters.
+        @param param: Input parameters of the polynomial. A list of deg+1 numbers.
+        """
         grad = [(self.l)**i for i in arange(self.npar_cor)]
         grad = scipy.array(grad)
         #grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
@@ -63,7 +96,15 @@ class poly1D:
 #######################################################
 
 class gaus2D:
+    """
+    2D gaussian function used by the L{model} class
+    """
     def __init__(self,cube=None):
+        """
+        Initiating the class.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one wavelength. It is built from a
+            spectrum object by the L{model} class.
+        """ 
         self.nslice = cube.nslice
         self.npar_ind = 5
         self.npar_cor = 0
@@ -75,12 +116,20 @@ class gaus2D:
         self.y[:][:] = cube.y
 
     def comp(self,param):
+        """
+        Compute the gaussian function.
+        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I] 
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
         val = tab_param_ind[:,4:5] * scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         return val
     
     def deriv(self,param):
+        """
+        Compute the derivative of the gaussian function with respect to the parameters.
+        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I]
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
@@ -99,7 +148,16 @@ class gaus2D:
 
 
 class gaus2D_integ:
+    """
+    2D gaussian function with integration in the pixel, used by the L{model} class
+    """
     def __init__(self,pix=None,cube=None):
+        """
+        Initiating the class.
+        @param pix: Size of the pixel in spatial units of the cube.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one wavelength. It is built from an
+            L{image_array} object by the class model.
+        """ 
         self.nslice = cube.nslice
         self.pix = pix
         self.npar_ind = 5
@@ -109,8 +167,13 @@ class gaus2D_integ:
         self.x = zeros(shape(cube.data),'d')
         self.y = zeros(shape(cube.data),'d')
         self.x[:][:] = cube.x
-        self.y[:][:] = cube.y 
+        self.y[:][:] = cube.y
+        
     def comp(self,param):
+        """
+        Compute the gaussian function.
+        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I] 
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         sq2 = sqrt(2)
@@ -120,7 +183,12 @@ class gaus2D_integ:
         ymcn = (self.y - self.pix/2 - tab_param_ind[:,1:2])/(sq2*tab_param_ind[:,3:4])
         val = pi*tab_param_ind[:,2:3]*tab_param_ind[:,3:4]*tab_param_ind[:,4:5]*(erf(xpcn)-erf(xmcn))*(erf(ypcn)-erf(ymcn))/2
         return val
+    
     def deriv(self,param):
+        """
+        Compute the derivative of the gaussian function with respect to the parameters.
+        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I]
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
@@ -148,7 +216,16 @@ class gaus2D_integ:
         return grad
 
 class poly2D:
+    """
+    2D polynomial used by the L{model} class
+    """
     def __init__(self,deg=None,cube=None):
+        """
+        Initiating the class.
+        @param deg: Degree of the polynomial
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one wavelength. It is built from an
+            L{image_array} object by the L{model} class.
+        """
         self.nslice = cube.nslice
         self.deg = deg
         self.npar_ind = int((deg+1)*(deg+2)/2)
@@ -161,6 +238,10 @@ class poly2D:
         self.y[:][:] = cube.y
         
     def comp(self,param):
+        """
+        Compute the polynomial.
+        @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
@@ -174,6 +255,10 @@ class poly2D:
         return val
     
     def deriv(self,param):
+        """
+        Compute the derivative of the polynomial with respect to its parameters.
+        @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
+        """
         self.param = param
         tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
         n = 0
@@ -192,7 +277,16 @@ class poly2D:
 #######################################################
 
 class SNIFS_psf_3D:
+    """
+    SNIFS PSF 3D function used by the L{model} class.
+    """
     def __init__(self,intpar=[None,None],cube=None):
+        """
+        Initiating the class.
+        @param intpar: Internal parameters (pixel size in cube spatial unit and reference wavelength). A
+            list of two numbers.
+        @param cube: Input cube. This is a L{SNIFS_cube} object.
+        """
         #self.cube = cube
         self.pix = intpar[0]
         self.lbda_ref = intpar[1]
@@ -211,6 +305,23 @@ class SNIFS_psf_3D:
         self.ADR_coef = 206265*(1e-6*(64.328 + 29498.1/(146.-1./(self.l*1e-4)**2) + 255.4/(41.-1./(self.l*1e-4)**2)) + 1. - self.n_ref)
         
     def comp(self,param):
+        """
+        Compute the function.
+        @param param: Input parameters of the polynomial. A list of numbers:
+                - C{param[0:10]}: The 11 parameters of the PSF shape
+                     - C{param[0]}: Atmospheric dispersion power
+                     - C{param[1]}: Atmospheric dispersion position angle
+                     - C{param[2]}: X center at the reference wevelength
+                     - C{param[3]}: Y center at the reference wevelength
+                     - C{param[4]}: PSF core dispersion at the reference wevelength
+                     - C{param[5]}: PSF wing dispersion at the reference wevelength
+                     - C{param[6]}: exponent of the PSF width vs wavelength relation
+                     - C{param[7]}: Ratio between the core and the wing gaussians
+                     - C{param[8]}: Bluring gaussian kernel dispersion
+                     - C{param[9]}: Bluring gaussian kernel axis ratio
+                     - C{param[10]}: Bluring gaussian kernel position angle
+                - C{param[11:]} : The intensity parameters (one for each slice in the cube.
+        """
         self.param = param
         x0 = self.param[0]*self.ADR_coef*cos(self.param[1]) + self.param[2]
         y0 = self.param[0]*self.ADR_coef*sin(self.param[1]) + self.param[3]
@@ -247,6 +358,10 @@ class SNIFS_psf_3D:
         return reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
     
     def deriv(self,param):
+        """
+        Compute the derivative of the function with respect to its parameters.
+        @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
+        """
         self.param = param    
         grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.x),'d')
         
@@ -330,6 +445,9 @@ class SNIFS_psf_3D:
 #######################################################	 
  
 class model:
+    """
+    Model fiting class
+    """
     def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None):
         self.fitpar = None
         
@@ -359,18 +477,18 @@ class model:
             self.data.lbda = scipy.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
-            self.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
-            self.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
-            self.x = self.i*data.stepx+data.startx
-            self.y = self.j*data.stepy+data.starty
+            self.data.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
+            self.data.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
+            self.data.x = self.data.i*data.stepx+data.startx
+            self.data.y = self.data.j*data.stepy+data.starty
         else:
             self.model_1D = True
             self.model_2D = False
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = scipy.reshape(data.data[data.index_list],(data.len,1))
+            self.data.data = scipy.reshape(data.data[data.index_list],(len(data.index_list),1))
             self.data.lbda = data.x[data.index_list]
-            self.data.nslice = data.len
+            self.data.nslice = len(data.index_list)
             self.data.nlens = 1
             self.data.x = None
             self.data.y = None
@@ -416,8 +534,7 @@ class model:
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
                 weight_val = scipy.array(where(data.var[data.index_list]!=0,1./abs(data.var[data.index_list]),0.),'d')
-                #self.weight.data = scipy.reshape(weight_val,(data.len,1))
-                self.weight = scipy.reshape(weight_val,(data.len,1))
+                self.weight = scipy.reshape(weight_val,(len(data.index_list),1))
                 #self.weight.lbda = data.x
                 #self.weight.nslice = data.len
                 #self.weight.nlens = 1

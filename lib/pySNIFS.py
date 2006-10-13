@@ -21,24 +21,27 @@ class spectrum:
     def __init__(self,data_file=None,var_file=None,no=None,num_array=True,x=None,data=None,var=None,start=None,step=None,nx=None):
         """
         Initiating the class.
-        data_file: fits file from which the data are read. It can be a 1D fits image or a euro3d
-              datacube. In the euro3d case, the variance spectrum is read from this cube if present.
-              In the 1D fits image file case, if this file contains an image extension, the variance 
-              spectrum is read from it.
-        data_var: fits file from which the variance is read if it is not present in the data file. 
-              It must be a 1D fits image.
-        no: number of the spaxel in the datacube. Needed only if the input file is a euro3d cube.
-        
-        The following parameters are used when the spectrum is not read from a data file.
-        x: array containing the x coordinates in the spectrum. It is used only if the spectrum
-           is not regularly sampled
-        data: array containing the data of the spectrum
-        var: array containing the variance of the spectrum
-        start: coordinate in user coordinates of the first point of the data array.
-        step: step in user coordinates of the data.
-        nx: number of data point. It is usefull when the user want to create an array of zero
+        @param data_file: fits file from which the data are read. It can be a 1D fits image or a euro3d
+            datacube. In the euro3d case, the variance spectrum is read from this cube if present.
+            In the 1D fits image file case, if this file contains two extensions, the variance 
+            spectrum is read from the second one.
+        @param var_file: fits file from which the variance is read if it is not present in the data file. 
+            It must be a 1D fits image.
+        @param no: number of the spaxel in the datacube. Needed only if the input file is a euro3d cube.
+        @param x: array containing the x coordinates in the spectrum. It is used only if the spectrum
+            is not regularly sampled
+        @param data: array containing the data of the spectrum
+        @param var: array containing the variance of the spectrum
+        @param start: coordinate in user coordinates of the first point of the data array.
+        @param step: step in user coordinates of the data.
+        @param nx: number of data point. It is usefull when the user want to create an array of zero
             data. otherwise, this value is the size of the data array.
-        num_array: flag to say if the data are stored in numarray or in numeric.
+        @param num_array: flag to say if the data are stored in numarray or in numeric.
+        @group parameters used when the spectrum is read from a fits spectrum or a euro3d datacube:
+               data_file,var_file,no  
+        @group parameters used when the spectrum is not read from a file:
+               x,data,var,start,step,nx
+        @group parameters used in both cases: num_array
         
         """
         self.file = file
@@ -128,7 +131,9 @@ class spectrum:
                             if len(var) != len(data):
                                 raise ValueError, 'data and variance array must have the same length'
                             else:
-                                self.var = var 
+                                self.var = var
+                        else:
+                            self.var = None
                         if start != None:
                             self.start = start
                         else:
@@ -183,10 +188,10 @@ class spectrum:
     def plot(self,intervals=None,var=False,line='-',color='b'):
         """
         Create a new pylab figure and plot the spectrum.
-        intervals: A list of 2 elements tuples defining the intervals in x to be plotted
-        var: Flag to determine if we plot the variance instead of the data
-        line: line type in pylab syntax
-        color: line color in pylab syntax
+        @param intervals: A list of 2 elements tuples defining the intervals in x to be plotted
+        @param var: Flag to determine if we plot the variance instead of the data
+        @param line: line type in pylab syntax
+        @param color: line color in pylab syntax
         """
         
         line = line+color
@@ -210,10 +215,10 @@ class spectrum:
     def overplot(self,intervals=None,var=False,line='-',color='b'): # modif du 11-10-05 (GR)      
         """
         Plot the spectrum in the current pylab figure.
-        intervals: A list of 2 elements tuples defining the intervals in x to be plotted
-        var: Flag to determine if we plot the variance instead of the data
-        line: line type in pylab syntax
-        color: line color in pylab syntax
+        @param intervals: A list of 2 elements tuples defining the intervals in x to be plotted
+        @param var: Flag to determine if we plot the variance instead of the data
+        @param line: line type in pylab syntax
+        @param color: line color in pylab syntax
         """
         line = line+color
         if var:
@@ -237,8 +242,8 @@ class spectrum:
         """
         Compute the indexes corresponding to the intervals bounds given in x coordinates and store them in the
         intervals field of the spectrum.
-        intervals: A list of two elements tuples defining the intervals in x to be plotted
-        reject: If set to True, the selection will be considered as negative. NOT YET IMPLEMENTED.  
+        @param intervals: A list of two elements tuples defining the intervals in x to be plotted
+        @param reject: If set to True, the selection will be considered as negative. NOT YET IMPLEMENTED.  
         """
         self.index_list = []
         self.intervals = []
@@ -261,7 +266,6 @@ class spectrum:
                             self.intervals.append((ind_min,ind_max))
                     else:
                         raise ValueError, "Interval must be provided as a list of 2 elements tuples"
-
 
     def reset_interval(self):
         """
@@ -310,9 +314,9 @@ class spectrum:
     def WR_fits_file(self,fits_file,header_list=None):
         """
         Write the spectrum in a fits file.
-        fits_file: Name of the output fits file
-        header_list: List of 2 elements lists containing the name and value of the header to be saved. If set to None, only
-        the mandatory fits header will be stored.
+        @param fits_file: Name of the output fits file
+        @param header_list: List of 2 elements lists containing the name and value of the header to be
+            saved. If set to None, only the mandatory fits header will be stored.
         """
         if self.start == None or self.step == None or self.data == None:
             raise ValueError, 'Only regularly sampled spectra can be saved as fits files.'
@@ -356,21 +360,24 @@ class image_array:
     def __init__(self,data=None,var=None,startx=1,stepx=1,starty=1,stepy=1,endx=None,endy=None,labx=None,laby=None,header=None):
         """
         Initiating the class.
-        data: 2D array containing the data
-        var: optional array containing the variance
-        startx: coordinate in user coordinates of the first point of the data array for the second dimension.
-        starty: coordinate in user coordinates of the first point of the data array for the first dimension.
-        endx: coordinate in user coordinates of the last point of the data array for the second dimension. If not provided, it will be
-              computed from startx and stepx
-        endy: coordinate in user coordinates of the last point of the data array for the first dimension.If not provided, it will be
-              computed from starty and stepy
-        stepx: step in user coordinates of the data for the second dimension. If not provided, it will be
-              computed from startx and endx
-        stepy: step in user coordinates of the data for the first dimension. If not provided, it will be
-              computed from starty and endy
-        labx: String containing the x unit (used for plotting)
-        laby: String containing the y unit (used for plotting)
-        header: List of 2 elements lists containing the headers name and values to be saved in fits file.
+        param data: 2D array containing the data
+        @param var: optional array containing the variance
+        @param startx: coordinate in user coordinates of the first point of the data array for the second
+            dimension.
+        @param starty: coordinate in user coordinates of the first point of the data array for the first
+            dimension.
+        @param endx: coordinate in user coordinates of the last point of the data array for the second
+            dimension. If not provided, it will be computed from startx and stepx
+        @param endy: coordinate in user coordinates of the last point of the data array for the first
+            dimension.If not provided, it will be computed from starty and stepy
+        @param stepx: step in user coordinates of the data for the second dimension. If not provided, it
+            will be computed from startx and endx
+        @param stepy: step in user coordinates of the data for the first dimension. If not provided, it
+            will be computed from starty and endy
+        @param labx: String containing the x unit (used for plotting)
+        @param laby: String containing the y unit (used for plotting)
+        @param header: List of 2 elements lists containing the headers name and values to be saved in
+            fits file.
         """
 
         if (stepx == None and endx == None) or startx == None:
@@ -412,16 +419,16 @@ class image_array:
     def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None):
         """
         Display the image in a pylab figure.
-        cmap: Colormap in pylab syntax
-        aspect: aspect ratio in pylab syntax (auto, equal or a number)
-        vmin: low cut in the image for the display (if None, it is set to the minimum of the image)
-        vmax: high cut in the image for the display (if None, it is set to the maximum of the image)
-        subima: list containing the coordinates of the subarea to be displayed
-                if the coordinates are given as a list of tuples: [(i1,i2),(j1,j2)], the coordinates are given as indexes in the
-                array.
-                if the coordinates are given as a list of lists: [[x1,x2],[y1,y2]], the coordinates are given as x and y world coordinates.
-                CAUTION! as in python i holds for the lines and j for the columns, the tuple (i1,i2) correspond to y coordinates on the
-                screen and (j1,j2) to the x coordinates.
+        @param cmap: Colormap in pylab syntax
+        @param aspect: aspect ratio in pylab syntax (auto, equal or a number)
+        @param vmin: low cut in the image for the display (if None, it is set to the minimum of the image)
+        @param vmax: high cut in the image for the display (if None, it is set to the maximum of the image)
+        @param subima: list containing the coordinates of the subarea to be displayed if the coordinates
+            are given as a list of tuples: [(i1,i2),(j1,j2)], the coordinates are given as indexes in the
+            array. If the coordinates are given as a list of lists: [[x1,x2],[y1,y2]], the coordinates are
+            given as x and y world coordinates.
+        @warning: As in python i holds for the lines and j for the columns, the tuple (i1,i2) correspond
+            to y coordinates on the screen and (j1,j2) to the x coordinates.
         """
         if vmin != None: self.vmin = vmin
         if vmax != None: self.vmax = vmax
@@ -455,8 +462,8 @@ class image_array:
     def WR_fits_file(self,file_name,mode='w+'):
         """
         Write the image in a fits file.
-        file_name: name of the fits file
-        mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
+        @param file_name: name of the fits file
+        @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
         """
         hdulist = pyfits.HDUList()
         hdu = pyfits.PrimaryHDU()
@@ -492,17 +499,19 @@ class SNIFS_cube:
     def __init__(self,e3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20):
         """
         Initiating the class.
-        WARNING: If the spectra in the datacube do not have the same lengthes, they will be truncated to the larger common range.
+        @warning: If the spectra in the datacube do not have the same lengthes, they will be truncated
+            to the larger common range.
 
-        e3d_file: Euro3d fits file
-        slices: slices range that will be extracted from the euro3d file and stored in the object. This is either a list of two integers
-                [lmin,lmax], or a list of three integer [lmin,lmax,lstep]. In this last case, the slices will be coadded by stacks of
-                lstep size.
-        lbda: Array of lambdas if the datacube is created from scratch... This case is not really implemented yet...
-        num_array: Flag to chose between numarray or numeric array formats
-        threshold: In the variance image, pixels where variance is not available for some reason are set to
-                   an arbitrarily high value. As this values seems to change from one version to another of the
-                   processing pipeline, we allow to pass it as the threshold parameter.
+        @param e3d_file: Euro3d fits file
+        @param slices: slices range that will be extracted from the euro3d file and stored in the object.
+            This is either a list of two integers [lmin,lmax], or a list of three integer [lmin,lmax,lstep].
+            In this last case, the slices will be coadded by stacks of lstep size.
+        @param lbda: Array of lambdas if the datacube is created from scratch...
+            This case is not really implemented yet...
+        @param num_array: Flag to chose between numarray or numeric array formats
+        @param threshold: In the variance image, pixels where variance is not available for some reason are
+            set to an arbitrarily high value. As this values seems to change from one version to another of
+            the processing pipeline, we allow to pass it as the threshold parameter.
         
         """
         if e3d_file != None:
@@ -666,10 +675,11 @@ class SNIFS_cube:
     def slice2d(self,n,coord='w',var=False):
         """
         Extract a 2D slice from a cube and return it as an array
-        n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1 and n2
-           if it is an integer n , it returns the slice n
-        coord: The type of coordinates: 'w' -> wavelength coordinates
-                                        'p' -> pixel coordinates
+        @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
+            and n2 if it is an integer n , it returns the slice n
+        @param coord: The type of coordinates:
+                      - 'w' -> wavelength coordinates
+                      - 'p' -> pixel coordinates
         """
         if isinstance(n,list):
             if coord == 'p':
@@ -706,11 +716,11 @@ class SNIFS_cube:
     def spec(self,no=None,ind=None,mask=None,var=False):
         """
         Extract a spectrum from the datacube and return it as a 1D array.
-        no: lenslet number in the datacube
-        ind: index in the data array
-        mask: optional array having the same shape than the data field of the cube. If given, teh spectrum returned is the sum of the
-              data array multiplied by the mask.
-        var: Variance flag. If set to True, the variance spectrum is extracted.
+        @param no: lenslet number in the datacube
+        @param ind: index in the data array
+        @param mask: optional array having the same shape than the data field of the cube. If given, the
+            spectrum returned is the sum of the data array multiplied by the mask.
+        @param var: Variance flag. If set to True, the variance spectrum is extracted.
         """
         if var:
             data = self.var
@@ -747,12 +757,12 @@ class SNIFS_cube:
     def plot_spec(self,no=None,ind=None,mask=None,var=False,ax=None):
         """
         Plot a spectrum extracted from the datacube.
-        no: lenslet number in the datacube
-        ind: index in the data array
-        mask: optional array having the same shape than the data field of the cube. If given, teh spectrum returned is the sum of the
-              data array multiplied by the mask.
-        var: Variance flag. If set to True, the variance spectrum is ploted.
-        ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
+        @param no: lenslet number in the datacube
+        @param ind: index in the data array
+        @param mask: optional array having the same shape than the data field of the cube. If given, the
+            spectrum returned is the sum of the data array multiplied by the mask.
+        @param var: Variance flag. If set to True, the variance spectrum is ploted.
+        @param ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
         """
         if ax == None:
             pylab.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
@@ -760,11 +770,13 @@ class SNIFS_cube:
             ax.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
         pylab.show()
 
-    def get_spec(self,no):
+    def get_spec(self,no,num_array=True):
         """
         Extract the spectrum corresponding to lenslet no and return it as a pySNIFS.spectrum object
+        @param no: lenslet number of the spectrum to be extracted
+        @param num_array: Flag to chose between numarray or numeric array format
         """
-        spec = spectrum(x=self.lbda,data=self.spec(no))
+        spec = spectrum(x=self.lbda,data=self.spec(no),num_array=num_array)
         if hasattr(self,'lstep'):
             spec.step = self.lstep
         if hasattr(self,'lstart'):
@@ -775,15 +787,16 @@ class SNIFS_cube:
     def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.hot,var=False):
         """
         Display a 2D slice.
-        n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1 and n2
-           if it is an integer n , it returns the slice n
-        coord: The type of coordinates: 'w' -> wavelength coordinates
-                                        'p' -> pixel coordinates
-        cmap: Colormap in pylab syntax
-        aspect: aspect ratio in pylab syntax (auto, equal or a number)
-        vmin: low cut in the image for the display (if None, it is 'smartly' computed)
-        vmax: high cut in the image for the display (if None, it is 'smartly' computed)
-        var: Variance flag. If set to True, the variance slice is displayed. 
+        @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
+            and n2 if it is an integer n , it returns the slice n
+        @param coord: The type of coordinates:
+                      - 'w' -> wavelength coordinates
+                      - 'p' -> pixel coordinates
+        @param cmap: Colormap in pylab syntax
+        @param aspect: aspect ratio in pylab syntax (auto, equal or a number)
+        @param vmin: low cut in the image for the display (if None, it is 'smartly' computed)
+        @param vmax: high cut in the image for the display (if None, it is 'smartly' computed)
+        @param var: Variance flag. If set to True, the variance slice is displayed. 
         """
         slice = self.slice2d(n,coord,var=var)
         med = scipy.median(ravel(slice))
@@ -801,10 +814,10 @@ class SNIFS_cube:
     def disp_data(self,vmin=None,vmax=None,cmap=pylab.cm.hot,var=False):
         """
         Display the datacube as the stack of all its spectra
-        vmin: low cut in the image for the display (if None, it is 'smartly' computed)
-        vmax: high cut in the image for the display (if None, it is 'smartly' computed)
-        var: Variance flag. If set to True, the variance slice is displayed. 
-        cmap: Colormap in pylab syntax  
+        @param vmin: low cut in the image for the display (if None, it is 'smartly' computed)
+        @param vmax: high cut in the image for the display (if None, it is 'smartly' computed)
+        @param var: Variance flag. If set to True, the variance slice is displayed. 
+        @param cmap: Colormap in pylab syntax  
         """
         if var:
             data = self.var
@@ -841,7 +854,7 @@ class SNIFS_cube:
     def get_lindex(self,val):
         """
         Return the index of the spec (i,j) or no in the stacked array data
-        val: tuple (i,j) or integer no defining the lenslet
+        @param val: tuple (i,j) or integer no defining the lenslet
         """
         if isinstance(val,tuple):
             if val[0]>max(self.i) or val[0]<min(self.i) or val[1]>max(self.j) or val[1]<min(self.j):
@@ -855,7 +868,7 @@ class SNIFS_cube:
     def WR_e3d_file(self,fits_file):
         """
         Write the datacube as a euro3d fits file.
-        fits_file: Name of the output file
+        @param fits_file: Name of the output file
         """
         if not self.from_e3d_file:
             raise ValueError,"Writing e3d file from scratch not yet implemented"
@@ -877,12 +890,13 @@ class SNIFS_mask:
     def __init__(self,mask_file,offx=0,offy=0,step=200,path_Snifs=None,path_mask=None,order=1):
         """
         Initiating the class.
-        mask_file: mask fits file to be read
-        offx,offy: offset in x and y to be given to the mask.
-        step: step in pixels along the dispersion direction at which the mask is computed. The other values will be interpolated
-        path_Snifs: Path of the Snifs software
-        path_mask: Path where to find the mask fits file
-        order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
+        @param mask_file: mask fits file to be read
+        @param offx,offy: offset in x and y to be given to the mask.
+        @param step: step in pixels along the dispersion direction at which the mask is computed. The other
+            values will be interpolated
+        @param path_Snifs: Path of the Snifs software
+        @param path_mask: Path where to find the mask fits file
+        @param order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
         
         """
         if path_mask == None:
@@ -930,7 +944,7 @@ class SNIFS_mask:
     def get_spec_lens(self,no):
         """
         Get the x,y positions of lens  #no for each wavelength in lbda_list
-        no: lens number
+        @param no: lens number
         """
         i = self.no.index(no)
         x = [self.x[l][i] for l in self.lbda_list]
@@ -939,9 +953,10 @@ class SNIFS_mask:
 
     def get_coord_lens(self,no,lbda):
         """
-        Get the x,y position of lens #no for wavelength lbda. If lbda is not in lbda_list, the position is interpolated.
-        no: lens number
-        lbda: wavelength
+        Get the x,y position of lens #no for wavelength lbda. If lbda is not in lbda_list, the position is
+        interpolated.
+        @param no: lens number
+        @param lbda: wavelength
         """
         x,y = self.get_spec_lens(no)
         tckx = I.splrep(self.lbda_list,x,s=0)
@@ -953,10 +968,11 @@ class SNIFS_mask:
     def plot(self,no_list=None,interpolate=False,lbda=None,symbol='k-'):
         """
         Plot the spectra positions in CCD pixels
-        no_list: lens number list. If only one number is given, the spectrum position corresponding to this lens number is ploted
-        interpolate: Used if lbda==None: if interpolate==False, the point will be ploted for wavelenghtes in lbda_list. Otherwise,
-                     100 points per spectra will be ploted interpolated from lbda_list.
-        lbda: wavelength at which we plot the spectra.           
+        @param no_list: lens number list. If only one number is given, the spectrum position corresponding
+            to this lens number is ploted interpolate: Used if lbda==None: if interpolate==False, the point
+            will be ploted for wavelenghtes in lbda_list. Otherwise, 100 points per spectra will be ploted
+            interpolated from lbda_list.
+        @param lbda: wavelength at which we plot the spectra.           
         """
         if no_list == None:
             no_list = self.no
@@ -982,9 +998,9 @@ class SNIFS_mask:
      
     def interpolate(self,no,yy):
         """
-        interpolate the spectra x position for spectrum #no at position yy
-        no: lens number
-        yy: y position where to compute the x value
+        Interpolate the spectra x position for spectrum #no at position yy
+        @param no: lens number
+        @param yy: y position where to compute the x value
         """
         if not no in self.no:
             raise ValueError, 'lens #%d not present in mask'%no
@@ -1003,10 +1019,10 @@ def convert_tab(table,colx,coly,ref_pos):
     """
     Interpolate a spline in a set of (x,y) points where x and y are given by two columns of
     a pyfits table.
-    table: Input table
-    colx: x column in the table
-    coly: y column in the table
-    ref_pos: array giving the x positions where to compute the interpolated values
+    @param table: Input table
+    @param colx: x column in the table
+    @param coly: y column in the table
+    @param ref_pos: array giving the x positions where to compute the interpolated values
     """
     tck = scipy.interpolate.splrep(table[1].data.field(colx),\
                                    table[1].data.field(coly),s=0)
@@ -1016,11 +1032,11 @@ def convert_tab(table,colx,coly,ref_pos):
 def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     """
     Compute the histogram of an array
-    data: Input array
-    nbin: number of bins in the histogram
-    Min,Max: Interval of values between which the histogram is computed
-    bin: Size of the bins. If not given it is computed from the number of bins requested.
-    cumul: If True, compute a cumulative histogram
+    @param data: Input array
+    @param nbin: number of bins in the histogram
+    @param Min,Max: Interval of values between which the histogram is computed
+    @param bin: Size of the bins. If not given it is computed from the number of bins requested.
+    @param cumul: If True, compute a cumulative histogram
     """
     if Min == None:
         Min = min(data)
@@ -1043,10 +1059,8 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
 def common_bounds_cube(cube_list):
     """
     Computes the common bounds of a list of pySNIFS cubes
-    cube_list: Input list of spectra
-    returns:
-    imin: list of the indexes of the lower common bound for each cube
-    imax: list of the indexes of the upper common bound for each cube
+    @param cube_list: Input list of spectra
+    @return : imin,imax: lists of the indexes of the lower/upper common bound for each cube
     """
     if False in [hasattr(cube,'lstep') for cube in cube_list]:
         raise ValueError, "Missing attribute lstep in datacubes."
@@ -1063,10 +1077,8 @@ def common_bounds_cube(cube_list):
 def common_bounds_spec(spec_list):
     """
     Computes the common bounds of a list of pySNIFS spectra
-    spec_list: Input list of spectra
-    returns:
-    imin: list of the indexes of the lower common bound for each spectrum
-    imax: list of the indexes of the upper common bound for each spectrum
+    @param spec_list: Input list of spectra
+    @return: imin,imax: lists of the indexes of the lower/upper common bound for each spectrum
     """
     if False in [hasattr(spec,'step') for spec in spec_list]:
         raise ValueError, "Missing attribute lstep in spectra."
@@ -1083,9 +1095,8 @@ def common_bounds_spec(spec_list):
 def common_lens(cube_list):
     """
     Give the common lenses of a list of pySNIFS cubes
-    cube_list: input list of datacubes
-    returns:
-    inters: list of the lenses common to all the cubes of the list
+    @param cube_list: input list of datacubes
+    @return: inters: list of the lenses common to all the cubes of the list
     """
     inters = cube_list[0].no
     for i in arange(len(cube_list)-1)+1:
@@ -1095,10 +1106,10 @@ def common_lens(cube_list):
 def fit_poly(y,n,deg,x=None):
     """
     Fit a polynomial whith median sigma clipping on an array y
-    y: Input array giving the ordinates of the points to be fitted
-    n: rejection threshold
-    deg: Degree of the polunomial
-    x: Optional input array giving the abscissae of the points to be fitted. If not given
+    @param y: Input array giving the ordinates of the points to be fitted
+    @param n: rejection threshold
+    @param deg: Degree of the polunomial
+    @param x: Optional input array giving the abscissae of the points to be fitted. If not given
        the abscissae are taken as an array [1:len(y)]
     """
     if x == None:
@@ -1119,20 +1130,19 @@ def fit_poly(y,n,deg,x=None):
 def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,fits_file,data_header,grp_hdu,extra_hdu_list):
     """
     Write a data cube as a euro3d file on disk.
-       data_list: List of the spectra of the datacube
-       var_list: List of the variance spectra of the data_cube
-       no_list: List of the spaxel ident number of the datacube
-       start_list: List of the start wavelength of each spectrum of the datacube
-       step: Wavelength step of the datacube
-       xpos_list: List of the x position of each spaxel of the datacube
-       ypos_list: List of the x position of each spaxel of the datacube
-       fits_file: Output fits file to be written on disk
-       data_header: data header of the new e3d file. All the standards e3d
-                    headers containing information on the data themselves
-                    will be overwritten. Only the non standard will be copied
-                    from this parameter.
-       grp_hdu: pyfits HDU describing the spaxel groups.
-       extra_hdu_list: pyfits HDU containing non e3d-mandatory data.
+       @param data_list: List of the spectra of the datacube
+       @param var_list: List of the variance spectra of the data_cube
+       @param no_list: List of the spaxel ident number of the datacube
+       @param start_list: List of the start wavelength of each spectrum of the datacube
+       @param step: Wavelength step of the datacube
+       @param xpos_list: List of the x position of each spaxel of the datacube
+       @param ypos_list: List of the x position of each spaxel of the datacube
+       @param fits_file: Output fits file to be written on disk
+       @param data_header: data header of the new e3d file. All the standards e3d
+           headers containing information on the data themselves will be overwritten. Only the non standard
+           will be copied from this parameter.
+       @param grp_hdu: pyfits HDU describing the spaxel groups.
+       @param extra_hdu_list: pyfits HDU containing non e3d-mandatory data.
     """
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*scipy.sign(s-start)) for s in start_list]
@@ -1182,11 +1192,12 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
 def gaus_array(ima_shape,center,sigma,I,pa=None):
     """
     Return a 1D or 2D array containing a gaussian.
-    ima_shape: either an integer or a tuple of two integer defining the size of the array
-    center: either a number or a tuple of two number giving the center of the gaussian (in pixels unit)
-    sigma: either a number or a tuple of two number giving the dispersion of the gaussian (in pixels unit)
-    I: intensity at maximum of the gaussian
-    pa: For a 2D image, the position angle of the gaussian
+    @param ima_shape: either an integer or a tuple of two integer defining the size of the array
+    @param center: either a number or a tuple of two number giving the center of the gaussian (in pixels unit)
+    @param sigma: either a number or a tuple of two number giving the dispersion of the gaussian (in pixels
+        unit)
+    @param I: intensity at maximum of the gaussian
+    @param pa: For a 2D image, the position angle of the gaussian
     """
     if isinstance(ima_shape,int):
         if (not isinstance(center,float)) or (not isinstance(sigma,float)):
