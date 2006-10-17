@@ -1,3 +1,9 @@
+2006-10-17  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* setup.py: 
+	* lib/pySNIFS.py: 
+	* lib/pySNIFS_fit.py: Author and version tags.
+
 2006-04-20  Yannick Copin  <yannick@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: minor changes.

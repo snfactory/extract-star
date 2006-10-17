@@ -1,9 +1,21 @@
-import pySNIFS
+######################################################################
+## Filename:      pySNIFS_fit.py
+## Version:       $Revision$
+## Description:   
+## Author:        Emmanuel Pecontal
+## Author:        $Author$
+## $Id$
+######################################################################
+
 from pySNIFS import *
 import numarray
 import scipy
 import numpy
 import copy
+
+__author__ = '$Author$'
+__version__ = '$Revision$'
+__docformat__ = "epytext en"
 
 #####################  Fitting Package  ##########################
 
@@ -758,7 +770,7 @@ class model:
 def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
     if param==None:
         param=init_param(func)
-    if not isinstance(spec,pySNIFS.spectrum):
+    if not isinstance(spec,spectrum):
         raise TypeError, 'spec must be a pySNIFS.spectrum'
     # copying the input spectrum into a temporary one
     spec2 = copy.deepcopy(spec)
@@ -771,9 +783,9 @@ def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
 
 
 def init_param(data,func): 
-    if isinstance(data,pySNIFS.SNIFS_cube):
+    if isinstance(data,SNIFS_cube):
         raise TypeError,'Not yet implemented for data cubes'
-    elif isinstance(data,pySNIFS.spectrum):
+    elif isinstance(data,spectrum):
         data.plot()
         
     else:

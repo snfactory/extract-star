@@ -1,16 +1,30 @@
+######################################################################
+## Filename:      pySNIFS.py
+## Version:       $Revision$
+## Description:   
+## Author:        Emmanuel Pecontal
+## Author:        $Author$
+## $Id$
+######################################################################
+
 import os
-import pylab
+
 import pyfits
-import numarray
-from numarray import convolve
-from numarray import linear_algebra as L
+
 import scipy
-import matplotlib
 from scipy import optimize,size,special
 from scipy.special import *
 from scipy import interpolate as I
+
+import numarray
+from numarray import linear_algebra as L
 from numarray import Float32,Float64,sum
 
+import pylab, matplotlib
+
+__author__ = '$Author$'
+__version__ = '$Revision$'
+__docformat__ = "epytext en"
 
 ########################   I/O functions   #########################
 
@@ -1233,9 +1247,3 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
         gaus = I*exp(-val/2)
 
     return gaus
-            
-
-    
-
-    
-    
