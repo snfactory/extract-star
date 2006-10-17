@@ -5,7 +5,7 @@
 ## Description:   pySNIFS setup script
 ## Author:        Yannick Copin <ycopin@ipnl.in2p3.fr>
 ## Created at:    Thu Apr 13 13:47:49 2006
-## Modified at:   Tue Oct 17 12:08:17 2006
+## Modified at:   Tue Oct 17 12:34:53 2006
 ## Modified by:   Yannick Copin <ycopin@ipnl.in2p3.fr>
 ######################################################################
 
@@ -40,7 +40,7 @@ def main():
     name = 'pySNIFS'
     try:
         # Taggued version: pySNIFS-M-m
-        majmin = search('\$Name$' % name, __version__).groups()
+        majmin = search('Name: %s-(\d)-(\d)' % name, __version__).groups()
         version = '.'.join(majmin)
     except AttributeError:
         # Developer's version
