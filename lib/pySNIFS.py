@@ -20,6 +20,8 @@ import numarray
 from numarray import linear_algebra as L
 from numarray import Float32,Float64,sum
 
+import numpy
+
 import pylab, matplotlib
 
 __author__ = '$Author$'
@@ -371,11 +373,12 @@ class image_array:
     """
     2D image class
     """
-    def __init__(self,data=None,var=None,startx=1,stepx=1,starty=1,stepy=1,endx=None,endy=None,labx=None,laby=None,header=None):
+    def __init__(self,data_file=None,data=None,var=None,startx=1,stepx=1,starty=1,stepy=1,endx=None,endy=None,labx=None,laby=None,header=None):
         """
         Initiating the class.
-        param data: 2D array containing the data
-        @param var: optional array containing the variance
+        @param data_file: 2D fits image. If given, the data and all the image parameters will be read from this file.
+        @param data: 2D array containing the data
+        @param var: optional array containing the variance (not yet used)
         @param startx: coordinate in user coordinates of the first point of the data array for the second
             dimension.
         @param starty: coordinate in user coordinates of the first point of the data array for the first
@@ -393,44 +396,59 @@ class image_array:
         @param header: List of 2 elements lists containing the headers name and values to be saved in
             fits file.
         """
+        if data_file != None:
+            data_fits = pyfits.open(data_file)
+            if data_fits[0].header.get('NAXIS') != 2:
+                raise TypeError, 'This is not a 2D fits image'
+            else:
+                self.startx = data_fits[0].header.get('CRVAL1')
+                self.starty = data_fits[0].header.get('CRVAL2')
+                self.stepx = data_fits[0].header.get('CDELT1')
+                self.stepy = data_fits[0].header.get('CDELT2')
+                self.nx = data_fits[0].header.get('NAXIS1')
+                self.ny = data_fits[0].header.get('NAXIS2')
+                self.endx = self.startx + (self.nx-1)*self.stepx
+                self.data = data_fits[0].data            
+                self.endy = self.starty + (self.ny-1)*self.stepy
+                self.header = data_fits[0].header.items()
+        else:
+            if (stepx == None and endx == None) or startx == None:
+                raise ValueError, 'The user must provide either startx and stepx or startx and endx'
+            if (stepy == None and endy == None) or starty == None:
+                raise ValueError, 'The user must provide either starty and stepy or starty and endy'
 
-        if (stepx == None and endx == None) or startx == None:
-            raise ValueError, 'The user must provide either startx and stepx or startx and endx'
-        if (stepy == None and endy == None) or starty == None:
-            raise ValueError, 'The user must provide either starty and stepy or starty and endy'
-        
-        if data == None:
-            raise ValueError, 'The user must provide a data array.'
-        elif len(shape(data)) != 2:
-            raise ValueError, 'The user must provide a two dimensions data array.'
-        
-        self.data = data
-        self.var = var
-        self.startx = startx
-        self.starty = starty
-        if endx == None:
-            self.stepx = stepx
-            self.endx = startx + (len(data[:,0])-1)*stepx
-        else:
-            self.endx = endx
-            self.stepx = float(endx-startx)/(len(data[:,0])-1)
-        if endy == None:
-            self.stepy = stepy
-            self.endy = starty + (len(data[0])-1)*stepy
-        else:
-            self.endy = endy
-            self.stepy = float(endy-starty)/(len(data[0])-1)
+            if data == None:
+                raise ValueError, 'The user must provide a data array.'
+            elif len(shape(data)) != 2:
+                raise ValueError, 'The user must provide a two dimensions data array.'
+
+            self.data = data
+            self.var = var
+            self.startx = startx
+            self.starty = starty
+            if endx == None:
+                self.stepx = stepx
+                self.endx = startx + (len(data[:,0])-1)*stepx
+            else:
+                self.endx = endx
+                self.stepx = float(endx-startx)/(len(data[:,0])-1)
+            if endy == None:
+                self.stepy = stepy
+                self.endy = starty + (len(data[0])-1)*stepy
+            else:
+                self.endy = endy
+                self.stepy = float(endy-starty)/(len(data[0])-1)            
+            self.nx = shape(data)[0]
+            self.ny = shape(data)[1]
+            self.header = header
             
         self.labx = labx
         self.laby = laby
-        self.vmin = None
-        self.vmax = None
-        self.nx = shape(data)[0]
-        self.ny = shape(data)[1]
-        self.header = header
+        self.vmin = float(numpy.min(numpy.array(self.data)))
+        self.vmax = float(numpy.max(numpy.array(self.data)))
 
         
-    def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None):
+    def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
         """
         Display the image in a pylab figure.
         @param cmap: Colormap in pylab syntax
@@ -462,12 +480,16 @@ class image_array:
                 else:
                     raise TypeError, "Subima must a list of 2 tuples or two lists"
         else:
-            extent = [self.starty,self.endy,self.startx,self.endx]
+            extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepy/2.,self.endx+self.stepy/2.]
             ii = [0,shape(self.data)[0]]
             jj = [0,shape(self.data)[1]]
-            
-        pylab.imshow(self.data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
-                     vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
+
+        if ima:
+            pylab.imshow(self.data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
+                         vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
+        if contour:
+            levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
+            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,aspect=aspect)
         if self.labx != None:
             pylab.xlabel(self.labx)
         if self.laby != None:
@@ -901,7 +923,7 @@ class SNIFS_mask:
     """
     SNIFS extraction mask class
     """
-    def __init__(self,mask_file,offx=0,offy=0,step=200,path_Snifs=None,path_mask=None,order=1):
+    def __init__(self,mask_file,offx=0,offy=0,step=200,order=1):
         """
         Initiating the class.
         @param mask_file: mask fits file to be read
@@ -913,32 +935,32 @@ class SNIFS_mask:
         @param order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
         
         """
-        if path_mask == None:
-            if path_Snifs == None:
-                if not 'SNIFS_PATH' in os.environ.keys():
-                    raise ValueError, 'The user must provide at least the path of the Snifs software\
-                    or set an environment variable (SNIFS_PATH) giving the path of\
-                    the Snifs software'
-                else:
-                    maskdir = os.environ['SNIFS_PATH']+'/pkg/pipeline/data/'
-                    bindir = os.environ['SNIFS_PATH']+'/user/bin/'
-                    mask_file = maskdir+mask_file
-            else:
-                maskdir = path_Snifs + '/pkg/pipeline/data/'
-                bindir = path_Snifs + '/user/bin/'
-                mask_file = maskdir+mask_file
-        else:
-            if path_Snifs == None:
-                raise ValueError, 'The user must provide at least the path of the Snifs software'
-            else:
-                maskdir = path_mask
-                bindir = path_Snifs + '/user/bin/'
-                mask_file = maskdir+mask_file
+##         if path_mask == None:
+##             if path_Snifs == None:
+##                 if not 'SNIFS_PATH' in os.environ.keys():
+##                     raise ValueError, 'The user must provide at least the path of the Snifs software\
+##                     or set an environment variable (SNIFS_PATH) giving the path of\
+##                     the Snifs software'
+##                 else:
+##                     maskdir = os.environ['SNIFS_PATH']+'/pkg/pipeline/data/'
+##                     bindir = os.environ['SNIFS_PATH']+'/user/bin/'
+##                     mask_file = maskdir+mask_file
+##             else:
+##                 maskdir = path_Snifs + '/pkg/pipeline/data/'
+##                 bindir = path_Snifs + '/user/bin/'
+##                 mask_file = maskdir+mask_file
+##         else:
+##             if path_Snifs == None:
+##                 raise ValueError, 'The user must provide at least the path of the Snifs software'
+##             else:
+##                 maskdir = path_mask
+##                 bindir = path_Snifs + '/user/bin/'
+##                 mask_file = maskdir+mask_file
 
         os.system('cp %s tmp_mask.fits'%mask_file)
         os.system('sel_table -in tmp_mask.fits -sel all')
         mask_tbl = pyfits.open('tmp_mask.fits')
-        os.system('%s/plot_optics -mask tmp_mask.fits -offset %f,%f -orders %d,%d -step %d -local -table ./tmp_tbl.fits -inputformat euro3d -outputformat euro3d > ./tmp_optics'%(bindir,offx,offy,order,order,step))
+        os.system('plot_optics -mask tmp_mask.fits -offset %f,%f -orders %d,%d -step %d -local -table ./tmp_tbl.fits -inputformat euro3d -outputformat euro3d > ./tmp_optics'%(offx,offy,order,order,step))
         
 
         tmp_tbl = pyfits.open('tmp_tbl.fits')
