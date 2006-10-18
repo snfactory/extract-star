@@ -7,8 +7,6 @@
 ## $Id$
 ######################################################################
 
-import os
-
 import pyfits
 
 import scipy
@@ -19,8 +17,6 @@ from scipy import interpolate as I
 import numarray
 from numarray import linear_algebra as L
 from numarray import Float32,Float64,sum
-
-import numpy
 
 import pylab, matplotlib
 
@@ -61,12 +57,12 @@ class spectrum:
         
         """
         self.file = file
-        if data_file != None:
+        if data_file is not None:
             data_fits = pyfits.open(data_file)
             if data_fits[0].header.has_key('EURO3D'):
                 # Case where the spectrum belongs to an e3d datacube
-                if no == None:
-                    raise ValueError, 'The user must provide the spectrum number in the datacube'
+                if no is None:
+                    raise ValueError('The user must provide the spectrum number in the datacube')
                 else:
                     if no in data_fits[1].data.field('SPEC_ID'):
                         i = data_fits[1].data.field('SPEC_ID').tolist().index(no)
@@ -92,7 +88,7 @@ class spectrum:
                 if len(data_fits) == 2:
                     # The data fits spectrum has an extension containing the variance spectrum
                     self.var = data_fits[1].data
-                elif var_file != None:
+                elif var_file is not None:
                     # The variance is read from a fits file 
                     var_fits = pyfits.open(var_file)
                     self.var = var_fits[0].data
@@ -100,21 +96,21 @@ class spectrum:
                     self.var = None
                 if not isinstance(self.var,type(None)):
                     if len(self.var) != len(self.data):
-                        raise ValueError, 'Data and variance spectra must have the same length'
+                        raise ValueError('Data and variance spectra must have the same length')
                 self.len = data_fits[0].header.get('naxis1')
                 self.x = data_fits[0].header.get('crval1') + arange(data_fits[0].header.get('naxis1')) * data_fits[0].header.get('cdelt1')
                 self.step = data_fits[0].header.get('cdelt1')
                 self.start = data_fits[0].header.get('crval1')
         else:
-            if x == None:
+            if x is None:
                 # Case for a regularly sampled spectrum
 
-                if start != None and step != None and nx != None:
+                if start is not None and step is not None and nx is not None:
                     self.start = start
                     self.step = step
                     self.len = nx
                     self.x = start + arange(nx)*step
-                    if data == None:
+                    if data is None:
                         self.data = zeros(nx)
                         self.var = zeros(nx)
                         self.x = start + arange(nx)*step
@@ -123,18 +119,18 @@ class spectrum:
                         spectrum data is zet to zeros(nx)'
                                             
                 else:
-                    if data == None:
-                        if nx == None:
-                            raise ValueError, 'Not enough parameters to fill the spectrum data field'
+                    if data is None:
+                        if nx is None:
+                            raise ValueError('Not enough parameters to fill the spectrum data field')
                         else:
                             self.data = zeros(nx)
                         self.var = None
                         self.len = nx
-                        if start != None:
+                        if start is not None:
                             self.start = start
                         else:
                             self.start = 0
-                        if step != None:
+                        if step is not None:
                             self.step = step
                         else:
                             self.step = 1
@@ -143,18 +139,18 @@ class spectrum:
                     else:
                         self.data = data
                         self.len = len(data)
-                        if var != None:
+                        if var is not None:
                             if len(var) != len(data):
-                                raise ValueError, 'data and variance array must have the same length'
+                                raise ValueError('data and variance array must have the same length')
                             else:
                                 self.var = var
                         else:
                             self.var = None
-                        if start != None:
+                        if start is not None:
                             self.start = start
                         else:
                             self.start = 0
-                        if step != None:
+                        if step is not None:
                             self.step = step
                         else:
                             self.step = 1
@@ -165,16 +161,16 @@ class spectrum:
                 self.start = None
                 self.step = None
                 self.len = len(x)
-                if data == None:
+                if data is None:
                         self.data = zeros(len(x))
                         self.var = zeros(len(x))
                         self.x = x
                 else:
                     if len(data) != len(x):
-                        raise ValueError, "x and data arrays must have the same size"
-                    if var != None:
+                        raise ValueError("x and data arrays must have the same size")
+                    if var is not None:
                         if len(var) != len(data):
-                            raise ValueError, "data and var arrays must have the same size"
+                            raise ValueError("data and var arrays must have the same size")
                     self.data = data
                     self.var = var
                     self.x = x
@@ -186,15 +182,15 @@ class spectrum:
         else:
             self.data = scipy.array(self.data)
             self.x = scipy.array(self.x)
-            if self.var != None:
+            if self.var is not None:
                 self.var = scipy.array(self.var)
               
-        if self.var == None:
+        if self.var is None:
             self.has_var = False
         else:
             self.has_var = True
         
-        if self.len != None:
+        if self.len is not None:
             self.index_list = arange(self.len).tolist()
             self.intervals = [(1,self.len)]
          
@@ -216,7 +212,7 @@ class spectrum:
         else:
             data = self.data
         pylab.figure()  #modif du 11-10-05 (GR)
-        if intervals != None:
+        if intervals is not None:
             self.subset(intervals=intervals)
                                    
         ind_intervals = self.intervals
@@ -241,7 +237,7 @@ class spectrum:
             data = self.var
         else:
             data = self.data
-        if intervals != None:   
+        if intervals is not None:   
             self.subset(intervals=intervals)
         
         ind_intervals = self.intervals
@@ -263,25 +259,25 @@ class spectrum:
         """
         self.index_list = []
         self.intervals = []
-        if intervals == None:
+        if intervals is None:
             return
         if not isinstance(intervals,list):
-            raise ValueError, "Interval must be provided as a list of 2 elements tuples"
+            raise ValueError("Interval must be provided as a list of 2 elements tuples")
         else:
             for interval in intervals:
                 if not isinstance(interval,tuple):
-                    raise ValueError, "Intervals must be provided as a list of 2 elements tuples"
+                    raise ValueError("Intervals must be provided as a list of 2 elements tuples")
                 else:
                     if len(interval) == 2:
                         if not isscalar(interval[0]) or interval[0] < min(self.x) or interval[1] > max(self.x):
-                            raise ValueError, "Interval bounds must be numbers between xmin and xmax."
+                            raise ValueError("Interval bounds must be numbers between xmin and xmax.")
                         else:
                             ind_min = self.index(min(interval))
                             ind_max = self.index(max(interval))
                             self.index_list = self.index_list + (arange(ind_max-ind_min+1)+ind_min).tolist()
                             self.intervals.append((ind_min,ind_max))
                     else:
-                        raise ValueError, "Interval must be provided as a list of 2 elements tuples"
+                        raise ValueError("Interval must be provided as a list of 2 elements tuples")
 
     def reset_interval(self):
         """
@@ -303,7 +299,7 @@ class spectrum:
                 self.curs_val.append([event.xdata,event.ydata])
                 if print_flag:
                     print 'x = %e  y = %e'%(event.xdata,event.ydata)
-        if self.cid != None:
+        if self.cid is not None:
             self.cursor_off()
             
         self.cid = pylab.connect('button_press_event',click)
@@ -312,7 +308,7 @@ class spectrum:
         """
         Turn off cursor binding and reset the field curs_val to an empty list.
         """
-        if self.cid != None:
+        if self.cid is not None:
             pylab.disconnect(self.cid)
             self.curs_val = []
             self.cid = None
@@ -322,7 +318,7 @@ class spectrum:
         Return the index of the closest point to x in the spectrum
         """
         if min(self.x) > x or x > max(self.x):
-            raise ValueError, 'x out of the spectrum x range'
+            raise ValueError('x out of the spectrum x range')
         else:
             return argmin((self.x - x)**2,axis=-1)
 
@@ -334,8 +330,8 @@ class spectrum:
         @param header_list: List of 2 elements lists containing the name and value of the header to be
             saved. If set to None, only the mandatory fits header will be stored.
         """
-        if self.start == None or self.step == None or self.data == None:
-            raise ValueError, 'Only regularly sampled spectra can be saved as fits files.'
+        if self.start is None or self.step is None or self.data is None:
+            raise ValueError('Only regularly sampled spectra can be saved as fits files.')
         
         hdu = pyfits.PrimaryHDU()
         hdu.data = numarray.array(self.data)
@@ -343,7 +339,7 @@ class spectrum:
         hdu.header.update('NAXIS1', self.len,after='NAXIS')
         hdu.header.update('CRVAL1', self.start)
         hdu.header.update('CDELT1', self.step)
-        if header_list != None:
+        if header_list is not None:
             for desc in header_list:
                 if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
                        desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
@@ -363,9 +359,7 @@ class spectrum:
         hdulist.append(hdu)
         if self.has_var:
             hdulist.append(hdu_var)
-        if os.path.isfile(fits_file):
-            os.system('rm %s'%fits_file)
-        hdulist.writeto(fits_file)
+        hdulist.writeto(fits_file, clobber=True) # Overwrite
 
 ########################## Image #######################################
 
@@ -396,10 +390,10 @@ class image_array:
         @param header: List of 2 elements lists containing the headers name and values to be saved in
             fits file.
         """
-        if data_file != None:
+        if data_file is not None:
             data_fits = pyfits.open(data_file)
             if data_fits[0].header.get('NAXIS') != 2:
-                raise TypeError, 'This is not a 2D fits image'
+                raise TypeError('This is not a 2D fits image')
             else:
                 self.startx = data_fits[0].header.get('CRVAL1')
                 self.starty = data_fits[0].header.get('CRVAL2')
@@ -412,27 +406,27 @@ class image_array:
                 self.endy = self.starty + (self.ny-1)*self.stepy
                 self.header = data_fits[0].header.items()
         else:
-            if (stepx == None and endx == None) or startx == None:
-                raise ValueError, 'The user must provide either startx and stepx or startx and endx'
-            if (stepy == None and endy == None) or starty == None:
-                raise ValueError, 'The user must provide either starty and stepy or starty and endy'
+            if (stepx is None and endx is None) or startx is None:
+                raise ValueError('The user must provide either startx and stepx or startx and endx')
+            if (stepy is None and endy is None) or starty is None:
+                raise ValueError('The user must provide either starty and stepy or starty and endy')
 
-            if data == None:
-                raise ValueError, 'The user must provide a data array.'
+            if data is None:
+                raise ValueError('The user must provide a data array.')
             elif len(shape(data)) != 2:
-                raise ValueError, 'The user must provide a two dimensions data array.'
+                raise ValueError('The user must provide a two dimensions data array.')
 
             self.data = data
             self.var = var
             self.startx = startx
             self.starty = starty
-            if endx == None:
+            if endx is None:
                 self.stepx = stepx
                 self.endx = startx + (len(data[:,0])-1)*stepx
             else:
                 self.endx = endx
                 self.stepx = float(endx-startx)/(len(data[:,0])-1)
-            if endy == None:
+            if endy is None:
                 self.stepy = stepy
                 self.endy = starty + (len(data[0])-1)*stepy
             else:
@@ -444,8 +438,8 @@ class image_array:
             
         self.labx = labx
         self.laby = laby
-        self.vmin = float(numpy.min(numpy.array(self.data)))
-        self.vmax = float(numpy.max(numpy.array(self.data)))
+        self.vmin = self.data.min()
+        self.vmax = self.data.max()
 
         
     def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
@@ -462,9 +456,9 @@ class image_array:
         @warning: As in python i holds for the lines and j for the columns, the tuple (i1,i2) correspond
             to y coordinates on the screen and (j1,j2) to the x coordinates.
         """
-        if vmin != None: self.vmin = vmin
-        if vmax != None: self.vmax = vmax
-        if subima != None:
+        if vmin is not None: self.vmin = vmin
+        if vmax is not None: self.vmax = vmax
+        if subima is not None:
             if isinstance(subima,list):
                 if isinstance(subima[0],list) and isinstance(subima[1],list):
                     ii = [int((subima[1][0]-self.starty)/self.stepy),\
@@ -478,7 +472,7 @@ class image_array:
                     extent = [subima[1][0]*self.stepx+self.startx,subima[1][1]*self.stepx+self.startx,\
                               subima[0][0]*self.stepy+self.starty,subima[0][1]*self.stepy+self.starty]
                 else:
-                    raise TypeError, "Subima must a list of 2 tuples or two lists"
+                    raise TypeError("Subima must a list of 2 tuples or two lists")
         else:
             extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepy/2.,self.endx+self.stepy/2.]
             ii = [0,shape(self.data)[0]]
@@ -490,9 +484,9 @@ class image_array:
         if contour:
             levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
             pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,aspect=aspect)
-        if self.labx != None:
+        if self.labx is not None:
             pylab.xlabel(self.labx)
-        if self.laby != None:
+        if self.laby is not None:
             pylab.ylabel(self.laby)
 
     def WR_fits_file(self,file_name,mode='w+'):
@@ -512,7 +506,7 @@ class image_array:
         hdu.header.update('CRPIX2', 1)
         hdu.header.update('CRVAL2', self.starty)
         hdu.header.update('CDELT2', self.stepy)
-        if self.header != None:
+        if self.header is not None:
             for desc in self.header:
                 if desc[0]!='SIMPLE' and desc[0]!='BITPIX' and desc[0]!='EXTEND' and desc[0]!='NAXIS' and desc[0]!='NAXIS1'\
                        and desc[0]!='NAXIS2' and desc[0]!='CRPIX1' and desc[0]!='CRVAL1' and desc[0]!='CDELT1' and desc[0]!='CRPIX2'\
@@ -520,10 +514,7 @@ class image_array:
                     hdu.header.update(desc[0],desc[1])
         hdu.data = numarray.array(self.data)
         hdulist.append(hdu)
-        if mode == 'w+':
-            if os.path.isfile(file_name):
-                os.system('rm %s'%file_name)
-        hdulist.writeto(file_name)
+        hdulist.writeto(file_name, clobber=(mode=='w+'))
 
 
 ########################## Cube ########################################
@@ -550,19 +541,19 @@ class SNIFS_cube:
             the processing pipeline, we allow to pass it as the threshold parameter.
         
         """
-        if e3d_file != None:
-            if slices != None:
+        if e3d_file is not None:
+            if slices is not None:
                 if not isinstance(slices,list):
-                    raise ValueError,'The wavelength range must be given as a list of two or three integer positive values'
+                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) != 2 and len(slices) != 3:
-                    raise ValueError,'The wavelength range must be given as a list of two or three integer positive values'
+                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if 1 in numarray.array([not isinstance(sl,int) for sl in slices]):
-                    raise ValueError,'The wavelength range must be given as a list of two or three integer positive values'
+                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if 1 in numarray.array([sl<0 for sl in slices]):
-                    raise ValueError,'The wavelength range must be given as a list of two or three integer positive values'
+                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) == 3:
                     if slices[2] == 0:
-                        raise ValueError,'The slices step cannot be set to 0'
+                        raise ValueError('The slices step cannot be set to 0')
                     else:
                         s = True
                 else:
@@ -579,9 +570,9 @@ class SNIFS_cube:
             e3d_cube = pyfits.open(e3d_file)
             gen_header = dict(e3d_cube[0].header.items())
             if not gen_header.has_key('EURO3D'):
-                raise ValueError, "This is not a e3d file (no header \'EURO3D\' "
+                raise ValueError("This is not a valid e3d file (no 'EURO3D' keyword")
             elif gen_header['EURO3D'] != 'T' and gen_header['EURO3D'] != pyfits.TRUE:
-                raise ValueError, "This is not a e3d file bad value of the keyword \'EURO3D\')"
+                raise ValueError("This is not a valid e3d file (bad value of the keyword 'EURO3D')")
             
             self.from_e3d_file = True
             self.e3d_file = e3d_file
@@ -621,7 +612,7 @@ class SNIFS_cube:
 
             
 
-            if l != None:
+            if l is not None:
                 lmin,lmax = max([common_lstart,l[0]]),min([common_lend,l[1]])
                 if len(l) == 3:
                     lstep = l[2]
@@ -632,7 +623,7 @@ class SNIFS_cube:
                 lstep = 1
 
             if lmax-lmin < lstep:
-                raise ValueError, 'The step in slices is not compatible with the slices interval requested'
+                raise ValueError('The step in slices is not compatible with the slices interval requested')
                          
             if not s:
                 self.data = tdata[lmin - common_lstart:lmax - common_lstart:lstep]
@@ -675,7 +666,7 @@ class SNIFS_cube:
             # If no euro3d file is given, we create an SNIFS cube from  
             self.from_e3d_file = False
             self.nlens = 225
-            if lbda == None:
+            if lbda is None:
                 if num_array:
                     self.data = numarray.zeros(self.nlens,Float32)
                 else:
@@ -725,7 +716,7 @@ class SNIFS_cube:
                 n1 = argmin((self.lbda-n[0])**2,axis=-1)
                 n2 = argmin((self.lbda-n[1])**2,axis=-1)
             else:
-                raise ValueError, "Coordinates flag should be either \'p\' or \'w\'"
+                raise ValueError("Coordinates flag should be either 'p' or 'w'")
             if n1 == n2:n2=n2+1
         else:
             if coord == 'p':
@@ -735,7 +726,7 @@ class SNIFS_cube:
                 n1 = argmin((self.lbda-n)**2,axis=-1)
                 n2 = n1+1
             else:
-                raise ValueError, "Coordinates flag should be either \'p\' or \'w\'"
+                raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
         if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
             slice_2D = numarray.zeros((15,15),Float32) * nan
@@ -747,7 +738,7 @@ class SNIFS_cube:
                 slice_2D[i,j] = sum(self.data[n1:n2])
             return(slice_2D)
         else:
-            raise IndexError, "no slice #%d" % n 
+            raise IndexError("no slice #%d" % n)
 
     def spec(self,no=None,ind=None,mask=None,var=False):
         """
@@ -763,32 +754,32 @@ class SNIFS_cube:
         else:
             data = self.data
             
-        if mask != None:
+        if mask is not None:
             if shape(mask) != shape(data):
-                raise ValueError, 'mask array must have the same shape than the data array'
+                raise ValueError('mask array must have the same shape than the data array')
             data = data * mask
             return sum(data,1)
         
-        if (no != None and ind != None) or (no == None and ind == None):
-            raise TypeError, "lens number (no) OR spec index (ind) should be given."
+        if (no is not None and ind is not None) or (no is None and ind is None):
+            raise TypeError("lens number (no) OR spec index (ind) should be given.")
         else:
-            if (no != None):
+            if (no is not None):
                 if no in self.no.tolist():
                     return data[:,argmax(self.no == no,axis=-1)]
                 else:
-                    raise IndexError, "no lens #%d" % no
+                    raise IndexError("no lens #%d" % no)
             else:
                 if not isinstance(ind,list):
                     if 0 <= ind < numarray.shape(data)[1]:
                         return data[:,ind]
                     else:
-                        raise IndexError, "no index #%d" % ind
+                        raise IndexError("no index #%d" % ind)
                 else:
                     if 0 <= ind[0] and ind[1] < numarray.shape(data)[1]:
                         if ind[0] == ind[1]: ind[1] = ind[1]+1
                         return sum(data[:,ind[0]:ind[1]],1)
                     else:
-                        raise IndexError, "Index list out of range"
+                        raise IndexError("Index list out of range")
                         
     def plot_spec(self,no=None,ind=None,mask=None,var=False,ax=None):
         """
@@ -800,7 +791,7 @@ class SNIFS_cube:
         @param var: Variance flag. If set to True, the variance spectrum is ploted.
         @param ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
         """
-        if ax == None:
+        if ax is None:
             pylab.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
         else:
             ax.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
@@ -837,9 +828,9 @@ class SNIFS_cube:
         slice = self.slice2d(n,coord,var=var)
         med = scipy.median(ravel(slice))
         disp = sqrt(scipy.median((ravel(slice)-med)**2))
-        if vmin == None:
+        if vmin is None:
             vmin = float(med - 3*disp)
-        if vmax == None or vmax < vmin:
+        if vmax is None or vmax < vmin:
             vmax = float(med + 10*disp)
         fig = pylab.gcf()
         fig.clf()
@@ -861,9 +852,9 @@ class SNIFS_cube:
             data = self.data
         med = float(scipy.median(ravel(data)))
         disp = float(sqrt(scipy.median((ravel(data)-med)**2)))
-        if vmin == None:
+        if vmin is None:
             vmin = med - 3*disp
-        if vmax == None:
+        if vmax is None:
             vmax = med + 10*disp
         #pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto')
         pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto',vmin=vmin,vmax=vmax)     
@@ -873,7 +864,7 @@ class SNIFS_cube:
         Get the lenslet number from its coordinates i,j 
         """
         if i>max(self.i) or i<min(self.i) or j>max(self.j) or j<min(self.j):
-            raise ValueError, "Index out of range."
+            raise ValueError("Index out of range.")
         no = self.no[argmax((self.i == i)*(self.j == j),axis=-1)]
         return(no)
 
@@ -882,7 +873,7 @@ class SNIFS_cube:
         Get the lenslet coordinates i,j from its number no
         """
         if no>max(self.no) or no<min(self.no):
-            raise ValueError, "Lens number out of range."
+            raise ValueError("Lens number out of range.")
         i = self.i[argmax(self.no == no,axis=-1)]
         j = self.j[argmax(self.no == no,axis=-1)]
         return((i,j))
@@ -894,7 +885,7 @@ class SNIFS_cube:
         """
         if isinstance(val,tuple):
             if val[0]>max(self.i) or val[0]<min(self.i) or val[1]>max(self.j) or val[1]<min(self.j):
-                raise ValueError, "Index out of range."
+                raise ValueError("Index out of range.")
             ind = argmax((self.i == val[0])*(self.j == val[1]),axis=-1)
         else:
             ind = argmax(self.no == val,axis=-1)
@@ -907,7 +898,7 @@ class SNIFS_cube:
         @param fits_file: Name of the output file
         """
         if not self.from_e3d_file:
-            raise ValueError,"Writing e3d file from scratch not yet implemented"
+            raise Error("Writing e3d file from scratch not yet implemented")
         data_list = (numarray.transpose(self.data)).tolist()
         start_list = [self.lstart for i in arange(self.nlens)]
         no_list = self.no.tolist()
@@ -935,40 +926,40 @@ class SNIFS_mask:
         @param order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
         
         """
-##         if path_mask == None:
-##             if path_Snifs == None:
-##                 if not 'SNIFS_PATH' in os.environ.keys():
-##                     raise ValueError, 'The user must provide at least the path of the Snifs software\
-##                     or set an environment variable (SNIFS_PATH) giving the path of\
-##                     the Snifs software'
-##                 else:
-##                     maskdir = os.environ['SNIFS_PATH']+'/pkg/pipeline/data/'
-##                     bindir = os.environ['SNIFS_PATH']+'/user/bin/'
-##                     mask_file = maskdir+mask_file
-##             else:
-##                 maskdir = path_Snifs + '/pkg/pipeline/data/'
-##                 bindir = path_Snifs + '/user/bin/'
-##                 mask_file = maskdir+mask_file
-##         else:
-##             if path_Snifs == None:
-##                 raise ValueError, 'The user must provide at least the path of the Snifs software'
-##             else:
-##                 maskdir = path_mask
-##                 bindir = path_Snifs + '/user/bin/'
-##                 mask_file = maskdir+mask_file
 
-        os.system('cp %s tmp_mask.fits'%mask_file)
-        os.system('sel_table -in tmp_mask.fits -sel all')
+        import commands, os
+
+        def runCmd(command, grep=None):
+            """Run 'command' with proper status check. Display grepped output
+            and raise RuntimeError if status. Return status."""
+
+            status,output = commands.getstatusoutput(command)
+            if status:                  # Something went wrong
+                if grep:                # Grepped output
+                    print '\n'.join([ l for l in output.split('\n')
+                                      if grep in l ])
+                else:                   # Full output
+                    print output
+                raise RuntimeError("Error %d during '%s'." % \
+                                   (status, command.split()[0]))
+            return status
+
+        # Copy mask to tempfile for total selection
+        runCmd('cp -f %s tmp_mask.fits' % mask_file)
+        os.chmod('tmp_mask.fits', 0644) # quickmasks are 0444
+        runCmd('sel_table -in tmp_mask.fits -sel all', grep='ERROR')
+        runCmd('plot_optics -mask tmp_mask.fits -offset %f,%f -orders %d,%d ' \
+               '-step %d -local -table tmp_tbl.fits ' \
+               '-inputformat euro3d -outputformat euro3d' % \
+               (offx,offy,order,order,step), grep='ERROR')
+
         mask_tbl = pyfits.open('tmp_mask.fits')
-        os.system('plot_optics -mask tmp_mask.fits -offset %f,%f -orders %d,%d -step %d -local -table ./tmp_tbl.fits -inputformat euro3d -outputformat euro3d > ./tmp_optics'%(offx,offy,order,order,step))
-        
-
         tmp_tbl = pyfits.open('tmp_tbl.fits')
-        i = 1
         self.no = mask_tbl[1].data.field('no').tolist()
         self.lbda_list = []
-        while tmp_tbl[1].header.has_key('lbda%d'%i):
-            self.lbda_list.append(tmp_tbl[1].header.get('lbda%d'%i))
+        i = 1
+        while tmp_tbl[1].header.has_key('LBDA%d'%i):
+            self.lbda_list.append(tmp_tbl[1].header.get('LBDA%d'%i))
             i = i+1
 
         self.x = {}
@@ -1010,15 +1001,15 @@ class SNIFS_mask:
             interpolated from lbda_list.
         @param lbda: wavelength at which we plot the spectra.           
         """
-        if no_list == None:
+        if no_list is None:
             no_list = self.no
         elif isinstance(no_list,int):
             no_list = [no_list]
         for no in no_list:
             if not no in self.no:
-                raise ValueError, 'lens #%d not present in mask'%no
+                raise ValueError('lens #%d not present in mask'%no)
         for no in no_list:
-            if lbda == None:
+            if lbda is None:
                 x,y = self.get_spec_lens(no)
                 if interpolate:
                     y = y[0] + arange(100)*(y[len(y)-1]-y[0]-1)/100. 
@@ -1039,7 +1030,7 @@ class SNIFS_mask:
         @param yy: y position where to compute the x value
         """
         if not no in self.no:
-            raise ValueError, 'lens #%d not present in mask'%no
+            raise ValueError('lens #%d not present in mask'%no)
         #y = numarray.array(sort(self.pts[no][1]))
         #x = numarray.array(self.pts[no][0])[numarray.argsort(self.pts[no][1])]
         x,y = self.get_spec_lens(no)
@@ -1074,11 +1065,11 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     @param bin: Size of the bins. If not given it is computed from the number of bins requested.
     @param cumul: If True, compute a cumulative histogram
     """
-    if Min == None:
+    if Min is None:
         Min = min(data)
-    if Max == None:
+    if Max is None:
         Max = max(data)
-    if bin == None:
+    if bin is None:
         bin = (Max-Min)/nbin
         
     bin_array = arange(nbin)*bin + Min
@@ -1099,10 +1090,10 @@ def common_bounds_cube(cube_list):
     @return : imin,imax: lists of the indexes of the lower/upper common bound for each cube
     """
     if False in [hasattr(cube,'lstep') for cube in cube_list]:
-        raise ValueError, "Missing attribute lstep in datacubes."
+        raise ValueError("Missing attribute lstep in datacubes.")
     else:
         if L.mlab.std([cube.lstep for cube in cube_list]) != 0:
-            raise ValueError, "All cubes should have the same step."
+            raise ValueError("All cubes should have the same step.")
         xinf = max([min(cube.lbda) for cube in cube_list])
         xsup = min([max(cube.lbda) for cube in cube_list])
         imin = [argmin(abs(cube.lbda-xinf),axis=-1) for cube in cube_list]
@@ -1117,10 +1108,10 @@ def common_bounds_spec(spec_list):
     @return: imin,imax: lists of the indexes of the lower/upper common bound for each spectrum
     """
     if False in [hasattr(spec,'step') for spec in spec_list]:
-        raise ValueError, "Missing attribute lstep in spectra."
+        raise ValueError("Missing attribute lstep in spectra.")
     else:
         if L.mlab.std([spec.step for spec in spec_list]) != 0:
-            raise ValueError, "All spectra should have the same step."
+            raise ValueError("All spectra should have the same step.")
         xinf = max([min(spec.x) for spec in spec_list])
         xsup = min([max(spec.x) for spec in spec_list])
         imin = [argmin(abs(spec.x-xinf),axis=-1) for spec in spec_list]
@@ -1148,7 +1139,7 @@ def fit_poly(y,n,deg,x=None):
     @param x: Optional input array giving the abscissae of the points to be fitted. If not given
        the abscissae are taken as an array [1:len(y)]
     """
-    if x == None:
+    if x is None:
         x = arange(len(y))
     old_l = 0
     l = len(y)
@@ -1221,9 +1212,7 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     pri_hdu.header.update('E3D_ADC',pyfits.FALSE)
     pri_hdu.header.update('E3D_VERS',1.0)
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
-    if os.path.isfile(fits_file):
-        os.system('rm %s'%fits_file)
-    hdu_list.writeto(fits_file)
+    hdu_list.writeto(fits_file, clobber=True) # Overwrite
         
 def gaus_array(ima_shape,center,sigma,I,pa=None):
     """
@@ -1237,23 +1226,23 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
     """
     if isinstance(ima_shape,int):
         if (not isinstance(center,float)) or (not isinstance(sigma,float)):
-            raise TypeError, 'For 1D image, center and sigma must be float'
+            raise TypeError('For 1D image, center and sigma must be float')
     else:
         if (not isinstance(ima_shape,list)) or (not isinstance(center,list)) or\
                (not isinstance(sigma,list)):
-            raise TypeError, 'Shape should be given as a list of integers'
+            raise TypeError('Shape should be given as a list of integers')
         if len(ima_shape) != 2:
-            raise ValueError, 'More than 2D images not supported'
+            raise ValueError('More than 2D images not supported')
         if len(ima_shape) != len(center) or len(ima_shape) != len(sigma):
-            raise ValueError, 'center and sigma lists must have the same length than shape list'
+            raise ValueError('center and sigma lists must have the same length than shape list')
     if isinstance(ima_shape,int):
         xc = center
         s = sigma
         x = arange(ima_shape)-xc
         gaus = I*exp(-0.5*(x/s)**2)
     else:
-        if pa == None:
-            raise ValueError, 'Position angle must be supplied by the user'
+        if pa is None:
+            raise ValueError('Position angle must be supplied by the user')
         pa = pa*pi/180.
         nx = ima_shape[0]
         ny = ima_shape[1]

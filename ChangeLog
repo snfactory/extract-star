@@ -1,3 +1,10 @@
+2006-10-19  yannick.copin  <yannick.copin@laposte.net>
+
+	* lib/pySNIFS.py: use standard 'raise Exception(msg)',
+	(SNIFS_mask.__init__): replace os.system calls by ad-hoc
+	commands.getstatusoutput-based runCmd function, chmod 0444
+	mask_copy before sel_table call.
+
 2006-10-17  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* setup.py: 
