@@ -776,7 +776,7 @@ class SNIFS_cube:
                         raise IndexError("no index #%d" % ind)
                 else:
                     if 0 <= ind[0] and ind[1] < numarray.shape(data)[1]:
-                        if ind[0] == ind[1]: ind[1] = ind[1]+1
+                        ind[1] = ind[1]+1
                         return sum(data[:,ind[0]:ind[1]],1)
                     else:
                         raise IndexError("Index list out of range")
