@@ -1069,15 +1069,17 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
         Min = min(data)
     if Max is None:
         Max = max(data)
+    print Min,Max
     if bin is None:
         bin = (Max-Min)/nbin
         
     bin_array = arange(nbin)*bin + Min
     n = searchsorted(sort(data), bin_array)
     n = concatenate([n, [len(data)]])
-    hist = spectrum()
-    hist.data = n[1:]-n[:-1]
-    hist.x = bin_array
+    data = n[1:]-n[:-1]
+    x = bin_array
+    hist = spectrum(data=data,x=x)
+    
     hist.len = len(bin_array)
     if cumul:
         hist.data = numarray.array([float(sum(hist.data[0:i+1])) for i in arange(hist.len)])/float(sum(hist.data))
