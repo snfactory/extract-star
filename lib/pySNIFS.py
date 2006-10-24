@@ -18,6 +18,8 @@ import numarray
 from numarray import linear_algebra as L
 from numarray import Float32,Float64,sum
 
+import numpy
+
 import pylab, matplotlib
 
 __author__ = '$Author$'
@@ -438,8 +440,8 @@ class image_array:
             
         self.labx = labx
         self.laby = laby
-        self.vmin = self.data.min()
-        self.vmax = self.data.max()
+        self.vmin = numpy.float(self.data.min())
+        self.vmax = numpy.float(self.data.max())
 
         
     def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
