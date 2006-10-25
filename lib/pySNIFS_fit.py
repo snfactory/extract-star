@@ -485,7 +485,7 @@ class model:
             self.model_2D = True
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = scipy.ravel(data.data)
+            self.data.data = scipy.reshape(scipy.ravel(data.data),(1,len(scipy.ravel(data.data))))
             self.data.lbda = scipy.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
@@ -521,10 +521,9 @@ class model:
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
 
-        
         if data.var == None:
             #self.weight = SNIFS_cube()
-            self.weight = scipy.ones(shape(self.data),'d')
+            self.weight = scipy.ones(shape(self.data.data),'d')
             #self.weight.ones_from(self.data)
         else:
             if self.model_3D:
@@ -689,8 +688,9 @@ class model:
         i = 0
         for f in self.func:
             deriv = -2*val1 * f.deriv(param[i:i+f.npar])
-            temp = sum(deriv[0:f.npar_cor],2)
-            val2[i:i+f.npar_cor] = sum(temp,1)
+            if f.npar_cor != 0:
+                temp = sum(deriv[0:f.npar_cor],2)
+                val2[i:i+f.npar_cor] = sum(temp,1)
             for n in arange(f.npar_ind):
                 val2[i+f.npar_cor+n*self.data.nslice:
                      i+f.npar_cor+(n+1)*self.data.nslice]=sum(deriv[n+f.npar_cor],1)
