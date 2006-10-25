@@ -407,6 +407,7 @@ class image_array:
                 self.data = data_fits[0].data            
                 self.endy = self.starty + (self.ny-1)*self.stepy
                 self.header = data_fits[0].header.items()
+                self.var = var
         else:
             if (stepx is None and endx is None) or startx is None:
                 raise ValueError('The user must provide either startx and stepx or startx and endx')
