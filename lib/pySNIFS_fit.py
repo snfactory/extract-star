@@ -460,7 +460,7 @@ class model:
     """
     Model fiting class
     """
-    def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None):
+    def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None,myfunc=None):
         self.fitpar = None
         
         if param == None:
@@ -515,12 +515,23 @@ class model:
         func_dict['poly2D']=poly2D
         func_dict['gaus2D_integ']=gaus2D_integ
         func_dict['SNIFS_psf_3D']=SNIFS_psf_3D
+        # We add in the available function dictionary the user's ones
+        if (myfunc) != None:
+            if not isinstance(myfunc,dict):
+                raise ValueError,'The users functions must be provided as a dictionary {\'name1\':func1,\
+                \'name2\':func2...}'
+            func_dict.update(myfunc)
 
         if self.model_1D:
             avail_func = ['gaus1D','poly1D']
+            if myfunc != None:
+                avail_func = avail_func+myfunc.keys()
+                
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
-
+            if myfunc != None:
+                avail_func = avail_func+myfunc.keys()
+                
         if data.var == None:
             #self.weight = SNIFS_cube()
             self.weight = scipy.ones(shape(self.data.data),'d')

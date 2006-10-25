@@ -486,7 +486,7 @@ class image_array:
                          vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
         if contour:
             levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
-            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,aspect=aspect)
+            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,aspect=aspect,cmap=pylab.cm.gray)
         if self.labx is not None:
             pylab.xlabel(self.labx)
         if self.laby is not None:
