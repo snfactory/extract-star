@@ -702,7 +702,7 @@ class SNIFS_cube:
                     self.no = scipy.array(no)
                     self.lbda = scipy.array(lbda)  
           
-    def slice2d(self,n,coord='w',var=False):
+    def slice2d(self,n,coord='w',var=False,nx=15,ny=15):
         """
         Extract a 2D slice from a cube and return it as an array
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -710,6 +710,8 @@ class SNIFS_cube:
         @param coord: The type of coordinates:
                       - 'w' -> wavelength coordinates
                       - 'p' -> pixel coordinates
+        @param nx: dimension of the slice in x
+        @param ny: dimension of the slice in y
         """
         if isinstance(n,list):
             if coord == 'p':
@@ -732,7 +734,7 @@ class SNIFS_cube:
                 raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
         if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
-            slice_2D = numarray.zeros((15,15),Float32) * nan
+            slice_2D = numarray.zeros((nx,ny),Float32) * nan
             i = numarray.array(self.i)
             j = numarray.array(self.j)
             if var:
@@ -814,7 +816,7 @@ class SNIFS_cube:
 
         return spec
     
-    def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.hot,var=False):
+    def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.hot,var=False,nx=15,ny=15):
         """
         Display a 2D slice.
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -827,8 +829,10 @@ class SNIFS_cube:
         @param vmin: low cut in the image for the display (if None, it is 'smartly' computed)
         @param vmax: high cut in the image for the display (if None, it is 'smartly' computed)
         @param var: Variance flag. If set to True, the variance slice is displayed. 
+        @param nx: dimension of the slice in x
+        @param ny: dimension of the slice in y
         """
-        slice = self.slice2d(n,coord,var=var)
+        slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny)
         med = scipy.median(ravel(slice))
         disp = sqrt(scipy.median((ravel(slice)-med)**2))
         if vmin is None:
