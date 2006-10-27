@@ -445,7 +445,7 @@ class image_array:
         self.vmax = numpy.float(self.data.max())
 
         
-    def display(self,cmap=pylab.cm.hot,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
+    def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
         """
         Display the image in a pylab figure.
         @param cmap: Colormap in pylab syntax
@@ -486,7 +486,7 @@ class image_array:
                          vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
         if contour:
             levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
-            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,aspect=aspect,cmap=pylab.cm.gray)
+            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=pylab.cm.gray)
         if self.labx is not None:
             pylab.xlabel(self.labx)
         if self.laby is not None:
@@ -816,7 +816,7 @@ class SNIFS_cube:
 
         return spec
     
-    def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.hot,var=False,nx=15,ny=15):
+    def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
         """
         Display a 2D slice.
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -840,11 +840,15 @@ class SNIFS_cube:
         if vmax is None or vmax < vmin:
             vmax = float(med + 10*disp)
         fig = pylab.gcf()
-        fig.clf()
-        print type(slice)
-        try: pylab.imshow(slice,interpolation='nearest',aspect='preserve',vmin=vmin,vmax=vmax,cmap=cmap)
-        except: pylab.imshow(slice,interpolation='nearest',aspect='equal',vmin=vmin,vmax=vmax,cmap=cmap)
-
+        #fig.clf()
+        extent = [-1./2.,ny-1/2.,-1/2.,nx-1/2.]
+        if ima:
+            pylab.imshow(slice,interpolation='nearest',aspect='equal',vmin=vmin,vmax=vmax,cmap=cmap,\
+                         origin='lower',extent=extent)
+        if contour:
+            levels = vmin + arange(10)*(vmax-vmin)/10.
+            pylab.contour(slice,levels,cmap=pylab.cm.gray)
+            
     def disp_data(self,vmin=None,vmax=None,cmap=pylab.cm.hot,var=False):
         """
         Display the datacube as the stack of all its spectra
