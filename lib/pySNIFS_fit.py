@@ -763,14 +763,12 @@ class model:
         return newparam
 
     def save_fit_as_SNIFS_cube(self):
-        fit_cube = SNIFS_cube()
-        fit_cube.zeros_from(self.data)
+        fit_cube = copy.deepcopy(self)
         fit_cube.data = self.evalfit()
         return fit_cube
 
     def save_guess_as_SNIFS_cube(self):
-        guess_cube = SNIFS_cube()
-        guess_cube.zeros_from(self.data)
+        guess_cube = copy.deepcopy(self)
         guess_cube.data = self.eval()
         return guess_cube
         
