@@ -715,8 +715,6 @@ class SNIFS_cube:
         @param ny: dimension of the slice in y
         @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
         """
-        print( weight == None)
-        print(n==None)
         if weight == None and n == None:
             raise ValueError("Slices to be averaged must be given either as a list or as a weight spectrum")
         
