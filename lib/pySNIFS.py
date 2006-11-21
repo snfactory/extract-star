@@ -642,7 +642,7 @@ class SNIFS_cube:
                 self.lbda = lbda[lmin - common_lstart+lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lstep = self.lstep * lstep
             self.lstart = self.lbda[0]
-
+            
             self.x = e3d_cube[1].data.field('XPOS')
             self.y = e3d_cube[1].data.field('YPOS')
             self.no = e3d_cube[1].data.field('spec_id')
@@ -664,6 +664,7 @@ class SNIFS_cube:
                 self.no = scipy.array(self.no)
                 
             self.nslice = len(self.lbda)
+            self.lend = self.lstart + (self.nslice-1)*self.lstep
             self.nlens = len(self.x)
         else:
             # If no euro3d file is given, we create an SNIFS cube from  
@@ -702,9 +703,9 @@ class SNIFS_cube:
                     self.no = scipy.array(no)
                     self.lbda = scipy.array(lbda)  
           
-    def slice2d(self,n,coord='w',var=False,nx=15,ny=15):
+    def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15):
         """
-        Extract a 2D slice from a cube and return it as an array
+        Extract a 2D slice (individual slice or average of several ones) from a cube and return it as an array
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
             and n2 if it is an integer n , it returns the slice n
         @param coord: The type of coordinates:
@@ -712,39 +713,68 @@ class SNIFS_cube:
                       - 'p' -> pixel coordinates
         @param nx: dimension of the slice in x
         @param ny: dimension of the slice in y
+        @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
         """
-        if isinstance(n,list):
-            if coord == 'p':
-                n1 = n[0]
-                n2 = n[1]
-            elif coord == 'w':
-                n1 = argmin((self.lbda-n[0])**2,axis=-1)
-                n2 = argmin((self.lbda-n[1])**2,axis=-1)
+        print( weight == None)
+        print(n==None)
+        if weight == None and n == None:
+            raise ValueError("Slices to be averaged must be given either as a list or as a weight spectrum")
+        
+        if weight == None:
+            if isinstance(n,list):
+                if coord == 'p':
+                    n1 = n[0]
+                    n2 = n[1]
+                elif coord == 'w':
+                    n1 = argmin((self.lbda-n[0])**2,axis=-1)
+                    n2 = argmin((self.lbda-n[1])**2,axis=-1)
+                else:
+                    raise ValueError("Coordinates flag should be either 'p' or 'w'")
+                if n1 == n2:n2=n2+1
             else:
-                raise ValueError("Coordinates flag should be either 'p' or 'w'")
-            if n1 == n2:n2=n2+1
-        else:
-            if coord == 'p':
-                n1 = n
-                n2 = n+1
-            elif coord == 'w':
-                n1 = argmin((self.lbda-n)**2,axis=-1)
-                n2 = n1+1
-            else:
-                raise ValueError("Coordinates flag should be either 'p' or 'w'")
+                if coord == 'p':
+                    n1 = n
+                    n2 = n+1
+                elif coord == 'w':
+                    n1 = argmin((self.lbda-n)**2,axis=-1)
+                    n2 = n1+1
+                else:
+                    raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
-        if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
-            slice_2D = numarray.zeros((nx,ny),Float32) * nan
-            i = numarray.array(self.i)
-            j = numarray.array(self.j)
-            if var:
-                slice_2D[i,j] = sum(self.var[n1:n2])
+            if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
+                slice_2D = numarray.zeros((nx,ny),Float32) * nan
+                i = numarray.array(self.i)
+                j = numarray.array(self.j)
+                if var:
+                    slice_2D[i,j] = sum(self.var[n1:n2])
+                else:
+                    slice_2D[i,j] = sum(self.data[n1:n2])
+                return(slice_2D)
             else:
-                slice_2D[i,j] = sum(self.data[n1:n2])
-            return(slice_2D)
+                raise IndexError("no slice #%d" % n)
         else:
-            raise IndexError("no slice #%d" % n)
-
+            if not isinstance(weight,spectrum):
+                raise TypeError("The weights must be a pySNIFS.spectrum")
+            else:
+                if max(weight.x) < self.lstart or min(weight.x) > self.lend:
+                    raise ValueError("The weight spectrum range is outside the cube limits")
+                else:
+                    lmin = max(self.lstart,min(weight.x))
+                    lmax = min(self.lend,max(weight.x))
+                    imin = int((lmin-self.lstart)/self.lstep)
+                    imax = int((lmax-self.lstart)/self.lstep)
+                    lbda = self.lstart+arange(imax-imin)*self.lstep
+                    tck = scipy.interpolate.splrep(weight.x,weight.data,s=0)
+                    w = scipy.interpolate.splev(lbda,tck)
+                    slice_2D = numarray.zeros((nx,ny),Float32) * nan
+                    i = numarray.array(self.i)
+                    j = numarray.array(self.j)
+                    if var:
+                        slice_2D[i,j] = sum(numpy.transpose(numpy.transpose(numpy.array(self.var[imin:imax,:]))*w))
+                    else:
+                        slice_2D[i,j] = sum(numpy.transpose(numpy.transpose(numpy.array(self.data[imin:imax,:]))*w))
+                    return slice_2D
+                
     def spec(self,no=None,ind=None,mask=None,var=False):
         """
         Extract a spectrum from the datacube and return it as a 1D array.
@@ -816,7 +846,7 @@ class SNIFS_cube:
 
         return spec
     
-    def disp_slice(self,n,coord='w',aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
+    def disp_slice(self,n=None,coord='w',weight=None,aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
         """
         Display a 2D slice.
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -831,8 +861,9 @@ class SNIFS_cube:
         @param var: Variance flag. If set to True, the variance slice is displayed. 
         @param nx: dimension of the slice in x
         @param ny: dimension of the slice in y
+        @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
         """
-        slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny)
+        slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny,weight=weight)
         med = scipy.median(ravel(slice))
         disp = sqrt(scipy.median((ravel(slice)-med)**2))
         if vmin is None:
