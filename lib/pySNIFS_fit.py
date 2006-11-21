@@ -724,7 +724,7 @@ class model:
         self.flatparam = scipy.array(self.fitpar,'d')
         self.param = self.unflat_param(self.fitpar)
     
-    def fit(self,disp=False,save=False,deriv=True,maxfun=1000,msge=0):
+    def fit(self,disp=False,save=False,deriv=True,maxfun=1000,msge=0,scale=None):
         
         """ Perform the model fitting by minimizing the objective function objfun."""
         x0 = scipy.zeros(scipy.size(self.flatparam),'d')
@@ -733,7 +733,7 @@ class model:
         if deriv: xopt = scipy.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
                                                  fprime=self.objgrad, 
                                                  approx_grad=False, bounds=self.bounds,
-                                                 messages=msge,maxfun=maxfun)
+                                                 messages=msge,maxfun=maxfun,scale=scale)
         else:     xopt = scipy.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
                                                  approx_grad=True, bounds=self.bounds,
                                                  messages=msge,maxfun=maxfun)
