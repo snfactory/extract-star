@@ -542,16 +542,8 @@ class model:
                 #self.weight.data = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
                 self.weight = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
             elif self.model_2D:# TODO: Implement the variance
-                self.weight = SNIFS_cube()
-                self.data = SNIFS_cube()
-                self.data.data = scipy.ravel(data.data)
-                self.data.lbda = scipy.array([0])
-                self.data.nslice = 1
-                self.data.nlens = data.nx * data.ny
-                self.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
-                self.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
-                self.x = self.i*data.stepx+data.startx
-                self.y = self.j*data.stepy+data.starty
+                self.data.var = scipy.reshape(scipy.ravel(data.var),(1,len(scipy.ravel(data.var))))
+                self.weight = scipy.array(where(self.data.var!=0,1./abs(self.data.var),0.),'d')
                 
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
