@@ -445,7 +445,7 @@ class image_array:
         self.vmax = numpy.float(self.data.max())
 
         
-    def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False):
+    def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False,var=False):
         """
         Display the image in a pylab figure.
         @param cmap: Colormap in pylab syntax
@@ -459,6 +459,12 @@ class image_array:
         @warning: As in python i holds for the lines and j for the columns, the tuple (i1,i2) correspond
             to y coordinates on the screen and (j1,j2) to the x coordinates.
         """
+        if var:
+            if self.var == None:
+                raise ValueError("No variance array in this image.")
+            data = self.var
+        else:
+            data = self.data
         if vmin is not None: self.vmin = vmin
         if vmax is not None: self.vmax = vmax
         if subima is not None:
@@ -478,15 +484,15 @@ class image_array:
                     raise TypeError("Subima must a list of 2 tuples or two lists")
         else:
             extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepy/2.,self.endx+self.stepy/2.]
-            ii = [0,shape(self.data)[0]]
-            jj = [0,shape(self.data)[1]]
+            ii = [0,shape(data)[0]]
+            jj = [0,shape(data)[1]]
 
         if ima:
-            pylab.imshow(self.data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
+            pylab.imshow(data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
                          vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
         if contour:
             levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
-            pylab.contour(self.data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=pylab.cm.gray)
+            pylab.contour(data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=pylab.cm.gray)
         if self.labx is not None:
             pylab.xlabel(self.labx)
         if self.laby is not None:
@@ -844,7 +850,7 @@ class SNIFS_cube:
 
         return spec
     
-    def disp_slice(self,n=None,coord='w',weight=None,aspect='equal',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
+    def disp_slice(self,n=None,coord='w',weight=None,aspect='equal',scale='lin',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
         """
         Display a 2D slice.
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -862,15 +868,34 @@ class SNIFS_cube:
         @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
         """
         slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny,weight=weight)
-        med = scipy.median(ravel(slice))
-        disp = sqrt(scipy.median((ravel(slice)-med)**2))
+        if vmin != None and vmax != None:
+            if vmin > vmax:
+                raise ValueError("vmin must be lower than vmax.")
+        if scale=='log':
+            slice = scipy.log(slice)
+            if vmin!=None:
+                if vmin<=0:
+                    raise ValueError("In log scale vmin and vmax must be positive")
+                vmin = float(scipy.log(vmin))
+            if vmax!=None:
+                if vmax<=0:
+                    raise ValueError("In log scale vmin and vmax must be positive")
+                vmax = float(scipy.log(vmax))
+                
+#        med = scipy.median(ravel(slice))
+#        disp = sqrt(scipy.median((ravel(slice)-med)**2))
         if vmin is None:
-            vmin = float(med - 3*disp)
-        if vmax is None or vmax < vmin:
-            vmax = float(med + 10*disp)
+            vmin = float(min(ravel(slice)))
+#           vmin = float(med - 3*disp)
+        if vmax is None:
+            vmax = float(max(ravel(slice)))
+#           vmax = float(med + 10*disp)
+
+            
         fig = pylab.gcf()
         #fig.clf()
         extent = [-1./2.,ny-1/2.,-1/2.,nx-1/2.]
+            
         if ima:
             pylab.imshow(slice,interpolation='nearest',aspect='equal',vmin=vmin,vmax=vmax,cmap=cmap,\
                          origin='lower',extent=extent)
