@@ -483,7 +483,7 @@ class image_array:
                 else:
                     raise TypeError("Subima must a list of 2 tuples or two lists")
         else:
-            extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepy/2.,self.endx+self.stepy/2.]
+            extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepx/2.,self.endx+self.stepx/2.]
             ii = [0,shape(data)[0]]
             jj = [0,shape(data)[1]]
 
@@ -750,9 +750,9 @@ class SNIFS_cube:
                 i = numarray.array(self.i)
                 j = numarray.array(self.j)
                 if var:
-                    slice_2D[i,j] = sum(self.var[n1:n2])
+                    slice_2D[j,i] = sum(self.var[n1:n2])
                 else:
-                    slice_2D[i,j] = sum(self.data[n1:n2])
+                    slice_2D[j,i] = sum(self.data[n1:n2])
                 return(slice_2D)
             else:
                 raise IndexError("no slice #%d" % n)
@@ -774,9 +774,9 @@ class SNIFS_cube:
                     i = numarray.array(self.i)
                     j = numarray.array(self.j)
                     if var:
-                        slice_2D[i,j] = sum(numpy.transpose(numpy.transpose(numpy.array(self.var[imin:imax,:]))*w))
+                        slice_2D[j,i] = sum(numpy.transpose(numpy.transpose(numpy.array(self.var[imin:imax,:]))*w))
                     else:
-                        slice_2D[i,j] = sum(numpy.transpose(numpy.transpose(numpy.array(self.data[imin:imax,:]))*w))
+                        slice_2D[j,i] = sum(numpy.transpose(numpy.transpose(numpy.array(self.data[imin:imax,:]))*w))
                     return slice_2D
                 
     def spec(self,no=None,ind=None,mask=None,var=False):
@@ -895,6 +895,7 @@ class SNIFS_cube:
         fig = pylab.gcf()
         #fig.clf()
         extent = [-1./2.,ny-1/2.,-1/2.,nx-1/2.]
+        
             
         if ima:
             pylab.imshow(slice,interpolation='nearest',aspect='equal',vmin=vmin,vmax=vmax,cmap=cmap,\
@@ -921,8 +922,9 @@ class SNIFS_cube:
             vmin = med - 3*disp
         if vmax is None:
             vmax = med + 10*disp
+        extent = [self.lstart,self.lend,-1./2.,self.nlens-1./2.]
         #pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto')
-        pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto',vmin=vmin,vmax=vmax)     
+        pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto',vmin=vmin,vmax=vmax,extent=extent)     
             
     def get_no(self,i,j):
         """
