@@ -9,16 +9,17 @@
 
 import pyfits
 
-import scipy
-from scipy import optimize,size,special
-from scipy.special import *
+#import scipy
+from scipy import optimize
+#from scipy.special import *
 from scipy import interpolate as I
 
-import numarray
-from numarray import linear_algebra as L
-from numarray import Float32,Float64,sum
+# import numarray
+# from numarray import Float32,Float64,sum
 
 import numpy
+from numpy.numarray import mlab
+from numpy import float,float32,float64,isscalar
 
 import pylab, matplotlib
 
@@ -76,7 +77,7 @@ class spectrum:
                         self.len = data_fits[1].data.field('SPEC_LEN')[i]
                         self.step = data_fits[1].header.get('CDELTS')
                         self.start = data_fits[1].header.get('CRVALS') + data_fits[1].data.field('SPEC_STA')[i]*self.step
-                        self.x = arange(self.len)*self.step + self.start
+                        self.x = numpy.arange(self.len)*self.step + self.start
                     else:
                         self.data = None
                         self.var = None
@@ -100,7 +101,7 @@ class spectrum:
                     if len(self.var) != len(self.data):
                         raise ValueError('Data and variance spectra must have the same length')
                 self.len = data_fits[0].header.get('naxis1')
-                self.x = data_fits[0].header.get('crval1') + arange(data_fits[0].header.get('naxis1')) * data_fits[0].header.get('cdelt1')
+                self.x = data_fits[0].header.get('crval1') + numpy.arange(data_fits[0].header.get('naxis1')) * data_fits[0].header.get('cdelt1')
                 self.step = data_fits[0].header.get('cdelt1')
                 self.start = data_fits[0].header.get('crval1')
         else:
@@ -111,11 +112,11 @@ class spectrum:
                     self.start = start
                     self.step = step
                     self.len = nx
-                    self.x = start + arange(nx)*step
+                    self.x = start + numpy.arange(nx)*step
                     if data is None:
-                        self.data = zeros(nx)
-                        self.var = zeros(nx)
-                        self.x = start + arange(nx)*step
+                        self.data = numpy.zeros(nx)
+                        self.var = numpy.zeros(nx)
+                        self.x = start + numpy.arange(nx)*step
                     else:
                         print 'Warning: When nx is given, the data array is not taken into account and the\
                         spectrum data is zet to zeros(nx)'
@@ -125,7 +126,7 @@ class spectrum:
                         if nx is None:
                             raise ValueError('Not enough parameters to fill the spectrum data field')
                         else:
-                            self.data = zeros(nx)
+                            self.data = numpy.zeros(nx)
                         self.var = None
                         self.len = nx
                         if start is not None:
@@ -136,7 +137,7 @@ class spectrum:
                             self.step = step
                         else:
                             self.step = 1
-                        self.x = self.start + arange(nx)*self.step
+                        self.x = self.start + numpy.arange(nx)*self.step
                         
                     else:
                         self.data = data
@@ -156,7 +157,7 @@ class spectrum:
                             self.step = step
                         else:
                             self.step = 1
-                        self.x = self.start + arange(self.len)*self.step
+                        self.x = self.start + numpy.arange(self.len)*self.step
                         
             else:
                 # Case for a not regularly sampled spectrum
@@ -164,8 +165,8 @@ class spectrum:
                 self.step = None
                 self.len = len(x)
                 if data is None:
-                        self.data = zeros(len(x))
-                        self.var = zeros(len(x))
+                        self.data = numpy.zeros(len(x))
+                        self.var = numpy.zeros(len(x))
                         self.x = x
                 else:
                     if len(data) != len(x):
@@ -177,15 +178,15 @@ class spectrum:
                     self.var = var
                     self.x = x
         if num_array:
-            self.data = numarray.array(self.data)
-            self.x = numarray.array(self.x)
+            self.data = numpy.array(self.data)
+            self.x = numpy.array(self.x)
             if not isinstance(self.var,type(None)):
-                self.var = numarray.array(self.var)
+                self.var = numpy.array(self.var)
         else:
-            self.data = scipy.array(self.data)
-            self.x = scipy.array(self.x)
+            self.data = numpy.array(self.data)
+            self.x = numpy.array(self.x)
             if self.var is not None:
-                self.var = scipy.array(self.var)
+                self.var = numpy.array(self.var)
               
         if self.var is None:
             self.has_var = False
@@ -193,7 +194,7 @@ class spectrum:
             self.has_var = True
         
         if self.len is not None:
-            self.index_list = arange(self.len).tolist()
+            self.index_list = numpy.arange(self.len).tolist()
             self.intervals = [(1,self.len)]
          
         self.curs_val = []
@@ -276,7 +277,7 @@ class spectrum:
                         else:
                             ind_min = self.index(min(interval))
                             ind_max = self.index(max(interval))
-                            self.index_list = self.index_list + (arange(ind_max-ind_min+1)+ind_min).tolist()
+                            self.index_list = self.index_list + (numpy.arange(ind_max-ind_min+1)+ind_min).tolist()
                             self.intervals.append((ind_min,ind_max))
                     else:
                         raise ValueError("Interval must be provided as a list of 2 elements tuples")
@@ -285,7 +286,7 @@ class spectrum:
         """
         Erase the intervals selections
         """
-        self.index_list = arange(self.len).tolist()
+        self.index_list = numpy.arange(self.len).tolist()
         self.intervals = [(1,self.len)]
 
  
@@ -322,7 +323,7 @@ class spectrum:
         if min(self.x) > x or x > max(self.x):
             raise ValueError('x out of the spectrum x range')
         else:
-            return argmin((self.x - x)**2,axis=-1)
+            return numpy.argmin((self.x - x)**2,axis=-1)
 
                         
     def WR_fits_file(self,fits_file,header_list=None):
@@ -336,7 +337,7 @@ class spectrum:
             raise ValueError('Only regularly sampled spectra can be saved as fits files.')
         
         hdu = pyfits.PrimaryHDU()
-        hdu.data = numarray.array(self.data)
+        hdu.data = numpy.array(self.data)
         hdu.header.update('NAXIS', 1)
         hdu.header.update('NAXIS1', self.len,after='NAXIS')
         hdu.header.update('CRVAL1', self.start)
@@ -351,7 +352,7 @@ class spectrum:
                     hdu.header.update(desc[0],desc[1])
         if self.has_var:
             hdu_var = pyfits.ImageHDU()
-            hdu_var.data = numarray.array(self.var)
+            hdu_var.data = numpy.array(self.var)
             hdu_var.header.update('NAXIS', 1)
             hdu_var.header.update('NAXIS1', self.len,after='NAXIS')
             hdu_var.header.update('CRVAL1', self.start)
@@ -416,7 +417,7 @@ class image_array:
 
             if data is None:
                 raise ValueError('The user must provide a data array.')
-            elif len(shape(data)) != 2:
+            elif len(numpy.shape(data)) != 2:
                 raise ValueError('The user must provide a two dimensions data array.')
 
             self.data = data
@@ -435,14 +436,14 @@ class image_array:
             else:
                 self.endy = endy
                 self.stepy = float(endy-starty)/(len(data[0])-1)            
-            self.nx = shape(data)[0]
-            self.ny = shape(data)[1]
+            self.nx = numpy.shape(data)[0]
+            self.ny = numpy.shape(data)[1]
             self.header = header
             
         self.labx = labx
         self.laby = laby
-        self.vmin = numpy.float(self.data.min())
-        self.vmax = numpy.float(self.data.max())
+        self.vmin = float(self.data.min())
+        self.vmax = float(self.data.max())
 
         
     def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False,var=False):
@@ -484,14 +485,14 @@ class image_array:
                     raise TypeError("Subima must a list of 2 tuples or two lists")
         else:
             extent = [self.starty-self.stepy/2.,self.endy+self.stepy/2.,self.startx-self.stepx/2.,self.endx+self.stepx/2.]
-            ii = [0,shape(data)[0]]
-            jj = [0,shape(data)[1]]
+            ii = [0,numpy.shape(data)[0]]
+            jj = [0,numpy.shape(data)[1]]
 
         if ima:
             pylab.imshow(data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
                          vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
         if contour:
-            levels = self.vmin + arange(10)*(self.vmax-self.vmin)/10.
+            levels = self.vmin + numpy.arange(10)*(self.vmax-self.vmin)/10.
             pylab.contour(data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=pylab.cm.gray)
         if self.labx is not None:
             pylab.xlabel(self.labx)
@@ -521,7 +522,7 @@ class image_array:
                        and desc[0]!='NAXIS2' and desc[0]!='CRPIX1' and desc[0]!='CRVAL1' and desc[0]!='CDELT1' and desc[0]!='CRPIX2'\
                        and desc[0]!='CRVAL2' and desc[0]!='CDELT2':
                     hdu.header.update(desc[0],desc[1])
-        hdu.data = numarray.array(self.data)
+        hdu.data = numpy.array(self.data)
         hdulist.append(hdu)
         hdulist.writeto(file_name, clobber=(mode=='w+'))
 
@@ -556,9 +557,9 @@ class SNIFS_cube:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) != 2 and len(slices) != 3:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if 1 in numarray.array([not isinstance(sl,int) for sl in slices]):
+                if 1 in array([not isinstance(sl,int) for sl in slices]):
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if 1 in numarray.array([sl<0 for sl in slices]):
+                if 1 in array([sl<0 for sl in slices]):
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) == 3:
                     if slices[2] == 0:
@@ -589,7 +590,7 @@ class SNIFS_cube:
             self.e3d_data_header = e3d_cube[1].header.items()
             # The group definition HDU and the optional extensions HDU are stored in fields of the class
             self.e3d_grp_hdu = e3d_cube[2]
-            self.e3d_extra_hdu_list = [e3d_cube[i] for i in arange(len(e3d_cube)-3)+3] 
+            self.e3d_extra_hdu_list = [e3d_cube[i] for i in numpy.arange(len(e3d_cube)-3)+3] 
             ref_start = e3d_cube[1].header['CRVALS']
             step      = e3d_cube[1].header['CDELTS']
             self.lstep = step
@@ -605,19 +606,19 @@ class SNIFS_cube:
             common_lstart,common_lend,lstep = max(spec_sta),min(spec_end),1
             common_start = ref_start + common_lstart * step
 
-            tdata = numarray.transpose(numarray.array([data[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
+            tdata = numpy.transpose(numpy.array([data[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
                                                        for i in range(len(data))]))
             if not isinstance(var,type(None)):
-                tvar = numarray.transpose(numarray.array([var[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
+                tvar = numpy.transpose(numpy.array([var[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
                                                           for i in range(len(var))]))
                                                           
                 # In the variance image, pixels where variance is not available for some reason are set to
                 # an arbitrarily high value. As this values seems to change from one version to another of the
                 # processing pipeline, we allow to pass it as a parameter: threshold
-                tvar = numarray.where((tvar>threshold),threshold,tvar)
-                tvar = numarray.where((tvar<-threshold),threshold,tvar)
+                tvar = numpy.where((tvar>threshold),threshold,tvar)
+                tvar = numpy.where((tvar<-threshold),threshold,tvar)
 
-            lbda = arange(common_start,common_start+len(tdata)*step,step)
+            lbda = numpy.arange(common_start,common_start+len(tdata)*step,step)
 
             
 
@@ -640,10 +641,10 @@ class SNIFS_cube:
                     self.var = tvar[lmin - common_lstart:lmax - common_lstart:lstep]
                 self.lbda = lbda[lmin - common_lstart:lmax - common_lstart:lstep]
             else:
-                self.data = numarray.convolve.boxcar(tdata,(lstep,1))\
+                self.data = numpy.convolve.boxcar(tdata,(lstep,1))\
                             [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
                 if not isinstance(var,type(None)):
-                    self.var = numarray.convolve.boxcar(tvar,(lstep,1))\
+                    self.var = numpy.convolve.boxcar(tvar,(lstep,1))\
                             [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lbda = lbda[lmin - common_lstart+lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lstep = self.lstep * lstep
@@ -659,15 +660,15 @@ class SNIFS_cube:
             self.i = e3d_cube[3].data.field('I')[ind]+7
             self.j = e3d_cube[3].data.field('J')[ind]+7
             if not num_array:
-                self.data = scipy.array(self.data)
+                self.data = numpy.array(self.data)
                 if not isinstance(var,type(None)):
-                    self.var = scipy.array(self.var)
-                self.lbda = scipy.array(self.lbda)
-                self.x = scipy.array(self.x)
-                self.y = scipy.array(self.y)
-                self.i = scipy.array(self.i)
-                self.j = scipy.array(self.j)
-                self.no = scipy.array(self.no)
+                    self.var = numpy.array(self.var)
+                self.lbda = numpy.array(self.lbda)
+                self.x = numpy.array(self.x)
+                self.y = numpy.array(self.y)
+                self.i = numpy.array(self.i)
+                self.j = numpy.array(self.j)
+                self.no = numpy.array(self.no)
                 
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
@@ -678,20 +679,20 @@ class SNIFS_cube:
             self.nlens = 225
             if lbda is None:
                 if num_array:
-                    self.data = numarray.zeros(self.nlens,Float32)
+                    self.data = numpy.zeros(self.nlens,float32)
                 else:
-                    self.data = scipy.zeros(self.nlens,Float32)
+                    self.data = numpy.zeros(self.nlens,float32)
                 self.lbda = None  
                 self.nslice = None
             else:
                 self.nslice = len(lbda)
-                data = numarray.zeros((self.nslice,self.nlens),Float64) 
-                x = numarray.array(((7-arange(15))*0.42).tolist()*15)
-                y = numarray.repeat((arange(15)-7)*0.42,15)
-                i = numarray.array((14-arange(15)).tolist()*15)
-                j = numarray.repeat((arange(15)),15)
-                no = numarray.ravel(numarray.transpose(numarray.reshape(numarray.arange(self.nlens)+1,(15,15)))) 
-                lbda = numarray.array(lbda)
+                data = numpy.zeros((self.nslice,self.nlens),float64) 
+                x = numpy.array(((numpy.arange(15)-7)*0.42).tolist()*15)
+                y = numpy.repeat((7-numpy.arange(15))*0.42,15)
+                i = numpy.array((numpy.arange(15)).tolist()*15)
+                j = numpy.repeat((14-numpy.arange(15)),15)
+                no = numpy.ravel(numpy.transpose(numpy.reshape(numpy.arange(self.nlens)+1,(15,15)))) 
+                lbda = numpy.array(lbda)
                 if num_array:
                     self.data = data
                     self.x = x
@@ -701,13 +702,13 @@ class SNIFS_cube:
                     self.no = no
                     self.lbda = lbda  
                 else:
-                    self.data = scipy.array(data)
-                    self.x = scipy.array(x)
-                    self.y = scipy.array(y)
-                    self.i = scipy.array(i)
-                    self.j = scipy.array(j)
-                    self.no = scipy.array(no)
-                    self.lbda = scipy.array(lbda)  
+                    self.data = numpy.array(data)
+                    self.x = numpy.array(x)
+                    self.y = numpy.array(y)
+                    self.i = numpy.array(i)
+                    self.j = numpy.array(j)
+                    self.no = numpy.array(no)
+                    self.lbda = numpy.array(lbda)  
           
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15):
         """
@@ -726,33 +727,42 @@ class SNIFS_cube:
         
         if weight == None:
             if isinstance(n,list):
+                if len(n) != 2:
+                    raise ValueError("The list must have 2 values")
+                if n[0] > n[1]:
+                    tmp = n[0]
+                    n[0] = n[1]
+                    n[1] = tmp
                 if coord == 'p':
                     n1 = n[0]
                     n2 = n[1]
                 elif coord == 'w':
-                    n1 = argmin((self.lbda-n[0])**2,axis=-1)
-                    n2 = argmin((self.lbda-n[1])**2,axis=-1)
+                    n1 = numpy.argmin((self.lbda-n[0])**2,axis=-1)
+                    n2 = numpy.argmin((self.lbda-n[1])**2,axis=-1)
                 else:
                     raise ValueError("Coordinates flag should be either 'p' or 'w'")
                 if n1 == n2:n2=n2+1
             else:
+                if n%1 != 0:
+                    print "WARNING : You don't put an integer. The number will be trunc as an integer"
+                    n = int(n)
                 if coord == 'p':
                     n1 = n
                     n2 = n+1
                 elif coord == 'w':
-                    n1 = argmin((self.lbda-n)**2,axis=-1)
+                    n1 = numpy.argmin((self.lbda-n)**2,axis=-1)
                     n2 = n1+1
                 else:
                     raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
-            if n1 >= 0 and n2 <= numarray.shape(self.data)[0]:
-                slice_2D = numarray.zeros((nx,ny),Float32) * nan
-                i = numarray.array(self.i)
-                j = numarray.array(self.j)
+            if n1 >= 0 and n2 <= numpy.shape(self.data)[0]:
+                slice_2D = numpy.zeros((nx,ny),float32) * numpy.nan
+                i = numpy.array(self.i)
+                j = numpy.array(self.j)
                 if var:
-                    slice_2D[j,i] = sum(self.var[n1:n2])
+                    slice_2D[j,i] = numpy.sum(self.var[n1:n2],axis=0)
                 else:
-                    slice_2D[j,i] = sum(self.data[n1:n2])
+                    slice_2D[j,i] = numpy.sum(self.data[n1:n2],axis=0)
                 return(slice_2D)
             else:
                 raise IndexError("no slice #%d" % n)
@@ -767,16 +777,16 @@ class SNIFS_cube:
                     lmax = min(self.lend,max(weight.x))
                     imin = int((lmin-self.lstart)/self.lstep)
                     imax = int((lmax-self.lstart)/self.lstep)
-                    lbda = self.lstart+arange(imax-imin)*self.lstep
-                    tck = scipy.interpolate.splrep(weight.x,weight.data,s=0)
-                    w = scipy.interpolate.splev(lbda,tck)
-                    slice_2D = numarray.zeros((nx,ny),Float32) * nan
-                    i = numarray.array(self.i)
-                    j = numarray.array(self.j)
+                    lbda = self.lstart+numpy.arange(imax-imin)*self.lstep
+                    tck = I.splrep(weight.x,weight.data,s=0)
+                    w = I.splev(lbda,tck)
+                    slice_2D = numpy.zeros((nx,ny),float32) * numpy.nan
+                    i = numpy.array(self.i)
+                    j = numpy.array(self.j)
                     if var:
-                        slice_2D[j,i] = sum(numpy.transpose(numpy.transpose(numpy.array(self.var[imin:imax,:]))*w))
+                        slice_2D[j,i] = numpy.sum(numpy.transpose(numpy.transpose(numpy.array(self.var[imin:imax,:]))*w),axis=0)
                     else:
-                        slice_2D[j,i] = sum(numpy.transpose(numpy.transpose(numpy.array(self.data[imin:imax,:]))*w))
+                        slice_2D[j,i] = numpy.sum(numpy.transpose(numpy.transpose(numpy.array(self.data[imin:imax,:]))*w),axis=0)
                     return slice_2D
                 
     def spec(self,no=None,ind=None,mask=None,var=False):
@@ -794,29 +804,29 @@ class SNIFS_cube:
             data = self.data
             
         if mask is not None:
-            if shape(mask) != shape(data):
+            if numpy.shape(mask) != numpy.shape(data):
                 raise ValueError('mask array must have the same shape than the data array')
             data = data * mask
-            return sum(data,1)
+            return numpy.sum(data,1)
         
         if (no is not None and ind is not None) or (no is None and ind is None):
             raise TypeError("lens number (no) OR spec index (ind) should be given.")
         else:
             if (no is not None):
                 if no in self.no.tolist():
-                    return data[:,argmax(self.no == no,axis=-1)]
+                    return data[:,numpy.argmax(self.no == no,axis=-1)]
                 else:
                     raise IndexError("no lens #%d" % no)
             else:
                 if not isinstance(ind,list):
-                    if 0 <= ind < numarray.shape(data)[1]:
+                    if 0 <= ind < numpy.shape(data)[1]:
                         return data[:,ind]
                     else:
                         raise IndexError("no index #%d" % ind)
                 else:
-                    if 0 <= ind[0] and ind[1] < numarray.shape(data)[1]:
+                    if 0 <= ind[0] and ind[1] < numpy.shape(data)[1]:
                         ind[1] = ind[1]+1
-                        return sum(data[:,ind[0]:ind[1]],1)
+                        return numpy.sum(data[:,ind[0]:ind[1]],1)
                     else:
                         raise IndexError("Index list out of range")
                         
@@ -872,36 +882,31 @@ class SNIFS_cube:
             if vmin > vmax:
                 raise ValueError("vmin must be lower than vmax.")
         if scale=='log':
-            slice = scipy.log(slice)
+            slice = numpy.log(slice)
             if vmin!=None:
                 if vmin<=0:
                     raise ValueError("In log scale vmin and vmax must be positive")
-                vmin = float(scipy.log(vmin))
+                vmin = float(numpy.log(vmin))
             if vmax!=None:
                 if vmax<=0:
                     raise ValueError("In log scale vmin and vmax must be positive")
-                vmax = float(scipy.log(vmax))
+                vmax = float(numpy.log(vmax))
                 
-#        med = scipy.median(ravel(slice))
-#        disp = sqrt(scipy.median((ravel(slice)-med)**2))
         if vmin is None:
-            vmin = float(min(ravel(slice)))
-#           vmin = float(med - 3*disp)
+            vmin = float(min(numpy.ravel(slice)))
         if vmax is None:
-            vmax = float(max(ravel(slice)))
-#           vmax = float(med + 10*disp)
+            vmax = float(max(numpy.ravel(slice)))
 
             
         fig = pylab.gcf()
-        #fig.clf()
         extent = [-1./2.,ny-1/2.,-1/2.,nx-1/2.]
         
             
         if ima:
-            pylab.imshow(slice,interpolation='nearest',aspect='equal',vmin=vmin,vmax=vmax,cmap=cmap,\
+            pylab.imshow(slice,interpolation='nearest',aspect=aspect,vmin=vmin,vmax=vmax,cmap=cmap,\
                          origin='lower',extent=extent)
         if contour:
-            levels = vmin + arange(10)*(vmax-vmin)/10.
+            levels = vmin + numpy.arange(10)*(vmax-vmin)/10.
             pylab.contour(slice,levels,cmap=pylab.cm.gray)
             
     def disp_data(self,vmin=None,vmax=None,cmap=pylab.cm.hot,var=False):
@@ -916,15 +921,14 @@ class SNIFS_cube:
             data = self.var
         else:
             data = self.data
-        med = float(scipy.median(ravel(data)))
-        disp = float(sqrt(scipy.median((ravel(data)-med)**2)))
+        med = float(numpy.median(numpy.ravel(data)))
+        disp = float(numpy.sqrt(numpy.median((numpy.ravel(data)-med)**2)))
         if vmin is None:
             vmin = med - 3*disp
         if vmax is None:
             vmax = med + 10*disp
         extent = [self.lstart,self.lend,-1./2.,self.nlens-1./2.]
-        #pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto')
-        pylab.imshow(numarray.transpose(self.data),interpolation='nearest',aspect='auto',vmin=vmin,vmax=vmax,extent=extent)     
+        pylab.imshow(numpy.transpose(self.data),interpolation='nearest',aspect='auto',vmin=vmin,vmax=vmax,extent=extent)     
             
     def get_no(self,i,j):
         """
@@ -932,7 +936,7 @@ class SNIFS_cube:
         """
         if i>max(self.i) or i<min(self.i) or j>max(self.j) or j<min(self.j):
             raise ValueError("Index out of range.")
-        no = self.no[argmax((self.i == i)*(self.j == j),axis=-1)]
+        no = self.no[numpy.argmax((self.i == i)*(self.j == j),axis=-1)]
         return(no)
 
     def get_ij(self,no):
@@ -941,8 +945,8 @@ class SNIFS_cube:
         """
         if no>max(self.no) or no<min(self.no):
             raise ValueError("Lens number out of range.")
-        i = self.i[argmax(self.no == no,axis=-1)]
-        j = self.j[argmax(self.no == no,axis=-1)]
+        i = self.i[numpy.argmax(self.no == no,axis=-1)]
+        j = self.j[numpy.argmax(self.no == no,axis=-1)]
         return((i,j))
 
     def get_lindex(self,val):
@@ -953,9 +957,9 @@ class SNIFS_cube:
         if isinstance(val,tuple):
             if val[0]>max(self.i) or val[0]<min(self.i) or val[1]>max(self.j) or val[1]<min(self.j):
                 raise ValueError("Index out of range.")
-            ind = argmax((self.i == val[0])*(self.j == val[1]),axis=-1)
+            ind = numpy.argmax((self.i == val[0])*(self.j == val[1]),axis=-1)
         else:
-            ind = argmax(self.no == val,axis=-1)
+            ind = numpy.argmax(self.no == val,axis=-1)
 
         return(ind)
 
@@ -966,8 +970,8 @@ class SNIFS_cube:
         """
         if not self.from_e3d_file:
             raise Error("Writing e3d file from scratch not yet implemented")
-        data_list = (numarray.transpose(self.data)).tolist()
-        start_list = [self.lstart for i in arange(self.nlens)]
+        data_list = (numpy.transpose(self.data)).tolist()
+        start_list = [self.lstart for i in numpy.arange(self.nlens)]
         no_list = self.no.tolist()
         xpos_list = self.x.tolist()
         ypos_list = self.y.tolist()
@@ -1079,7 +1083,7 @@ class SNIFS_mask:
             if lbda is None:
                 x,y = self.get_spec_lens(no)
                 if interpolate:
-                    y = y[0] + arange(100)*(y[len(y)-1]-y[0]-1)/100. 
+                    y = y[0] + numpy.arange(100)*(y[len(y)-1]-y[0]-1)/100. 
                     x = self.interpolate(no,y)
             else:
                 x,y = self.get_coord_lens(no,lbda)
@@ -1098,11 +1102,9 @@ class SNIFS_mask:
         """
         if not no in self.no:
             raise ValueError('lens #%d not present in mask'%no)
-        #y = numarray.array(sort(self.pts[no][1]))
-        #x = numarray.array(self.pts[no][0])[numarray.argsort(self.pts[no][1])]
         x,y = self.get_spec_lens(no)
-        x = numarray.array(x)[numarray.argsort(y)]
-        y = numarray.array(sort(y))
+        x = numpy.array(x)[numpy.argsort(y)]
+        y = numpy.array(sort(y))
         tck = I.splrep(y,x,s=0)
         return I.splev(yy,tck)
 
@@ -1118,9 +1120,9 @@ def convert_tab(table,colx,coly,ref_pos):
     @param coly: y column in the table
     @param ref_pos: array giving the x positions where to compute the interpolated values
     """
-    tck = scipy.interpolate.splrep(table[1].data.field(colx),\
+    tck = I.splrep(table[1].data.field(colx),\
                                    table[1].data.field(coly),s=0)
-    tab = scipy.interpolate.splev(ref_pos,tck)
+    tab = I.splev(ref_pos,tck)
     return tab
 
 def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
@@ -1140,7 +1142,7 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     if bin is None:
         bin = (Max-Min)/nbin
         
-    bin_array = arange(nbin)*bin + Min
+    bin_array = numpy.arange(nbin)*bin + Min
     n = searchsorted(sort(data), bin_array)
     n = concatenate([n, [len(data)]])
     data = n[1:]-n[:-1]
@@ -1149,7 +1151,7 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     
     hist.len = len(bin_array)
     if cumul:
-        hist.data = numarray.array([float(sum(hist.data[0:i+1])) for i in arange(hist.len)])/float(sum(hist.data))
+        hist.data = numpy.array([float(numpy.sum(hist.data[0:i+1])) for i in numpy.arange(hist.len)])/float(numpy.sum(hist.data))
     return hist
 
 def common_bounds_cube(cube_list):
@@ -1161,12 +1163,12 @@ def common_bounds_cube(cube_list):
     if False in [hasattr(cube,'lstep') for cube in cube_list]:
         raise ValueError("Missing attribute lstep in datacubes.")
     else:
-        if L.mlab.std([cube.lstep for cube in cube_list]) != 0:
+        if mlab.std([cube.lstep for cube in cube_list]) != 0:
             raise ValueError("All cubes should have the same step.")
         xinf = max([min(cube.lbda) for cube in cube_list])
         xsup = min([max(cube.lbda) for cube in cube_list])
-        imin = [argmin(abs(cube.lbda-xinf),axis=-1) for cube in cube_list]
-        imax = [argmin(abs(cube.lbda-xsup),axis=-1) for cube in cube_list]
+        imin = [numpy.argmin(abs(cube.lbda-xinf),axis=-1) for cube in cube_list]
+        imax = [numpy.argmin(abs(cube.lbda-xsup),axis=-1) for cube in cube_list]
 
     return imin,imax
 
@@ -1179,12 +1181,12 @@ def common_bounds_spec(spec_list):
     if False in [hasattr(spec,'step') for spec in spec_list]:
         raise ValueError("Missing attribute lstep in spectra.")
     else:
-        if L.mlab.std([spec.step for spec in spec_list]) != 0:
+        if mlab.std([spec.step for spec in spec_list]) != 0:
             raise ValueError("All spectra should have the same step.")
         xinf = max([min(spec.x) for spec in spec_list])
         xsup = min([max(spec.x) for spec in spec_list])
-        imin = [argmin(abs(spec.x-xinf),axis=-1) for spec in spec_list]
-        imax = [argmin(abs(spec.x-xsup),axis=-1) for spec in spec_list]
+        imin = [numpy.argmin(abs(spec.x-xinf),axis=-1) for spec in spec_list]
+        imax = [numpy.argmin(abs(spec.x-xsup),axis=-1) for spec in spec_list]
 
     return imin,imax
 
@@ -1195,7 +1197,7 @@ def common_lens(cube_list):
     @return: inters: list of the lenses common to all the cubes of the list
     """
     inters = cube_list[0].no
-    for i in arange(len(cube_list)-1)+1:
+    for i in numpy.arange(len(cube_list)-1)+1:
         inters = filter(lambda x:x in cube_list[i].no,inters) 
     return inters
 
@@ -1209,13 +1211,13 @@ def fit_poly(y,n,deg,x=None):
        the abscissae are taken as an array [1:len(y)]
     """
     if x is None:
-        x = arange(len(y))
+        x = numpy.arange(len(y))
     old_l = 0
     l = len(y)
     while l != old_l:
         old_l = len(y)
-        p = scipy.poly1d(matplotlib.mlab.polyfit(x,y,deg))
-        sigma = sqrt(L.mlab.median((p(x) - y)**2))
+        p = numpy.poly1d(matplotlib.mlab.polyfit(x,y,deg))
+        sigma = numpy.sqrt(mlab.median((p(x) - y)**2))
         y1 = compress(y<p(x)+n*sigma,y)
         x1 = compress(y<p(x)+n*sigma,x)
         y = compress(y1>p(x1)-n*sigma,y1)
@@ -1241,12 +1243,12 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
        @param extra_hdu_list: pyfits HDU containing non e3d-mandatory data.
     """
     start = max(start_list)
-    spec_sta = [int((s - start)/step+0.5*scipy.sign(s-start)) for s in start_list]
+    spec_sta = [int((s - start)/step+0.5*numpy.sign(s-start)) for s in start_list]
     spec_len = [len(s) for s in data_list]
-    selected = [0 for i in arange(len(data_list))]
-    group_n = [1 for i in arange(len(data_list))]
-    nspax = [1 for i in arange(len(data_list))]
-    spax_id = [' ' for i in arange(len(data_list))]
+    selected = [0 for i in numpy.arange(len(data_list))]
+    group_n = [1 for i in numpy.arange(len(data_list))]
+    nspax = [1 for i in numpy.arange(len(data_list))]
+    spax_id = [' ' for i in numpy.arange(len(data_list))]
     #for i,no in enumerate(no_list):
     col_list = []
     col_list.append(pyfits.Column(name='SPEC_ID',format='J',array=no_list))
@@ -1307,7 +1309,7 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
     if isinstance(ima_shape,int):
         xc = center
         s = sigma
-        x = arange(ima_shape)-xc
+        x = numpy.arange(ima_shape)-xc
         gaus = I*exp(-0.5*(x/s)**2)
     else:
         if pa is None:
@@ -1319,8 +1321,8 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
         yc = center[1]
         sx = sigma[0]
         sy = sigma[1]
-        x = reshape(repeat(arange(nx),ny),(nx,ny))
-        y = transpose(reshape(repeat(arange(ny),nx),(ny,nx)))
+        x = numpy.reshape(numpy.repeat(numpy.arange(nx),ny),(nx,ny))
+        y = numpy.transpose(numpy.reshape(numpy.repeat(numpy.arange(ny),nx),(ny,nx)))
         xr = (x-xc)*cos(pa) - (y-yc)*sin(pa)
         yr = (x-xc)*sin(pa) + (y-yc)*cos(pa)
         val = (xr/sx)**2 + (yr/sy)**2
