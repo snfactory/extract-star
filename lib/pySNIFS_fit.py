@@ -8,7 +8,7 @@
 ######################################################################
 
 from pySNIFS import *
-import numarray
+#import numarray
 import scipy
 import numpy
 import copy
@@ -466,13 +466,13 @@ class model:
         if param == None:
             raise ValueError, "A set of model parameters values must be provided."
             
-        numarray_type = type(numarray.array(1))
-        numeric_type = type(scipy.array(1))
+##         numarray_type = type(numarray.array(1))
+##         numeric_type = type(scipy.array(1))
             
-        if isinstance(data.data,numarray_type):
-            print "WARNING: Your data are in numarray type. Scipy optimization will be VERY SLOW."
-        elif not isinstance(data.data,numeric_type):
-            raise TypeError, "data.data must be an array"
+##         if isinstance(data.data,numarray_type):
+##             print "WARNING: Your data are in numarray type. Scipy optimization will be VERY SLOW."
+##         elif not isinstance(data.data,numeric_type):
+##             raise TypeError, "data.data must be an array"
         if (not isinstance(data,SNIFS_cube)) and (not isinstance(data,spectrum)) and (not isinstance(data,image_array)):
             raise TypeError, "data array must be a SNIFS_cube, image_array or spectrum object."
         if isinstance(data,SNIFS_cube):
@@ -653,7 +653,8 @@ class model:
     def res_eval(self,param=None):
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
         if param == None:
-            param = numarray.copy.deepcopy(self.flatparam)
+            #param = numarray.copy.deepcopy(self.flatparam)
+            param = numpy.copy.deepcopy(self.flatparam)
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
@@ -900,36 +901,36 @@ def init_param(data,func):
         
     #return p,b,f
 
-def plot_fit_3D(mod,nslices):
-    data = numarray.array(mod.data)
-    weight = numarray.array(mod.weight)
-    fit = numarray.array(mod.evalfit())
-    fitpar = numarray.array(mod.fitpar)
-    if nslices > len(data[2:,0]):
-        nslices = len(data[2:,0])
-    x = numarray.reshape(numarray.array(data[0,1:]),(15,15))
-    y = numarray.reshape(numarray.array(data[1,1:]),(15,15))
-    step_slices = float(len(data[2:,0]))/float(nslices)
-    pylab.figure(1)
-    pylab.clf
-    pylab.subplot(3,1,3)
-    pylab.plot(data[2:,0],sum(data[2:,1:],1)/sqrt(sum(1./weight[2:,1:],1)))
-    pylab.title('Mean signal to noise')
-    pylab.subplot(3,1,2)
-    pylab.plot(data[2:,0],fitpar[11:11+len(data[2:,0])])
-    pylab.title('Model Intensity')
-    pylab.semilogy()
-    for i in arange(nslices):
-        l = int(step_slices*i+0.5)
-        #pylab.subplot(3,1,3)
-        #axvline(x=l,ymin=0,ymax=1)
-        #pylab.subplot(3,1,2)
-        #axvline(x=l,ymin=0,ymax=1)
-        pylab.subplot(3,nslices,i+1)
-        contours = [(max(data[2+l,1:])**(1./10.))**(i) for i in arange(4)+7]
-        pylab.contour(numarray.reshape(data[2+l,1:],(15,15)),x,y,contours,colors=0,origin='lower')
-        pylab.contour(numarray.reshape(fit[l,:],(15,15)),x,y,contours,colors='b',origin='lower')
-        pylab.title('lbda=%6.1f'%data[2+l,0])
+## def plot_fit_3D(mod,nslices):
+##     data = numarray.array(mod.data)
+##     weight = numarray.array(mod.weight)
+##     fit = numarray.array(mod.evalfit())
+##     fitpar = numarray.array(mod.fitpar)
+##     if nslices > len(data[2:,0]):
+##         nslices = len(data[2:,0])
+##     x = numarray.reshape(numarray.array(data[0,1:]),(15,15))
+##     y = numarray.reshape(numarray.array(data[1,1:]),(15,15))
+##     step_slices = float(len(data[2:,0]))/float(nslices)
+##     pylab.figure(1)
+##     pylab.clf
+##     pylab.subplot(3,1,3)
+##     pylab.plot(data[2:,0],sum(data[2:,1:],1)/sqrt(sum(1./weight[2:,1:],1)))
+##     pylab.title('Mean signal to noise')
+##     pylab.subplot(3,1,2)
+##     pylab.plot(data[2:,0],fitpar[11:11+len(data[2:,0])])
+##     pylab.title('Model Intensity')
+##     pylab.semilogy()
+##     for i in arange(nslices):
+##         l = int(step_slices*i+0.5)
+##         #pylab.subplot(3,1,3)
+##         #axvline(x=l,ymin=0,ymax=1)
+##         #pylab.subplot(3,1,2)
+##         #axvline(x=l,ymin=0,ymax=1)
+##         pylab.subplot(3,nslices,i+1)
+##         contours = [(max(data[2+l,1:])**(1./10.))**(i) for i in arange(4)+7]
+##         pylab.contour(numarray.reshape(data[2+l,1:],(15,15)),x,y,contours,colors=0,origin='lower')
+##         pylab.contour(numarray.reshape(fit[l,:],(15,15)),x,y,contours,colors='b',origin='lower')
+##         pylab.title('lbda=%6.1f'%data[2+l,0])
                        
 def comp_spec2(cube,psf_param,intpar=[None,None]):
     signal = SNIFS_cube(cube,num_array=False)
