@@ -195,7 +195,7 @@ class spectrum:
         
         if self.len is not None:
             self.index_list = numpy.arange(self.len).tolist()
-            self.intervals = [(1,self.len)]
+            self.intervals = [(0,self.len)]
          
         self.curs_val = []
         self.cid = None       
