@@ -11,6 +11,7 @@ import pyfits
 
 #import scipy
 from scipy import optimize
+from scipy import cos,sin,pi,exp
 #from scipy.special import *
 from scipy import interpolate as I
 
@@ -19,7 +20,7 @@ from scipy import interpolate as I
 
 import numpy
 from numpy.numarray import mlab
-from numpy import float,float32,float64,isscalar
+from numpy import float,float32,float64,isscalar,compress
 
 import pylab, matplotlib
 
