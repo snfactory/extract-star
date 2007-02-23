@@ -12,7 +12,7 @@ import pyfits
 #import scipy
 from scipy import optimize
 from scipy import cos,sin,pi,exp
-#from scipy.special import *
+from scipy.special import *
 from scipy import interpolate as I
 
 # import numarray
@@ -447,7 +447,7 @@ class image_array:
         self.vmax = float(self.data.max())
 
         
-    def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,contour=False,var=False):
+    def display(self,cmap=pylab.cm.jet,aspect='equal',vmin=None,vmax=None,subima=None,ima=True,alpha=1,contour=False,var=False,linewidth=None,line_cmap=pylab.cm.gray,ncontour=10):
         """
         Display the image in a pylab figure.
         @param cmap: Colormap in pylab syntax
@@ -472,10 +472,10 @@ class image_array:
         if subima is not None:
             if isinstance(subima,list):
                 if isinstance(subima[0],list) and isinstance(subima[1],list):
-                    ii = [int((subima[1][0]-self.starty)/self.stepy),\
-                            int((subima[1][1]-self.starty)/self.stepy)]
-                    jj = [int((subima[0][0]-self.startx)/self.stepx),\
-                            int((subima[0][1]-self.startx)/self.stepx)]
+                    ii = [int((subima[1][0]-self.startx)/self.stepx),\
+                            int((subima[1][1]-self.startx)/self.stepx)]
+                    jj = [int((subima[0][0]-self.starty)/self.stepy),\
+                            int((subima[0][1]-self.starty)/self.stepy)]
                     extent = [subima[0][0],subima[0][1],subima[1][0],subima[1][1]]
                 elif isinstance(subima[0],tuple) and isinstance(subima[1],tuple):
                     ii = subima[0]
@@ -491,10 +491,10 @@ class image_array:
 
         if ima:
             pylab.imshow(data[ii[0]:ii[1],jj[0]:jj[1]],interpolation='nearest',aspect=aspect,cmap=cmap,\
-                         vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower')
+                         vmin=self.vmin,vmax=self.vmax,extent=extent,origin='lower',alpha=alpha)
         if contour:
-            levels = self.vmin + numpy.arange(10)*(self.vmax-self.vmin)/10.
-            pylab.contour(data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=pylab.cm.gray)
+            levels = self.vmin + numpy.arange(ncontour)*(self.vmax-self.vmin)/ncontour
+            pylab.contour(data[ii[0]:ii[1],jj[0]:jj[1]],levels,extent=extent,cmap=line_cmap,linewidth=linewidth)
         if self.labx is not None:
             pylab.xlabel(self.labx)
         if self.laby is not None:
@@ -603,7 +603,7 @@ class SNIFS_cube:
             spec_sta  = e3d_cube[1].data.field('SPEC_STA')
             spec_len  = e3d_cube[1].data.field('SPEC_LEN')
             spec_end  = spec_len + spec_sta
-            npts      = e3d_cube[1].data.getshape()[0]
+            #npts      = e3d_cube[1].data.getshape()[0]
             common_lstart,common_lend,lstep = max(spec_sta),min(spec_end),1
             common_start = ref_start + common_lstart * step
 

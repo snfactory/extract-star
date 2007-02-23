@@ -12,6 +12,7 @@ from pySNIFS import *
 import scipy
 import numpy
 import copy
+from numpy import *
 
 __author__ = '$Author$'
 __version__ = '$Revision$'
