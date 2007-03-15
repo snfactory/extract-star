@@ -7,14 +7,15 @@
 ## $Id$
 ######################################################################
 
+import os
+#os.environ['NUMERIX'] = 'numarray'
 import pyfits
-
 #import scipy
 from scipy import optimize
 from scipy import cos,sin,pi,exp
 from scipy.special import *
 from scipy import interpolate as I
-
+from scipy.ndimage import filters as F
 # import numarray
 # from numarray import Float32,Float64,sum
 
@@ -70,9 +71,9 @@ class spectrum:
                 else:
                     if no in data_fits[1].data.field('SPEC_ID'):
                         i = data_fits[1].data.field('SPEC_ID').tolist().index(no)
-                        self.data = data_fits[1].data.field('DATA_SPE')[i]
+                        self.data = numpy.array(data_fits[1].data.field('DATA_SPE')[i],'f')
                         if 'STAT_SPE' in data_fits[1].columns.names:
-                            self.var = data_fits[1].data.field('STAT_SPE')[i]
+                            self.var = numpy.array(data_fits[1].data.field('STAT_SPE')[i],'f')
                         else:
                             self.var = None 
                         self.len = data_fits[1].data.field('SPEC_LEN')[i]
@@ -88,14 +89,14 @@ class spectrum:
                         self.x = None
             else:
                 # Case where the data and variance spectra are read from fits files
-                self.data = data_fits[0].data
+                self.data = numpy.array(data_fits[0].data,'f')
                 if len(data_fits) == 2:
                     # The data fits spectrum has an extension containing the variance spectrum
-                    self.var = data_fits[1].data
+                    self.var = numpy.array(data_fits[1].data)
                 elif var_file is not None:
                     # The variance is read from a fits file 
                     var_fits = pyfits.open(var_file)
-                    self.var = var_fits[0].data
+                    self.var = numpy.array(var_fits[0].data)
                 else:
                     self.var = None
                 if not isinstance(self.var,type(None)):
@@ -184,7 +185,7 @@ class spectrum:
             if not isinstance(self.var,type(None)):
                 self.var = numpy.array(self.var)
         else:
-            self.data = numpy.array(self.data)
+            self.data = numpy.array(self.data,'f')
             self.x = numpy.array(self.x)
             if self.var is not None:
                 self.var = numpy.array(self.var)
@@ -406,7 +407,7 @@ class image_array:
                 self.nx = data_fits[0].header.get('NAXIS1')
                 self.ny = data_fits[0].header.get('NAXIS2')
                 self.endx = self.startx + (self.nx-1)*self.stepx
-                self.data = data_fits[0].data            
+                self.data = numpy.array(data_fits[0].data,'f')
                 self.endy = self.starty + (self.ny-1)*self.stepy
                 self.header = data_fits[0].header.items()
                 self.var = var
@@ -642,10 +643,10 @@ class SNIFS_cube:
                     self.var = tvar[lmin - common_lstart:lmax - common_lstart:lstep]
                 self.lbda = lbda[lmin - common_lstart:lmax - common_lstart:lstep]
             else:
-                self.data = numpy.convolve.boxcar(tdata,(lstep,1))\
+                self.data = F.uniform_filter(tdata,(lstep,1))\
                             [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
                 if not isinstance(var,type(None)):
-                    self.var = numpy.convolve.boxcar(tvar,(lstep,1))\
+                    self.var = F.uniform_filter(tvar,(lstep,1))\
                             [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lbda = lbda[lmin - common_lstart+lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lstep = self.lstep * lstep
@@ -661,7 +662,7 @@ class SNIFS_cube:
             self.i = e3d_cube[3].data.field('I')[ind]+7
             self.j = e3d_cube[3].data.field('J')[ind]+7
             if not num_array:
-                self.data = numpy.array(self.data)
+                self.data = numpy.array(self.data,'f')
                 if not isinstance(var,type(None)):
                     self.var = numpy.array(self.var)
                 self.lbda = numpy.array(self.lbda)
@@ -703,7 +704,7 @@ class SNIFS_cube:
                     self.no = no
                     self.lbda = lbda  
                 else:
-                    self.data = numpy.array(data)
+                    self.data = numpy.array(data,'f')
                     self.x = numpy.array(x)
                     self.y = numpy.array(y)
                     self.i = numpy.array(i)
@@ -980,6 +981,36 @@ class SNIFS_cube:
                     fits_file,self.e3d_data_header,self.e3d_grp_hdu,self.e3d_extra_hdu_list)
         
 
+    def WR_3d_fits(self,fits_file,mode='w+'):
+        """
+        Write the datacube in a 3D fits file.
+        @param file_name: name of the fits file
+        @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
+        """
+        hdulist = pyfits.HDUList()
+        hdu = pyfits.PrimaryHDU()
+        data3D = numpy.array([self.slice2d(i,coord='p') for i in arange(self.nslice)])
+        hdu.data = data3D
+        hdu.header.update('CRVAL1', self.lstart)
+        hdu.header.update('CRVAL2', 0.)
+        hdu.header.update('CRVAL3', 0.)
+        hdu.header.update('CDELT1', self.lstep)
+        hdu.header.update('CDELT2', 1.)
+        hdu.header.update('CDELT3', 1.)
+        hdu.header.update('CRPIX1', 1)
+        hdu.header.update('CRPIX2', 1)
+        hdu.header.update('CRPIX3', 1)
+        hdulist = pyfits.HDUList()
+        hdulist.append(hdu)
+        if self.var != None:
+            hdu_var = pyfits.ImageHDU()
+            var3D = numpy.array([self.slice2d(i,coord='p',var=True) for i in arange(self.nslice)])
+            hdu_var.data = var3D
+        hdulist.append(hdu_var)
+            
+        hdulist.writeto(fits_file,clobber=(mode=='w+'))
+
+        
 #####################     SNIFS masks     ########################
 
 class SNIFS_mask:
@@ -1139,7 +1170,6 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
         Min = min(data)
     if Max is None:
         Max = max(data)
-    print Min,Max
     if bin is None:
         bin = (Max-Min)/nbin
         
