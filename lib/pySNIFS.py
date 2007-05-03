@@ -23,8 +23,7 @@ import numarray as num
 from numarray import Float32 as float32
 from numarray import Float64 as float64
 from numarray import sum
-from numarray import ieeespecial
-from ieeespecial import nan
+from numarray.ieeespecial import nan
 os.environ['NUMERIX'] = 'numarray'
 
 # Uncomment if numpy is preferred
