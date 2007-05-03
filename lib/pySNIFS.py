@@ -23,11 +23,13 @@ import numarray as num
 from numarray import Float32 as float32
 from numarray import Float64 as float64
 from numarray import sum
+from numarray import ieeespecial
+from ieeespecial import nan
 os.environ['NUMERIX'] = 'numarray'
 
 # Uncomment if numpy is preferred
 ## import numpy as num
-## from numpy import float32,float64
+## from numpy import float32,float64,nan
 ## os.environ['NUMERIX'] = 'numpy'
 
 import pyfits
@@ -764,7 +766,7 @@ class SNIFS_cube:
                     raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
             if n1 >= 0 and n2 <= num.shape(self.data)[0]:
-                slice_2D = num.zeros((nx,ny),float32) * num.nan
+                slice_2D = num.zeros((nx,ny),float32) * nan
                 i = num.array(self.i)
                 j = num.array(self.j)
                 if var:
@@ -788,7 +790,7 @@ class SNIFS_cube:
                     lbda = self.lstart+num.arange(imax-imin)*self.lstep
                     tck = I.splrep(weight.x,weight.data,s=0)
                     w = I.splev(lbda,tck)
-                    slice_2D = num.zeros((nx,ny),float32) * num.nan
+                    slice_2D = num.zeros((nx,ny),float32) * nan
                     i = num.array(self.i)
                     j = num.array(self.j)
                     if var:
