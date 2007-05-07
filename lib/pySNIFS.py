@@ -9,7 +9,7 @@
 
 import os
 
-#import scipy
+import scipy
 from scipy import optimize
 from scipy import cos,sin,pi,exp
 from scipy.special import *
@@ -19,17 +19,17 @@ from scipy import std
 from scipy import isscalar
 
 # Uncomment if numarray is preferred (better behaviour with pyfits)
-import numarray as num
-from numarray import Float32 as float32
-from numarray import Float64 as float64
-from numarray import sum
-from numarray.ieeespecial import nan
-os.environ['NUMERIX'] = 'numarray'
+import numarray
+## from numarray import Float32 as float32
+## from numarray import Float64 as float64
+## from numarray import sum
+## from numarray.ieeespecial import nan
+##os.environ['NUMERIX'] = 'numarray'
 
 # Uncomment if numpy is preferred
-## import numpy as num
-## from numpy import float32,float64,nan
-## os.environ['NUMERIX'] = 'numpy'
+import numpy as num
+from numpy import float32,float64,nan
+os.environ['NUMERIX'] = 'numpy'
 
 import pyfits
 
@@ -979,14 +979,14 @@ class SNIFS_cube:
         """
         if not self.from_e3d_file:
             raise Error("Writing e3d file from scratch not yet implemented")
-        data_list = num.transpose(self.data)
-        #data_list = [row for row in num.transpose(self.data)]
-        #data_list = (num.transpose(self.data)).tolist()
+        data_list = numarray.transpose(self.data)
+        #data_list = [row for row in numarray.transpose(self.data)]
+        #data_list = (numarray.transpose(self.data)).tolist()
         if self.var != None:
-            var_list = num.transpose(self.var)
+            var_list = numarray.transpose(self.var)
             
-            #var_list = [row for row in num.transpose(self.var)]
-            #var_list = (num.transpose(self.var)).tolist()
+            #var_list = [row for row in numarray.transpose(self.var)]
+            #var_list = (numarray.transpose(self.var)).tolist()
         else:
             var_list = None
         start_list = [self.lstart for i in num.arange(self.nlens)]
@@ -1258,14 +1258,17 @@ def fit_poly(y,n,deg,x=None):
        the abscissae are taken as an array [1:len(y)]
     """
     if x is None:
-        x = num.arange(len(y))
+        x = scipy.arange(len(y))
+    else:
+        x = scipy.array(x)
+    y = scipy.array(y)
     old_l = 0
     l = len(y)
     while l != old_l:
         old_l = len(y)
-        p = numpy.poly1d(numpy.polyfit(x,y,deg))
-        sigma = numpy.sqrt(numpy.median((p(x) - y)**2))
-        ind = numpy.where(abs(y-p(x))<n*sigma)[0]
+        p = scipy.poly1d(scipy.polyfit(x,y,deg))
+        sigma = scipy.sqrt(scipy.median((p(x) - y)**2))
+        ind = scipy.where(abs(y-p(x))<n*sigma)[0]
         x = x[ind]
         y = y[ind]
         l = len(ind)
@@ -1295,6 +1298,9 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
        @param nslice: number of wavelengthes slices in the datacube. If not given, all the spectra of the datacube may have
                       different lengthes
     """
+    os.environ['NUMERIX'] = 'numarray'
+    reload(pyfits)
+    
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
     spec_len = [len(s) for s in data_list]
@@ -1345,6 +1351,8 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     pri_hdu.header.update('E3D_VERS',1.0)
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
     hdu_list.writeto(fits_file, clobber=True) # Overwrite
+    os.environ['NUMERIX'] = 'numpy'
+    reload(pyfits)
         
 def gaus_array(ima_shape,center,sigma,I,pa=None):
     """

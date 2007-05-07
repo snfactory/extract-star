@@ -13,7 +13,8 @@ from optparse import OptionParser
 
 import pySNIFS
 import pySNIFS_fit
-
+#os.environ['NUMERIX'] = 'numarray'
+import numarray
 import pyfits
 
 import pylab
@@ -61,6 +62,11 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
 def comp_spec(cube_file, psf_param, intpar=[None, None]):
 
     cube = pySNIFS.SNIFS_cube(cube_file)
+    cube.data = numpy.array(cube.data)
+    cube.var = numpy.array(cube.var)
+    cube.lbda = numpy.array(cube.lbda)
+    cube.x = numpy.array(cube.x)
+    cube.y = numpy.array(cube.y)
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     cube.var = where(cube.var>1e20, 0., cube.var)
     model = pySNIFS_fit.SNIFS_psf_3D(intpar, cube)
@@ -181,8 +187,8 @@ if __name__ == "__main__":
         cube2.nlens = cube.nlens
         data = numpy.array(cube.data)[i, numpy.newaxis]
         cube2.data = numpy.array(data)
-        cube2.x = cube.x
-        cube2.y = cube.y
+        cube2.x = numpy.array(cube.x)
+        cube2.y = numpy.array(cube.y)
         cube2.lbda = numpy.array([cube.lbda[i]])
         var = numpy.array(cube.var)[i, numpy.newaxis]
         cube2.var = numpy.array(var)
@@ -316,6 +322,7 @@ if __name__ == "__main__":
 
     hdu = pyfits.PrimaryHDU()
     hdu.data = numpy.array(spec[1])
+    #hdu.data = numarray.array(spec[1])
     hdu.header.update('NAXIS', 1)
     hdu.header.update('NAXIS1', len(spec[1]), after='NAXIS')
     hdu.header.update('CRVAL1', spec[0][0])
@@ -337,6 +344,7 @@ if __name__ == "__main__":
 
     hdu = pyfits.PrimaryHDU()
     hdu.data = numpy.array(spec[2])
+    #hdu.data = numarray.array(spec[2])
     hdu.header.update('NAXIS', 1)
     hdu.header.update('NAXIS1', len(spec[1]), after='NAXIS')
     hdu.header.update('CRVAL1', spec[0][0])
