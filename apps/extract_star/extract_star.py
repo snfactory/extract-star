@@ -7,9 +7,12 @@
 ## $Id$
 ######################################################################
 
+__author__ = "Emmanuel Pecontal"
+__version__ = '$Revision$'
+
 import os
 import sys
-from optparse import OptionParser
+import optparse
 
 import pySNIFS
 import pySNIFS_fit
@@ -114,7 +117,9 @@ if __name__ == "__main__":
 
     # Options ==============================
 
-    parser = OptionParser()
+    usage = "usage: [%prog] [options] -i inE3D.fits -o outSpec.fits -s outSky.fits"
+
+    parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-i", "--in", type="string", dest="input", 
                       help="Input datacube (euro3d format)")
     parser.add_option("-o", "--out", type="string", 
