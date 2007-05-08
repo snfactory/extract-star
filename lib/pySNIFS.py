@@ -9,7 +9,7 @@
 
 import os
 
-import scipy
+#import scipy
 from scipy import optimize
 from scipy import cos,sin,pi,exp
 from scipy.special import *
@@ -18,22 +18,13 @@ from scipy.ndimage import filters as F
 from scipy import std
 from scipy import isscalar
 
-# Uncomment if numarray is preferred (better behaviour with pyfits)
-import numarray
-## from numarray import Float32 as float32
-## from numarray import Float64 as float64
-## from numarray import sum
-## from numarray.ieeespecial import nan
-##os.environ['NUMERIX'] = 'numarray'
-
-# Uncomment if numpy is preferred
 import numpy as num
 from numpy import float32,float64,nan
-os.environ['NUMERIX'] = 'numpy'
 
+os.environ['NUMERIX'] = 'numpy'
 import pyfits
 
-import pylab, matplotlib
+import pylab
 
 __author__ = '$Author$'
 __version__ = '$Revision$'
@@ -48,28 +39,32 @@ class spectrum:
     def __init__(self,data_file=None,var_file=None,no=None,num_array=True,x=None,data=None,var=None,start=None,step=None,nx=None):
         """
         Initiating the class.
-        @param data_file: fits file from which the data are read. It can be a 1D fits image or a euro3d
-            datacube. In the euro3d case, the variance spectrum is read from this cube if present.
-            In the 1D fits image file case, if this file contains two extensions, the variance 
-            spectrum is read from the second one.
-        @param var_file: fits file from which the variance is read if it is not present in the data file. 
-            It must be a 1D fits image.
-        @param no: number of the spaxel in the datacube. Needed only if the input file is a euro3d cube.
-        @param x: array containing the x coordinates in the spectrum. It is used only if the spectrum
-            is not regularly sampled
+        @param data_file: fits file from which the data are read. It can be a
+            1D fits image or a euro3d datacube. In the euro3d case, the
+            variance spectrum is read from this cube if present.  In the 1D
+            fits image file case, if this file contains two extensions, the
+            variance spectrum is read from the second one.
+        @param var_file: fits file from which the variance is read if it is
+            not present in the data file.  It must be a 1D fits image.
+        @param no: number of the spaxel in the datacube. Needed only if the
+            input file is a euro3d cube.
+        @param x: array containing the x coordinates in the spectrum. It is
+            used only if the spectrum is not regularly sampled    
         @param data: array containing the data of the spectrum
         @param var: array containing the variance of the spectrum
-        @param start: coordinate in user coordinates of the first point of the data array.
+        @param start: coordinate in user coordinates of the first point of the
+            data array.
         @param step: step in user coordinates of the data.
-        @param nx: number of data point. It is usefull when the user want to create an array of zero
-            data. otherwise, this value is the size of the data array.
-        @param num_array: flag to say if the data are stored in numarray or in numeric.
-        @group parameters used when the spectrum is read from a fits spectrum or a euro3d datacube:
-               data_file,var_file,no  
+        @param nx: number of data point. It is usefull when the user want to
+            create an array of zero data. otherwise, this value is the size of
+            the data array.
+        @param num_array: flag to say if the data are stored in numarray or in
+            numeric.
+        @group parameters used when the spectrum is read from a fits spectrum
+            or a euro3d datacube: data_file,var_file,no
         @group parameters used when the spectrum is not read from a file:
                x,data,var,start,step,nx
         @group parameters used in both cases: num_array
-        
         """
         self.file = file
         if data_file is not None:
@@ -77,7 +72,8 @@ class spectrum:
             if data_fits[0].header.has_key('EURO3D'):
                 # Case where the spectrum belongs to an e3d datacube
                 if no is None:
-                    raise ValueError('The user must provide the spectrum number in the datacube')
+                    raise ValueError('The user must provide the spectrum '
+                                     'number in the datacube')
                 else:
                     if no in data_fits[1].data.field('SPEC_ID'):
                         i = data_fits[1].data.field('SPEC_ID').tolist().index(no)
@@ -88,7 +84,9 @@ class spectrum:
                             self.var = None 
                         self.len = data_fits[1].data.field('SPEC_LEN')[i]
                         self.step = data_fits[1].header.get('CDELTS')
-                        self.start = data_fits[1].header.get('CRVALS') + data_fits[1].data.field('SPEC_STA')[i]*self.step
+                        self.start = data_fits[1].header.get('CRVALS') + \
+                                     data_fits[1].data.field('SPEC_STA')[i] * \
+                                     self.step
                         self.x = num.arange(self.len)*self.step + self.start
                     else:
                         self.data = None
@@ -97,13 +95,14 @@ class spectrum:
                         self.step = None
                         self.start = None
                         self.x = None
-                
                 data_fits.close()
             else:
-                # Case where the data and variance spectra are read from fits files
+                # Case where the data and variance spectra are read from fits
+                # files
                 self.data = num.array(data_fits[0].data,'f')
                 if len(data_fits) == 2:
-                    # The data fits spectrum has an extension containing the variance spectrum
+                    # The data fits spectrum has an extension containing the
+                    # variance spectrum
                     self.var = num.array(data_fits[1].data)
                 elif var_file is not None:
                     # The variance is read from a fits file 
@@ -113,16 +112,19 @@ class spectrum:
                     self.var = None
                 if not isinstance(self.var,type(None)):
                     if len(self.var) != len(self.data):
-                        raise ValueError('Data and variance spectra must have the same length')
-                self.len = data_fits[0].header.get('naxis1')
-                self.x = data_fits[0].header.get('crval1') + num.arange(data_fits[0].header.get('naxis1')) * data_fits[0].header.get('cdelt1')
-                self.step = data_fits[0].header.get('cdelt1')
-                self.start = data_fits[0].header.get('crval1')
+                        raise ValueError('Data and variance spectra '
+                                         'must have the same length')
+                self.len = data_fits[0].header.get('NAXIS1')
+                self.x = data_fits[0].header.get('CRVAL1') + \
+                         num.arange(data_fits[0].header.get('NAXIS1')) * \
+                         data_fits[0].header.get('CDELT1')
+                self.step = data_fits[0].header.get('CDELT1')
+                self.start = data_fits[0].header.get('CRVAL1')
         else:
             if x is None:
                 # Case for a regularly sampled spectrum
 
-                if start is not None and step is not None and nx is not None:
+                if None not in (start, step, nx):
                     self.start = start
                     self.step = step
                     self.len = nx
@@ -132,13 +134,15 @@ class spectrum:
                         self.var = num.zeros(nx)
                         self.x = start + num.arange(nx)*step
                     else:
-                        print 'Warning: When nx is given, the data array is not taken into account and the\
-                        spectrum data is zet to zeros(nx)'
+                        print 'WARNING: When nx is given, the data array ' \
+                              'is not taken into account and the ' \
+                              'spectrum data is zet to zeros(nx)'
                                             
                 else:
                     if data is None:
                         if nx is None:
-                            raise ValueError('Not enough parameters to fill the spectrum data field')
+                            raise ValueError('Not enough parameters to fill '
+                                             'the spectrum data field')
                         else:
                             self.data = num.zeros(nx)
                         self.var = None
@@ -158,7 +162,8 @@ class spectrum:
                         self.len = len(data)
                         if var is not None:
                             if len(var) != len(data):
-                                raise ValueError('data and variance array must have the same length')
+                                raise ValueError('data and variance array must '
+                                                 'have the same length')
                             else:
                                 self.var = var
                         else:
@@ -184,10 +189,12 @@ class spectrum:
                         self.x = x
                 else:
                     if len(data) != len(x):
-                        raise ValueError("x and data arrays must have the same size")
+                        raise ValueError('x and data arrays must '
+                                         'have the same size')
                     if var is not None:
                         if len(var) != len(data):
-                            raise ValueError("data and var arrays must have the same size")
+                            raise ValueError('data and var arrays must '
+                                             'have the same size')
                     self.data = data
                     self.var = var
                     self.x = x
@@ -212,8 +219,11 @@ class spectrum:
     def plot(self,intervals=None,var=False,line='-',color='b'):
         """
         Create a new pylab figure and plot the spectrum.
-        @param intervals: A list of 2 elements tuples defining the intervals in x to be plotted
-        @param var: Flag to determine if we plot the variance instead of the data
+        
+        @param intervals: A list of 2 elements tuples defining the intervals
+            in x to be plotted
+        @param var: Flag to determine if we plot the variance instead of the
+            data
         @param line: line type in pylab syntax
         @param color: line color in pylab syntax
         """
@@ -906,13 +916,12 @@ class SNIFS_cube:
         if vmax is None:
             vmax = float(max(num.ravel(slice)))
 
-            
         fig = pylab.gcf()
         extent = [-1./2.,ny-1/2.,-1/2.,nx-1/2.]
         
-            
         if ima:
-            pylab.imshow(slice,interpolation='nearest',aspect=aspect,vmin=vmin,vmax=vmax,cmap=cmap,\
+            pylab.imshow(slice,interpolation='nearest',aspect=aspect, \
+                         vmin=vmin,vmax=vmax,cmap=cmap, \
                          origin='lower',extent=extent)
         if contour:
             levels = vmin + num.arange(10)*(vmax-vmin)/10.
@@ -978,15 +987,15 @@ class SNIFS_cube:
         @param fits_file: Name of the output file
         """
         if not self.from_e3d_file:
-            raise Error("Writing e3d file from scratch not yet implemented")
-        data_list = numarray.transpose(self.data)
-        #data_list = [row for row in numarray.transpose(self.data)]
-        #data_list = (numarray.transpose(self.data)).tolist()
+            raise NotImplementedError("Writing e3d file from scratch not yet implemented")
+        data_list = num.transpose(self.data)
+        #data_list = [row for row in num.transpose(self.data)]
+        #data_list = (num.transpose(self.data)).tolist()
         if self.var != None:
-            var_list = numarray.transpose(self.var)
+            var_list = num.transpose(self.var)
             
-            #var_list = [row for row in numarray.transpose(self.var)]
-            #var_list = (numarray.transpose(self.var)).tolist()
+            #var_list = [row for row in num.transpose(self.var)]
+            #var_list = (num.transpose(self.var)).tolist()
         else:
             var_list = None
         start_list = [self.lstart for i in num.arange(self.nlens)]
@@ -1258,20 +1267,20 @@ def fit_poly(y,n,deg,x=None):
        the abscissae are taken as an array [1:len(y)]
     """
     if x is None:
-        x = scipy.arange(len(y))
+        x = num.arange(len(y))
     else:
-        x = scipy.array(x)
-    y = scipy.array(y)
+        x = num.asarray(x)
+    y = num.asarray(y)
     old_l = 0
     l = len(y)
     while l != old_l:
         old_l = len(y)
-        p = scipy.poly1d(scipy.polyfit(x,y,deg))
-        sigma = scipy.sqrt(scipy.median((p(x) - y)**2))
-        ind = scipy.where(abs(y-p(x))<n*sigma)[0]
+        p = num.poly1d(num.polyfit(x,y,deg))
+        sigma = num.sqrt(num.median((p(x) - y)**2))
+        ind = num.abs(y-p(x)) < n*sigma
         x = x[ind]
         y = y[ind]
-        l = len(ind)
+        l = len(x)
         #y1 = compress(y<p(x)+n*sigma,y)
         #x1 = compress(y<p(x)+n*sigma,x)
         #y = compress(y1>p(x1)-n*sigma,y1)
@@ -1298,6 +1307,8 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
        @param nslice: number of wavelengthes slices in the datacube. If not given, all the spectra of the datacube may have
                       different lengthes
     """
+
+    import numarray
     os.environ['NUMERIX'] = 'numarray'
     reload(pyfits)
     
@@ -1351,6 +1362,7 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     pri_hdu.header.update('E3D_VERS',1.0)
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
     hdu_list.writeto(fits_file, clobber=True) # Overwrite
+
     os.environ['NUMERIX'] = 'numpy'
     reload(pyfits)
         
