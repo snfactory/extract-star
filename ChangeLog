@@ -1,6 +1,6 @@
 2007-05-08  yannick.copin  <yannick.copin@laposte.net>
 
-	* apps/extract_star/extract_star.py: minor reformatting.
+	* apps/extract_star/extract_star.py: minor reformatting, fits I/O.
 
 2006-10-19  yannick.copin  <yannick.copin@laposte.net>
 

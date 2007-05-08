@@ -23,10 +23,6 @@ import numpy as N
 import scipy as S
 from scipy.ndimage import filters as F
 
-import matplotlib
-matplotlib.use('Agg')
-import pylab
-
 def print_msg(str, verbosity, limit=0):
     """Print message 'str' if verbosity level >= verbosity limit."""
 
@@ -141,7 +137,7 @@ if __name__ == "__main__":
     # Input datacube ==============================
     
     print_msg("Opening datacube %s" % opts.input, opts.verbosity, 0)
-    inhdr = pyfits.getheader(opts.input, 1)
+    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     channel = inhdr.get('CHANNEL', 'Unknown').upper()
     if channel.startswith('B'):
         slices=[10, 900, 20]
@@ -208,7 +204,7 @@ if __name__ == "__main__":
         cube2.var = N.array(var)
 
         # Guess parameters for the current slice
-        sky = min(cube2.data[0]+5*cube2.var[0]) # Background
+        sky = (cube2.data[0]+5*cube2.var[0]).min() # Background
         sl_int = F.median_filter(cube2.data[0], 3) # Centroid
         imax = sl_int.max()              # Intensity
         sl_int -= sky
@@ -356,47 +352,39 @@ if __name__ == "__main__":
                      intpar=[0.42, lbda_ref])
     # The 3D psf model is not normalized to 1 in integral. The result must be
     # renormalized by (1+eps)
-    spec[1] = spec[1] * (1 + data_model.fitpar[7])
+    spec[1] *= 1 + data_model.fitpar[7]
     
     # Save star spectrum ==============================
 
-    hdu = pyfits.PrimaryHDU()
-    hdu.data = N.array(spec[1])
-    hdu.header.update('NAXIS', 1)
-    hdu.header.update('NAXIS1', len(spec[1]), after='NAXIS')
-    hdu.header.update('CRVAL1', spec[0][0])
-    hdu.header.update('CDELT1', inhdr.get('CDELTS'))
-    for desc in inhdr.items():
-        if desc[0][0:5] not in ('TUNIT','TTYPE','TFORM','TDISP','NAXIS') and \
-           desc[0] not in ('EXTNAME','XTENSION','GCOUNT','PCOUNT','BITPIX',
-                           'CTYPES','CRVALS','CDELTS','CRPIXS'):
-            hdu.header.update(desc[0], desc[1])
-    hdulist = pyfits.HDUList()
+    hdu = pyfits.PrimaryHDU(N.array(spec[1]), inhdr)
+    # Delete/add some keywords
+    for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
+        del hdu.header[key]
+    hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
+    hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
     for i,par in enumerate(fitpar[0:11]):
-        hdu.header.update('FITPAR%0.2d' % i, par)
-    hdulist.append(hdu)
-    hdulist.writeto(opts.out, clobber=True)
-
+        hdu.header.update('ESPAR%02d' % i, par)
+    hdu.writeto(opts.out, clobber=True) # Overwrite without asking
+    
     # Save sky spectrum ==============================
 
-    hdu = pyfits.PrimaryHDU()
-    hdu.data = N.array(spec[2])
-    hdu.header.update('NAXIS', 1)
-    hdu.header.update('NAXIS1', len(spec[1]), after='NAXIS')
-    hdu.header.update('CRVAL1', spec[0][0])
-    hdu.header.update('CDELT1', inhdr.get('CDELTS'))
-    for desc in inhdr.items():
-        if desc[0][0:5] not in ('TUNIT','TTYPE','TFORM','TDISP','NAXIS') and \
-           desc[0] not in ('EXTNAME','XTENSION','GCOUNT','PCOUNT','BITPIX',
-                           'CTYPES','CRVALS','CDELTS','CRPIXS'):
-            hdu.header.update(desc[0], desc[1])
-    hdulist = pyfits.HDUList()
-    hdulist.append(hdu)
-    hdulist.writeto(opts.sky, clobber=True)
+    hdu = pyfits.PrimaryHDU(N.array(spec[2]), inhdr)
+    # Delete/add some keywords
+    for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
+        del hdu.header[key]
+    hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
+    hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
+    for i,par in enumerate(fitpar[0:11]):
+        hdu.header.update('ESPAR%02d' % i, par)
+    hdu.writeto(opts.sky, clobber=True) # Overwrite without asking
 
     # Create output graphics ==============================
     
     if opts.plot:
+
+        import matplotlib
+        matplotlib.use('Agg')
+        import pylab
 
         basename = os.path.splitext(opts.out)[0]
         plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
@@ -431,7 +419,7 @@ if __name__ == "__main__":
             pylab.subplot(nrow, ncol, i+1)
             data = data_model.data.data[i,:]
             fit = data_model.evalfit()[i,:]
-            imin = min((min(data), min(fit)))
+            imin = min(data.min(), fit.min())
             pylab.plot(data-imin+1e-2)
             pylab.plot(fit-imin+1e-2)
             pylab.semilogy()
