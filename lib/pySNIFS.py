@@ -246,13 +246,14 @@ class spectrum:
 ##             else:
 ##                 pylab.plot(self.x[ind_interval[0]:ind_interval[1]],data[ind_interval[0]:ind_interval[1]],ind_interval[2])
 
-    def overplot(self,intervals=None,var=False,line='-',color='b'): # modif du 11-10-05 (GR)      
+    def overplot(self,intervals=None,var=False,line='-',color='b',ax=None): # modif du 11-10-05 (GR)      
         """
         Plot the spectrum in the current pylab figure.
         @param intervals: A list of 2 elements tuples defining the intervals in x to be plotted
         @param var: Flag to determine if we plot the variance instead of the data
         @param line: line type in pylab syntax
         @param color: line color in pylab syntax
+        @param ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
         """
         line = line+color
         if var:
@@ -266,7 +267,10 @@ class spectrum:
         
         for ind_interval in ind_intervals:
             if len(ind_interval) == 2:
-                pylab.plot(self.x[ind_interval[0]:ind_interval[1]],data[ind_interval[0]:ind_interval[1]],line)
+                if ax is None:
+                    pylab.plot(self.x[ind_interval[0]:ind_interval[1]],data[ind_interval[0]:ind_interval[1]],line)
+                else:
+                    ax.plot(self.x[ind_interval[0]:ind_interval[1]],data[ind_interval[0]:ind_interval[1]],line)
 ##      handling of different line style for each interval not yet implemented
 ##             else:
 ##                 pylab.plot(self.x[ind_interval[0]:ind_interval[1]],data[ind_interval[0]:ind_interval[1]],ind_interval[2])
@@ -762,10 +766,10 @@ class SNIFS_cube:
                     raise ValueError("Coordinates flag should be either 'p' or 'w'")
                 if n1 == n2:n2=n2+1
             else:
-                if n%1 != 0:
-                    print "WARNING : You don't put an integer. The number will be trunc as an integer"
-                    n = int(n)
                 if coord == 'p':
+                    if n%1 != 0:
+                        print "WARNING : You don't put an integer for the slice index. The number will be truncated as an integer"
+                    n = int(n)
                     n1 = n
                     n2 = n+1
                 elif coord == 'w':
@@ -849,7 +853,7 @@ class SNIFS_cube:
                     else:
                         raise IndexError("Index list out of range")
                         
-    def plot_spec(self,no=None,ind=None,mask=None,var=False,ax=None):
+    def plot_spec(self,no=None,ind=None,mask=None,var=False,intervals=None,color='b',ax=None):
         """
         Plot a spectrum extracted from the datacube.
         @param no: lenslet number in the datacube
@@ -857,13 +861,17 @@ class SNIFS_cube:
         @param mask: optional array having the same shape than the data field of the cube. If given, the
             spectrum returned is the sum of the data array multiplied by the mask.
         @param var: Variance flag. If set to True, the variance spectrum is ploted.
+        @param intervals: A list of 2 elements tuples defining the intervals in wavelength to be plotted
+        @param color: line color in pylab syntax
         @param ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
         """
-        if ax is None:
-            pylab.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
-        else:
-            ax.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
-        pylab.show()
+        spec = self.get_spec(no)
+        spec.overplot(intervals=intervals,color=color,ax=ax)
+##         if ax is None:
+##             pylab.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
+##         else:
+##             ax.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
+        pylab.draw()
 
     def get_spec(self,no,num_array=True):
         """
@@ -1216,10 +1224,12 @@ def common_bounds_cube(cube_list):
     @param cube_list: Input list of spectra
     @return : imin,imax: lists of the indexes of the lower/upper common bound for each cube
     """
+    eps=1e-8
     if False in [hasattr(cube,'lstep') for cube in cube_list]:
         raise ValueError("Missing attribute lstep in datacubes.")
     else:
-        if std([cube.lstep for cube in cube_list]) != 0:
+        meanstep = num.mean([spec.lstep for cube in cube_list])
+        if std([cube.lstep for cube in cube_list]) > eps*meanstep:
             raise ValueError("All cubes should have the same step.")
         xinf = max([min(cube.lbda) for cube in cube_list])
         xsup = min([max(cube.lbda) for cube in cube_list])
@@ -1234,10 +1244,12 @@ def common_bounds_spec(spec_list):
     @param spec_list: Input list of spectra
     @return: imin,imax: lists of the indexes of the lower/upper common bound for each spectrum
     """
+    eps=1e-8
     if False in [hasattr(spec,'step') for spec in spec_list]:
         raise ValueError("Missing attribute lstep in spectra.")
     else:
-        if std([spec.step for spec in spec_list]) != 0:
+        meanstep = num.mean([spec.step for spec in spec_list])
+        if num.std([spec.step for spec in spec_list]) > eps*meanstep:
             raise ValueError("All spectra should have the same step.")
         xinf = max([min(spec.x) for spec in spec_list])
         xsup = min([max(spec.x) for spec in spec_list])
@@ -1415,3 +1427,13 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
         gaus = I*exp(-val/2)
 
     return gaus
+
+def comp_cdg(ima):
+    ima = num.abs(ima)
+    x,y = indices(shape(ima))[0]*1.,indices(shape(ima))[1]*1.
+    xc = num.sum(num.sum(ima*x))/num.sum(num.sum(ima))
+    yc = num.sum(num.sum(ima*y))/num.sum(num.sum(ima))
+    sx = sqrt(num.sum(num.sum((ima*(x-xc)**2)))/num.sum(num.sum(ima)))
+    sy = sqrt(num.sum(num.sum((ima*(y-yc)**2)))/num.sum(num.sum(ima)))
+
+    return xc,yc,sx,sy
