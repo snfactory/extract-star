@@ -447,20 +447,21 @@ class image_array:
             self.var = var
             self.startx = startx
             self.starty = starty
+            self.nx = num.shape(data)[1]
+            self.ny = num.shape(data)[0]
             if endx is None:
                 self.stepx = stepx
-                self.endx = startx + (len(data[:,0])-1)*stepx
+                self.endx = startx + (self.nx-1)*stepx
             else:
                 self.endx = endx
-                self.stepx = float(endx-startx)/(len(data[:,0])-1)
+                self.stepx = float(endx-startx)/(self.nx-1)
             if endy is None:
                 self.stepy = stepy
-                self.endy = starty + (len(data[0])-1)*stepy
+                self.endy = starty + (self.ny-1)*stepy
             else:
                 self.endy = endy
-                self.stepy = float(endy-starty)/(len(data[0])-1)            
-            self.nx = num.shape(data)[0]
-            self.ny = num.shape(data)[1]
+                self.stepy = float(endy-starty)/(self.ny-1)            
+            
             self.header = header
             
         self.labx = labx
@@ -1024,12 +1025,12 @@ class SNIFS_cube:
         hdu = pyfits.PrimaryHDU()
         data3D = num.array([self.slice2d(i,coord='p') for i in arange(self.nslice)])
         hdu.data = data3D
-        hdu.header.update('CRVAL1', self.lstart)
+        hdu.header.update('CRVAL1', 0.)
         hdu.header.update('CRVAL2', 0.)
-        hdu.header.update('CRVAL3', 0.)
-        hdu.header.update('CDELT1', self.lstep)
+        hdu.header.update('CRVAL3', self.lstart)
+        hdu.header.update('CDELT1', 1.)
         hdu.header.update('CDELT2', 1.)
-        hdu.header.update('CDELT3', 1.)
+        hdu.header.update('CDELT3', self.lstep)
         hdu.header.update('CRPIX1', 1)
         hdu.header.update('CRPIX2', 1)
         hdu.header.update('CRPIX3', 1)
