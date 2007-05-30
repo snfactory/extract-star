@@ -735,7 +735,21 @@ class model:
             self.flatparam = scipy.array(self.fitpar,'d')
         self.khi2 = self.objfun(param=res) / \
                     (self.data.nlens*self.data.nslice + scipy.size(self.flatparam))
-     
+
+        
+    def param_error(self,param=None):
+        if param == None:
+            param = self.fitpar
+        jac = self.objgrad
+        print 'jac: ',shape(jac(param))
+        hess = lambda param: approx_deriv(jac,param,order=2)
+        print 'hess: ',shape(hess(param))
+        try:
+            cov = scipy.linalg.inv(hess(param))
+            return cov
+        except:
+            return numpy.zeros((len(param),len(param)),'d')
+ 
     def flat_param(self,param=None):
         param = scipy.array(scipy.cast['f'](param),shape=(scipy.size(param))).tolist()
         return param
@@ -763,6 +777,48 @@ class model:
 #######################################################
 #                   Fit auxilliary functions          #
 #######################################################
+
+def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
+    """Let's assume len(pars)=N and func returns a array of shape S.
+
+    S.optimize.approx_fprime corresponds to approx_deriv(order=2).
+
+    S.derivative only works with univariate function. One could use
+    scipy.optimize.approx_fprime (and associated check_grad) instead, but it
+    only works with scalar function (e.g. chi2), and it cannot therefore be
+    used to check model derivatives or hessian.
+    """
+
+    if order == 2:                      # Simplest crudest differentiation
+        weights = scipy.array([-1,1])
+    elif order == 3:                    # Simplest symmetric diff.
+        weights = scipy.array([-1,0,1])/2.
+    elif order == 5:
+        weights = scipy.array([1,-8,0,8,-1])/12.
+    elif order == 7:
+        weights = scipy.array([-1,9,-45,0,45,-9,1])/60.
+    elif order == 9:
+        weights = scipy.array([3,-32,168,-672,0,672,-168,32,-3])/840.
+    else:
+        raise NotImplementedError
+
+    if dpars is None:
+        dpars = scipy.ones(len(pars))*eps  # N
+    mat = scipy.diag(dpars)                 # NxN
+
+    delta = scipy.arange(len(weights)) - (len(weights)-1)//2
+    df = 0
+    for w,d in zip(weights,delta):
+        if w:
+            df += w*scipy.array([ func(pars+d*dpi, *args) for dpi in mat]) # NxS
+
+    f = func(pars, *args)               # S
+    if f.ndim==0:                       # func returns a scalar S=()
+        der = df/dpars                  # N
+    else:                               # func returns an array of shape S
+        der = df/dpars[...,scipy.newaxis]   # NxS
+
+    return der
 
 def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
     if param==None:

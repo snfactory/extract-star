@@ -92,16 +92,31 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     gamma = N.sum(psf*cube.data*weight, axis=1)
     delta = N.sum(weight, axis=1)
     epsilon = N.sum(cube.data*weight, axis=1)
-
-    obj = (beta*epsilon - delta*gamma)/(beta**2 - alpha*delta)
-    sky = (beta*gamma - alpha*epsilon)/(beta**2 - alpha*delta)
-
+    det = (beta**2 - alpha*delta)
+    obj = (beta*epsilon - delta*gamma)/det
+    sky = (beta*gamma - alpha*epsilon)/det
+    hess = N.zeros((len(obj),2,2),'d')
+    hess[:,0,0] = delta
+    hess[:,0,1] = beta
+    hess[:,1,0] = beta
+    hess[:,1,1] = alpha
+    cofact_hess = N.zeros((len(obj),2,2),'d')
+    cofact_hess[:,0,0] = -delta
+    cofact_hess[:,0,1] = beta
+    cofact_hess[:,1,0] = beta
+    cofact_hess[:,1,1] = -alpha
+    
+    cov = N.transpose(N.transpose(cofact_hess,(2,1,0))/det,(2,0,1))/2
+    var_obj = cov[:,0,0]
+    var_sky = cov[:,1,1]
     # This is were one could implement optimal extraction. - YC
 
-    spec = N.zeros((3, cube.nslice), 'd')
+    spec = N.zeros((5, cube.nslice), 'd')
     spec[0,:] = cube.lbda
     spec[1,:] = obj
     spec[2,:] = sky
+    spec[3,:] = var_obj
+    spec[4,:] = var_sky
   
     return spec
 
@@ -344,33 +359,39 @@ if __name__ == "__main__":
     
     print_msg("Extracting the spectrum...", opts.verbosity, 0)
     spec = comp_spec(opts.input, fitpar[0:11], intpar=[0.42, lbda_ref])
+
     # The 3D psf model is not normalized to 1 in integral. The result must be
     # renormalized by (1+eps)
     spec[1] *= 1 + data_model.fitpar[7]
+    spec[3] *= (1 + data_model.fitpar[7])**2
     
     # Save star spectrum ==============================
 
-    hdu = pyfits.PrimaryHDU(spec[1], inhdr)
-    # Delete/add some keywords
-    for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
-        del hdu.header[key]
-    hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
-    hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
-    for i,par in enumerate(fitpar[0:11]):
-        hdu.header.update('ESPAR%02d' % i, par)
-    hdu.writeto(opts.out, clobber=True) # Overwrite without asking
+##     hdu = pyfits.PrimaryHDU(spec[1], inhdr)
+##     # Delete/add some keywords
+##     for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
+##         del hdu.header[key]
+##     hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
+##     hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
+##     for i,par in enumerate(fitpar[0:11]):
+##         hdu.header.update('ESPAR%02d' % i, par)
+##     hdu.writeto(opts.out, clobber=True) # Overwrite without asking
+    star_spec = pySNIFS.spectrum(data=spec[1],var=spec[3],start=spec[0][0],step=inhdr.get('CDELTS'))
+    star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     
     # Save sky spectrum ==============================
 
-    hdu = pyfits.PrimaryHDU(spec[2], inhdr)
-    # Delete/add some keywords
-    for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
-        del hdu.header[key]
-    hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
-    hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
-    for i,par in enumerate(fitpar[0:11]):
-        hdu.header.update('ESPAR%02d' % i, par)
-    hdu.writeto(opts.sky, clobber=True) # Overwrite without asking
+##     hdu = pyfits.PrimaryHDU(spec[2], inhdr)
+##     # Delete/add some keywords
+##     for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
+##         del hdu.header[key]
+##     hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
+##     hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
+##     for i,par in enumerate(fitpar[0:11]):
+##         hdu.header.update('ESPAR%02d' % i, par)
+##     hdu.writeto(opts.sky, clobber=True) # Overwrite without asking
+    sky_spec = pySNIFS.spectrum(data=spec[2],var=spec[4],start=spec[0][0],step=inhdr.get('CDELTS'))
+    sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
 
     # Create output graphics ==============================
     
@@ -382,6 +403,7 @@ if __name__ == "__main__":
 
         basename = os.path.splitext(opts.out)[0]
         plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
+        plot1bis = os.path.extsep.join((basename+"_var" , opts.graph))
         plot2 = os.path.extsep.join((basename+"_fit1", opts.graph))
         plot3 = os.path.extsep.join((basename+"_fit2", opts.graph))
         plot4 = os.path.extsep.join((basename+"_fit3", opts.graph))
@@ -401,6 +423,18 @@ if __name__ == "__main__":
         pylab.title("Background spectrum")
         pylab.savefig(plot1)
         
+        # Plot of the star and sky variance spectra ------------------------------
+        
+        print_msg("Producing plot %s..." % plot1bis, opts.verbosity, 1)
+        
+        pylab.figure()
+        pylab.subplot(2, 1, 1)
+        pylab.plot(spec[0], spec[3])
+        pylab.title("Star variance spectrum")
+        pylab.subplot(2, 1, 2)
+        pylab.plot(spec[0], spec[4])
+        pylab.title("Background variance spectrum")
+        pylab.savefig(plot1bis)
         # Plot of the fit on each slice ------------------------------
         
         print_msg("Producing plot %s..." % plot2, opts.verbosity, 1)
