@@ -1,3 +1,7 @@
+2007-06-01  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: some plot updates.
+
 2007-05-08  yannick.copin  <yannick.copin@laposte.net>
 
 	* apps/extract_star/extract_star.py: minor reformatting, fits I/O.
