@@ -214,7 +214,7 @@ if __name__ == "__main__":
         cube2.var = cube.var[i, N.newaxis]
 
         # Guess parameters for the current slice
-        sky = (cube2.data[0]+5*cube2.var[0]).min() # Background
+        sky = (cube2.data[0]+3*N.sqrt(cube2.var[0])).min() # Background
         sl_int = F.median_filter(cube2.data[0], 3) # Centroid
         imax = sl_int.max()              # Intensity
         sl_int -= sky

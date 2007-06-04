@@ -669,7 +669,7 @@ class SNIFS_cube:
                             [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
                 if not isinstance(var,type(None)):
                     self.var = F.uniform_filter(tvar,(lstep,1))\
-                            [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
+                            [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]/lstep
                 self.lbda = lbda[lmin - common_lstart+lstep/2:lmax - common_lstart+lstep/2:lstep]
                 self.lstep = self.lstep * lstep
             self.lstart = self.lbda[0]
@@ -867,7 +867,7 @@ class SNIFS_cube:
         @param ax: pylab axes on which the spectrum will be ploted. If set to None, a new axes is created.
         """
         spec = self.get_spec(no)
-        spec.overplot(intervals=intervals,color=color,ax=ax)
+        spec.overplot(intervals=intervals,color=color,ax=ax,var=var)
 ##         if ax is None:
 ##             pylab.plot(self.lbda,self.spec(no=no,ind=ind,mask=mask,var=var))
 ##         else:
