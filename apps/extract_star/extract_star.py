@@ -367,15 +367,22 @@ if __name__ == "__main__":
     
     # Save star spectrum ==============================
 
-    star_spec = pySNIFS.spectrum(data=spec[1],var=spec[3],
+    star_spec = pySNIFS.spectrum(data=spec[1],
                                  start=spec[0][0],step=inhdr.get('CDELTS'))
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
+    star_var = pySNIFS.spectrum(data=spec[3],
+                                 start=spec[0][0],step=inhdr.get('CDELTS'))
+    star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
     
     # Save sky spectrum ==============================
 
-    sky_spec = pySNIFS.spectrum(data=spec[2],var=spec[4],
+    sky_spec = pySNIFS.spectrum(data=spec[2],
                                 start=spec[0][0],step=inhdr.get('CDELTS'))
     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+    sky_var = pySNIFS.spectrum(data=spec[4],
+                                start=spec[0][0],step=inhdr.get('CDELTS'))
+    sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+
 
     # Create output graphics ==============================
     
