@@ -367,30 +367,14 @@ if __name__ == "__main__":
     
     # Save star spectrum ==============================
 
-##     hdu = pyfits.PrimaryHDU(spec[1], inhdr)
-##     # Delete/add some keywords
-##     for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
-##         del hdu.header[key]
-##     hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
-##     hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
-##     for i,par in enumerate(fitpar[0:11]):
-##         hdu.header.update('ESPAR%02d' % i, par)
-##     hdu.writeto(opts.out, clobber=True) # Overwrite without asking
-    star_spec = pySNIFS.spectrum(data=spec[1],var=spec[3],start=spec[0][0],step=inhdr.get('CDELTS'))
+    star_spec = pySNIFS.spectrum(data=spec[1],var=spec[3],
+                                 start=spec[0][0],step=inhdr.get('CDELTS'))
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     
     # Save sky spectrum ==============================
 
-##     hdu = pyfits.PrimaryHDU(spec[2], inhdr)
-##     # Delete/add some keywords
-##     for key in ('EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS'):
-##         del hdu.header[key]
-##     hdu.header.update('CRVAL1', spec[0][0], after='NAXIS1')
-##     hdu.header.update('CDELT1', inhdr.get('CDELTS'), after='CRVAL1')
-##     for i,par in enumerate(fitpar[0:11]):
-##         hdu.header.update('ESPAR%02d' % i, par)
-##     hdu.writeto(opts.sky, clobber=True) # Overwrite without asking
-    sky_spec = pySNIFS.spectrum(data=spec[2],var=spec[4],start=spec[0][0],step=inhdr.get('CDELTS'))
+    sky_spec = pySNIFS.spectrum(data=spec[2],var=spec[4],
+                                start=spec[0][0],step=inhdr.get('CDELTS'))
     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
 
     # Create output graphics ==============================
@@ -488,7 +472,7 @@ if __name__ == "__main__":
             ax.plot(N.sum(cube.slice2d(i, coord='p'), axis=1), 'r^', ms=3)
             ax.plot(N.sum(cube_fit.slice2d(i, coord='p'), axis=1), 'r-')
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=4)
-            ax.text(0.1,0.9, "%.0f" % cube.lbda[i], fontsize=5,
+            ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I (blue) or J (red)", fontsize=7)
