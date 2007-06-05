@@ -131,6 +131,7 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     spec[0,:] = cube.lbda
     spec[1,:] = obj
     spec[2,:] = sky
+    
     spec[3,:] = var_obj
     spec[4,:] = var_sky
   
@@ -238,16 +239,19 @@ if __name__ == "__main__":
         yc = N.average(cube2.y, weights=sl_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0, 0, xc, yc, 0.3, -0.2, 2.2, 0.1, 0.2, 1., 0., imax] # SNIFS_psf_3D;0.42
+##         p1 = [0, 0, xc, yc, 0.3, -0.2, 2.2, 0.1, 0.2, 1., 0., imax] # SNIFS_psf_3D;0.42
+        p1 = [0, 0, xc, yc, 0.3, -0.2, 1.84, 0.42, 0.2, 1., 0., imax] # SNIFS_psf_3D;0.42
         b1 = [None]*(11+cube2.nslice) # Empty list of length 11+cube2.nslice
         b1[0:11] = [[None, None],
                     [-N.pi, N.pi],
                     [None, None],
                     [None, None],
                     [0.01, None],
-                    [-5., 0],
-                    [1., None], 
-                    [0, None],
+                    [-0.3, 0],
+##                     [1., None], 
+##                     [0, None],
+                    [1.84, 1.84], 
+                    [0.42, 0.42],
                     [0.01, None],
                     [1., None],
                     [0., N.pi]]
@@ -337,8 +341,10 @@ if __name__ == "__main__":
                 [None, None],
                 [0.01, None],
                 [-0.3, 0],
-                [1., None], 
-                [0, None],
+##                 [1., None], 
+##                 [0, None],
+                [1.84, 1.84], 
+                [0.42, 0.42],
                 [0.01, None],
                 [1., None],
                 [0., N.pi]]
