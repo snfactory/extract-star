@@ -66,7 +66,7 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
     #ax.legend(('2D PSF', '3D PSF Guess', '3D PSF Fit'))
     pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=8)
 
-def fit_param_hdr(hdr,param,cube):
+def fit_param_hdr(hdr,param,lbda_ref,cube):
     hdr.update('ES_VERS',__version__)
     hdr.update('ES_CUBE',cube)
     hdr.update('ES_ALPHA',param[0])
@@ -80,6 +80,7 @@ def fit_param_hdr(hdr,param,cube):
     hdr.update('ES_SIGK',param[8])
     hdr.update('ES_QK',param[9])
     hdr.update('ES_THETK',param[10])
+    hdr.update('ES_LREF',lbda_ref)
     
 def comp_spec(cube_file, psf_param, intpar=[None, None]):
 
@@ -382,7 +383,7 @@ if __name__ == "__main__":
     
     # Save star spectrum ==============================
 
-    fit_param_hdr(inhdr,data_model.fitpar,opts.input)
+    fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input)
     star_spec = pySNIFS.spectrum(data=spec[1],
                                  start=spec[0][0],step=inhdr.get('CDELTS'))
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
