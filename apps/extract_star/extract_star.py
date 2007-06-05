@@ -60,12 +60,27 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
     ax.set_ylabel(r'$%s$' % (str_par), fontsize=15)
     ax.text(0.05, 0.7,
             r'$\rm{Guess:}\hspace{0.5} %s = %4.2f,\hspace{0.5} ' \
-            r'$\rm{Fit:}\hspace{0.5} %s = %4.2f$' % \
+            r'\rm{Fit:}\hspace{0.5} %s = %4.2f$' % \
             (str_par, guess_par, str_par, fitpar),
             transform=ax.transAxes, fontsize=10)
     #ax.legend(('2D PSF', '3D PSF Guess', '3D PSF Fit'))
     pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=8)
 
+def fit_param_hdr(hdr,param,cube):
+    hdr.update('ES_VERS',__version__)
+    hdr.update('ES_CUBE',cube)
+    hdr.update('ES_ALPHA',param[0])
+    hdr.update('ES_THETA',param[1])
+    hdr.update('ES_X0',param[2])
+    hdr.update('ES_Y0',param[3])
+    hdr.update('ES_SIGC',param[4])
+    hdr.update('ES_GAMMA',param[5])
+    hdr.update('ES_Q',param[6])
+    hdr.update('ES_EPS',param[7])
+    hdr.update('ES_SIGK',param[8])
+    hdr.update('ES_QK',param[9])
+    hdr.update('ES_THETK',param[10])
+    
 def comp_spec(cube_file, psf_param, intpar=[None, None]):
 
     cube = pySNIFS.SNIFS_cube(cube_file)
@@ -320,7 +335,7 @@ if __name__ == "__main__":
                 [None, None],
                 [None, None],
                 [0.01, None],
-                [-5., 0],
+                [-0.3, 0],
                 [1., None], 
                 [0, None],
                 [0.01, None],
@@ -367,6 +382,7 @@ if __name__ == "__main__":
     
     # Save star spectrum ==============================
 
+    fit_param_hdr(inhdr,data_model.fitpar,opts.input)
     star_spec = pySNIFS.spectrum(data=spec[1],
                                  start=spec[0][0],step=inhdr.get('CDELTS'))
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
