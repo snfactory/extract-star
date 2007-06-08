@@ -8,7 +8,7 @@
 ######################################################################
 
 __author__ = "Emmanuel Pecontal"
-__version__ = '$Revision$'
+__version__ = '$Id$'
 
 import os
 import sys
@@ -30,17 +30,20 @@ def print_msg(str, verbosity, limit=0):
         print str
 
 
-def atmosphericIndex(lbda, P=608, T=2):
+def atmosphericIndex(lbda, P=616, T=2):
 
     """Compute atmospheric refractive index: lbda in angstrom, P
     in mbar, T in C, RH in %.
 
-    NOTE: Cohen & Cromer 1988 (PASP, 100, 1582) give P = 456 mmHg = 608 mbar
-    and T = 2C for Mauna Kea.  Further note that typical water abundances on
-    Mauna Kea are close enough to zero not to significantly impact these
-    calculations."""
+    Cohen & Cromer 1988 (PASP, 100, 1582) give P = 456 mmHg = 608 mbar and T =
+    2C for Mauna Kea. However, SNIFS observations show an average recorded
+    pression of 616 mbar.
 
-    # Sea-level (P=760mm Hg, T=15C)
+    Further note that typical water abundances on Mauna Kea are close enough
+    to zero not to significantly impact these calculations.
+    """
+
+    # Sea-level (P=760 mmHg, T=15C)
     iml2 = 1/(lbda*1e-4)**2             # lambda in microns
     n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
 
