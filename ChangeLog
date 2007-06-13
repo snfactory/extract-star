@@ -1,3 +1,13 @@
+2007-06-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: use less meta-slices for
+	preliminary 2D fits, no more selection on meta-slices.
+
+2007-06-11  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new radial plot, spaxel size
+	is 0.43 arcsec.
+
 2007-06-01  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: some plot updates.

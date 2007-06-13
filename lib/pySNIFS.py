@@ -711,8 +711,8 @@ class SNIFS_cube:
             else:
                 self.nslice = len(lbda)
                 data = num.zeros((self.nslice,self.nlens),float64) 
-                x = num.array(((num.arange(15)-7)*0.42).tolist()*15)
-                y = num.repeat((7-num.arange(15))*0.42,15)
+                x = num.array(((num.arange(15)-7)*0.43).tolist()*15)
+                y = num.repeat((7-num.arange(15))*0.43,15)
                 i = num.array((num.arange(15)).tolist()*15)
                 j = num.repeat((14-num.arange(15)),15)
                 no = num.ravel(num.transpose(num.reshape(num.arange(self.nlens)+1,(15,15)))) 
