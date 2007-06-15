@@ -164,7 +164,11 @@ if __name__ == "__main__":
     parser.add_option("-v", "--verbosity", type="int",
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
+
     opts,pars = parser.parse_args()
+    if not opts.input or not opts.out or not opts.sky:
+        parser.error("At least one option is missing among " \
+                     "'--in', '--out' and '--sky'.")
     if opts.plot:
         opts.graph = 'png'
 
@@ -172,6 +176,7 @@ if __name__ == "__main__":
     
     print_msg("Opening datacube %s" % opts.input, opts.verbosity, 0)
     inhdr = pyfits.getheader(opts.input, 1) # 1st extension
+    obj = inhdr.get('OBJECT', 'Unknown')
     channel = inhdr.get('CHANNEL', 'Unknown').upper()
     if channel.startswith('B'):
         # slices=[10, 900, 20]
@@ -183,6 +188,7 @@ if __name__ == "__main__":
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
                      (opts.input, channel))
 
+    print_msg("  Object: %s" % obj, opts.verbosity, 0)
     print_msg("  Channel: %s" % channel, opts.verbosity, 0)
     print_msg("  Extracting slices: %s" % slices, opts.verbosity, 0)
     
@@ -402,21 +408,23 @@ if __name__ == "__main__":
     
     # Save star spectrum ==============================
 
+    step = inhdr.get('CDELTS')
+    
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input)
     star_spec = pySNIFS.spectrum(data=spec[1],
-                                 start=spec[0][0],step=inhdr.get('CDELTS'))
+                                 start=spec[0][0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     star_var = pySNIFS.spectrum(data=spec[3],
-                                 start=spec[0][0],step=inhdr.get('CDELTS'))
+                                 start=spec[0][0],step=step)
     star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
     
     # Save sky spectrum ==============================
 
     sky_spec = pySNIFS.spectrum(data=spec[2],
-                                start=spec[0][0],step=inhdr.get('CDELTS'))
+                                start=spec[0][0],step=step)
     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
     sky_var = pySNIFS.spectrum(data=spec[4],
-                                start=spec[0][0],step=inhdr.get('CDELTS'))
+                                start=spec[0][0],step=step)
     sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
 
@@ -446,12 +454,12 @@ if __name__ == "__main__":
         axS = fig1.add_subplot(2, 1, 1)
         axB = fig1.add_subplot(2, 1, 2)
         axS.plot(spec[0], spec[1])
-        axS.set_title("Star spectrum")
+        axS.set_title("Star spectrum [%s]" % obj)
         axS.set_xlim(spec[0][0],spec[0][-1])
         axB.plot(spec[0], spec[2])
         axB.set_xlim(spec[0][0],spec[0][-1])
         axB.set_xlabel("Wavelength [AA]")
-        axB.set_title("Background spectrum")
+        axB.set_title("Background spectrum (per spx)")
         fig1.savefig(plot1)
         
         # Plot of the star and sky error spectra ------------------------------
