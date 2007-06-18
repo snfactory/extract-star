@@ -1,3 +1,8 @@
+2007-06-18  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new contour plot, add seeing
+	estimate keyword 'SEEING' (FWHM in arcsec).
+
 2007-06-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: use less meta-slices for

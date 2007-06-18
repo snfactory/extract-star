@@ -84,6 +84,7 @@ def fit_param_hdr(hdr,param,lbda_ref,cube):
     hdr.update('ES_QK',param[9])
     hdr.update('ES_THETK',param[10])
     hdr.update('ES_LREF',lbda_ref)
+    hdr.update('SEEING',param[4]*2.355) # Seeing estimate (FWHM in arcsec)
     
 def comp_spec(cube_file, psf_param, intpar=[None, None]):
 
@@ -445,6 +446,7 @@ if __name__ == "__main__":
         plot5 = os.path.extsep.join((basename+"_fit4", opts.graph))
         plot6 = os.path.extsep.join((basename+"_fit5", opts.graph))
         plot7 = os.path.extsep.join((basename+"_fit6", opts.graph))
+        plot8 = os.path.extsep.join((basename+"_fit7", opts.graph))
         
         # Plot of the star and sky spectra ------------------------------
 
@@ -672,4 +674,29 @@ if __name__ == "__main__":
                 ax.set_xlabel("Radius [arcsec]", fontsize=8)
                 ax.set_ylabel("Flux", fontsize=8)
         fig7.savefig(plot7)
+
+        # Contour plot of each slice ------------------------------
+        
+        print_msg("Producing plot %s..." % plot8, opts.verbosity, 1)
+
+        fig8 = pylab.figure()
+        fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
+        extent = (cube.x.min(),cube.x.max(),cube.y.min(),cube.y.max())
+        for i in xrange(cube.nslice):   # Loop over meta-slices
+            ax = fig8.add_subplot(ncol, nrow, i+1, aspect='equal')
+            data = cube.slice2d(i, coord='p')
+            fit = cube_fit.slice2d(i, coord='p')
+            vmin,vmax = pylab.prctile(fit, (5.,95.)) # Percentiles
+            lev = N.logspace(N.log10(vmin),N.log10(vmax),5)
+            ax.contour(data, lev, origin='lower', extent=extent)
+            cnt = ax.contour(fit, lev, ls='--', origin='lower', extent=extent)
+            pylab.setp(cnt.collections, linestyle='dotted')
+            ax.plot((xfit[i],),(yfit[i],), 'k+')
+            pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
+            ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
+                    horizontalalignment='left', transform=ax.transAxes)
+            if ax.is_last_row() and ax.is_first_col():
+                ax.set_xlabel("I", fontsize=8)
+                ax.set_ylabel("J", fontsize=8)
+        fig8.savefig(plot8)
 
