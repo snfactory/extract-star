@@ -348,18 +348,25 @@ if __name__ == "__main__":
     #    position corresponding to the reference wavelength is read in the
     #    filtered vectors. Finally, the parameters theta and alpha are
     #    determined from the xc, yc vectors.
-    xc_vec = F.median_filter(xc_vec, 5)
-    yc_vec = F.median_filter(yc_vec, 5)
+    indx = set(N.where(abs(xc_vec)<3)[0])
+    indy = set(N.where(abs(yc_vec)<3)[0])
+    ind = list(indx.intersection(indy))
+    if (len(ind)<=1):
+        raise ValueError('Not enough points to fit the ADR initial guess')
+    
+    xc_vec2 = xc_vec[ind]
+    yc_vec2 = yc_vec[ind]
     ADR_coef = 206265*(atmosphericIndex(cube.lbda) -
                        atmosphericIndex(lbda_ref))
 
-    P = pySNIFS.fit_poly(yc_vec, 3, 1, xc_vec)
+    P = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
     theta = N.arctan(P[1])
-    x0 = xc_vec[N.argmin(N.abs(lbda_ref - cube.lbda))]
+    x0 = xc_vec2[N.argmin(N.abs(lbda_ref - cube.lbda))]
     y0 = S.poly1d(P)(x0)
     
-    alpha_x_vec = ((xc_vec-x0)/(N.cos(theta)*ADR_coef))[ADR_coef!=0]
-    alpha_y_vec = ((yc_vec-y0)/(N.sin(theta)*ADR_coef))[ADR_coef!=0]
+    alpha_x_vec = ((xc_vec2-x0)/(N.cos(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]
+    alpha_y_vec = ((yc_vec2-y0)/(N.sin(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]
+    
     if theta == 0:
         alpha = N.median(alpha_x_vec)
     elif theta == N.pi/2.:
