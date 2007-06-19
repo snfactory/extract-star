@@ -70,6 +70,7 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
     pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
 
 def fit_param_hdr(hdr,param,lbda_ref,cube):
+
     hdr.update('ES_VERS',__version__)
     hdr.update('ES_CUBE',cube)
     hdr.update('ES_ALPHA',param[0])
@@ -113,6 +114,30 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     delta = N.sum(weight, axis=1)
     epsilon = N.sum(cube.data*weight, axis=1)
     det = (beta**2 - alpha*delta)
+
+    if (det==0).any(): # Some pb in the fit, return 0 instead of NaN
+        idx = (det==0)
+        frac = 1.*len(alpha[idx])/len(alpha)
+        print "%d/%d px [%.0f%%] cannot be extracted" % \
+              (len(alpha[idx]), len(alpha), frac*100)
+        # You can try to recover on non-null values (e.g. det[idx]=1;
+        # alpha[idx]=0) but that's pretty useless because the PSF model is
+        # wrong anyway. You can return N.zeros((5, cube.nslice), 'd'), but
+        # that will only produce blank spectra while the extraction is known
+        # to have failed. Or you can raise an error so that nothing is
+        # produced.
+
+        if frac<0.01:                   # Try to recover if less than 1%
+            alpha[idx] = 0
+            beta[idx] = 0
+            gamma[idx] = 0
+            delta[idx] = 0
+            epsilon[idx] = 0
+            det[idx] = 1
+        else:
+            raise ValueError("Cannot extract valid spectrum from %s" % \
+                             cube_file)
+
     obj = (beta*epsilon - delta*gamma)/det
     sky = (beta*gamma - alpha*epsilon)/det
     hess = N.zeros((len(obj),2,2),'d')
@@ -134,8 +159,7 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     spec = N.zeros((5, cube.nslice), 'd')
     spec[0,:] = cube.lbda
     spec[1,:] = obj
-    spec[2,:] = sky
-    
+    spec[2,:] = sky    
     spec[3,:] = var_obj
     spec[4,:] = var_sky
   
