@@ -557,7 +557,7 @@ class SNIFS_cube:
     """
     SNIFS datacube class.
     """
-    def __init__(self,e3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20):
+    def __init__(self,e3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20,nodata=False):
         """
         Initiating the class.
         @warning: If the spectra in the datacube do not have the same lengthes, they will be truncated
@@ -573,7 +573,8 @@ class SNIFS_cube:
         @param threshold: In the variance image, pixels where variance is not available for some reason are
             set to an arbitrarily high value. As this values seems to change from one version to another of
             the processing pipeline, we allow to pass it as the threshold parameter.
-        
+        @param nodata: If set to True, only the descriptors (start,step...) will be saved. It may be useful when the user
+            wants to read many cubes to compare their descriptors without using to much memory.
         """
         if e3d_file is not None:
             if slices is not None:
@@ -660,18 +661,26 @@ class SNIFS_cube:
                 raise ValueError('The step in slices is not compatible with the slices interval requested')
                          
             if not s:
-                self.data = tdata[lmin - common_lstart:lmax - common_lstart:lstep]
-                if not isinstance(var,type(None)):
-                    self.var = tvar[lmin - common_lstart:lmax - common_lstart:lstep]
+                if not nodata:
+                    self.data = tdata[lmin - common_lstart:lmax - common_lstart:lstep]
+                    if not isinstance(var,type(None)):
+                        self.var = tvar[lmin - common_lstart:lmax - common_lstart:lstep]
+                else:
+                    self.data = None
+                    self.var = None
                 self.lbda = lbda[lmin - common_lstart:lmax - common_lstart:lstep]
             else:
-                self.data = F.uniform_filter(tdata,(lstep,1))\
-                            [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
-                if not isinstance(var,type(None)):
-                    self.var = F.uniform_filter(tvar,(lstep,1))\
-                            [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]/lstep
+                if not nodata:
+                    self.data = F.uniform_filter(tdata,(lstep,1))\
+                                [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
+                    if not isinstance(var,type(None)):
+                        self.var = F.uniform_filter(tvar,(lstep,1))\
+                                   [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]/lstep
+                else:
+                    self.data = None
+                    self.var = None
                 self.lbda = lbda[lmin - common_lstart+lstep/2:lmax - common_lstart+lstep/2:lstep]
-                self.lstep = self.lstep * lstep
+            self.lstep = self.lstep * lstep
             self.lstart = self.lbda[0]
             
             self.x = e3d_cube[1].data.field('XPOS')
@@ -684,9 +693,13 @@ class SNIFS_cube:
             self.i = e3d_cube[3].data.field('I')[ind]+7
             self.j = e3d_cube[3].data.field('J')[ind]+7
             if not num_array:
-                self.data = num.array(self.data,'f')
-                if not isinstance(var,type(None)):
-                    self.var = num.array(self.var)
+                if not nodata:
+                    self.data = num.array(self.data,'f')
+                    if not isinstance(var,type(None)):
+                        self.var = num.array(self.var)
+                else:
+                    self.data = None
+                    self.var = None
                 self.lbda = num.array(self.lbda)
                 self.x = num.array(self.x)
                 self.y = num.array(self.y)
@@ -1229,7 +1242,7 @@ def common_bounds_cube(cube_list):
     if False in [hasattr(cube,'lstep') for cube in cube_list]:
         raise ValueError("Missing attribute lstep in datacubes.")
     else:
-        meanstep = num.mean([spec.lstep for cube in cube_list])
+        meanstep = num.mean([cube.lstep for cube in cube_list])
         if std([cube.lstep for cube in cube_list]) > eps*meanstep:
             raise ValueError("All cubes should have the same step.")
         xinf = max([min(cube.lbda) for cube in cube_list])
