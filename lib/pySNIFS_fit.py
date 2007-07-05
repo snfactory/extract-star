@@ -11,7 +11,7 @@ from pySNIFS import *
 #import numarray
 import scipy
 import numpy
-import copy
+import copy as COP
 from numpy import *
 
 __author__ = '$Author$'
@@ -649,7 +649,7 @@ class model:
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
         if param == None:
             #param = numarray.copy.deepcopy(self.flatparam)
-            param = numpy.copy.deepcopy(self.flatparam)
+            param = COP.deepcopy(self.flatparam)
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
@@ -765,12 +765,12 @@ class model:
         return newparam
 
     def save_fit_as_SNIFS_cube(self):
-        fit_cube = copy.deepcopy(self.data)
+        fit_cube = COP.deepcopy(self.data)
         fit_cube.data = self.evalfit()
         return fit_cube
 
     def save_guess_as_SNIFS_cube(self):
-        guess_cube = copy.deepcopy(self.data)
+        guess_cube = COP.deepcopy(self.data)
         guess_cube.data = self.eval()
         return guess_cube
         
@@ -826,7 +826,7 @@ def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
     if not isinstance(spec,spectrum):
         raise TypeError, 'spec must be a pySNIFS.spectrum'
     # copying the input spectrum into a temporary one
-    spec2 = copy.deepcopy(spec)
+    spec2 = COP.deepcopy(spec)
     spec2.data = spec2.data/scipy.mean(spec2.data) # Normalisation of the data
     if spec2.var != None:
         spec2.var = spec2.var/scipy.mean(spec2.var) # Normalisation of the data
