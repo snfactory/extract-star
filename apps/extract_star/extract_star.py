@@ -67,25 +67,26 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
             (str_par, guess_par, str_par, fitpar),
             transform=ax.transAxes, fontsize=11)
     #ax.legend(('2D PSF', '3D PSF Guess', '3D PSF Fit'))
-    pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
+    pylab.setp(ax.get_yticklabels(), fontsize=8)
 
-def fit_param_hdr(hdr,param,lbda_ref,cube):
+def fit_param_hdr(hdr, param, lbda_ref, cube):
 
-    hdr.update('ES_VERS',__version__)
-    hdr.update('ES_CUBE',cube)
-    hdr.update('ES_ALPHA',param[0])
-    hdr.update('ES_THETA',param[1])
-    hdr.update('ES_X0',param[2])
-    hdr.update('ES_Y0',param[3])
-    hdr.update('ES_SIGC',param[4])
-    hdr.update('ES_GAMMA',param[5])
-    hdr.update('ES_Q',param[6])
-    hdr.update('ES_EPS',param[7])
-    hdr.update('ES_SIGK',param[8])
-    hdr.update('ES_QK',param[9])
-    hdr.update('ES_THETK',param[10])
-    hdr.update('ES_LREF',lbda_ref)
-    hdr.update('SEEING',param[4]*2.355) # Seeing estimate (FWHM in arcsec)
+    hdr.update('ES_VERS', __version__,'extract_star CVS-Id')
+    hdr.update('ES_CUBE', cube,       'extract_star input cube')
+    hdr.update('ES_ALPHA',param[0],   'extract_star ADR power')
+    hdr.update('ES_THETA',param[1],   'extract_star ADR angle')
+    hdr.update('ES_LREF', lbda_ref,   'extract_star ref. lambda')
+    hdr.update('ES_X0',   param[2],   'extract_star ref. x0')
+    hdr.update('ES_Y0',   param[3],   'extract_star ref. y0')
+    hdr.update('ES_SIGC', param[4],   'extract_star ref. sigma')
+    hdr.update('ES_GAMMA',param[5],   'extract_star sigma index')
+    hdr.update('ES_Q',    param[6],   'extract_star Q-param.')
+    hdr.update('ES_EPS',  param[7],   'extract_star EPS-param.')
+    hdr.update('ES_SIGK', param[8],   'extract_star sigma_k')
+    hdr.update('ES_QK',   param[9],   'extract_star q_k')
+    hdr.update('ES_THETK',param[10],  'extract_star theta_k')
+    hdr.update('SEEING',  param[4]*2.355, # Seeing estimate (FWHM in arcsec)
+               'extract_star seeing')
     
 def comp_spec(cube_file, psf_param, intpar=[None, None]):
 
@@ -110,9 +111,9 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     psf = N.array(model.comp(param), dtype='d')
     alpha = N.sum(weight*psf**2, axis=1)
     beta = N.sum(weight*psf, axis=1)
-    gamma = N.sum(psf*cube.data*weight, axis=1)
+    gamma = N.sum(weight*psf*cube.data, axis=1)
     delta = N.sum(weight, axis=1)
-    epsilon = N.sum(cube.data*weight, axis=1)
+    epsilon = N.sum(weight*cube.data, axis=1)
     det = (beta**2 - alpha*delta)
 
     if (det==0).any(): # Some pb in the fit, return 0 instead of NaN
@@ -156,6 +157,15 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     var_sky = cov[:,1,1]
     # This is were one could implement optimal extraction. - YC
 
+    # The 3D psf model is not normalized to 1 in integral. The result must be
+    # renormalized by (1+eps)
+    obj *= 1 + psf_param[7]
+    var_obj *= (1 + psf_param[7])**2
+
+    # Change sky normalization from 'per spaxel' to 'per arcsec**2'
+    sky /= intpar[0]**2                 # intpar[0] is spaxel width
+    var_sky /= intpar[0]**4
+    
     spec = N.zeros((5, cube.nslice), 'd')
     spec[0,:] = cube.lbda
     spec[1,:] = obj
@@ -202,6 +212,7 @@ if __name__ == "__main__":
     print_msg("Opening datacube %s" % opts.input, opts.verbosity, 0)
     inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
+    airmass = inhdr.get('AIRMASS', 0.0)
     channel = inhdr.get('CHANNEL', 'Unknown').upper()
     if channel.startswith('B'):
         # slices=[10, 900, 20]
@@ -213,9 +224,10 @@ if __name__ == "__main__":
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
                      (opts.input, channel))
 
-    print_msg("  Object: %s" % obj, opts.verbosity, 0)
-    print_msg("  Channel: %s" % channel, opts.verbosity, 0)
-    print_msg("  Extracting slices: %s" % slices, opts.verbosity, 0)
+    print_msg("  Object: %s, Airmass: %.2f" % (obj,airmass),
+              opts.verbosity, 0)
+    print_msg("  Channel: %s, extracting slices: %s" % (channel,slices),
+              opts.verbosity, 0)
     
     cube = pySNIFS.SNIFS_cube(opts.input, slices=slices)
 
@@ -289,17 +301,17 @@ if __name__ == "__main__":
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0, 0, xc, yc, 0.3, -0.2, 1.84, 0.42, 0.2, 1., 0., imax] # SNIFS_psf_3D;0.43
         b1 = [None]*(11+cube2.nslice) # Empty list of length 11+cube2.nslice
-        b1[0:11] = [[None, None],
-                    [-N.pi, N.pi],
-                    [None, None],
-                    [None, None],
-                    [0.01, None],
-                    [-0.3, 0],
+        b1[0:11] = [[None, None],       # alpha
+                    [-N.pi, N.pi],      # theta
+                    [None, None],       # x0
+                    [None, None],       # y0
+                    [0.01, None],       # sigc
+                    [-0.3, 0],          # alpha (chrom. dependance of sigc)
                     [1.84, 1.84],       # Fixed q
                     [0.42, 0.42],       # Fixed epsilon
-                    [0.01, None],
-                    [1., None],
-                    [0., N.pi]]
+                    [0.01, None],       # sigk
+                    [1., None],         # qk
+                    [0., N.pi]]         # theta_k
         b1[11:11+cube2.nslice] = [[0, None]] * cube2.nslice
 
         p2 = [sky]                      # poly2D;0
@@ -348,11 +360,12 @@ if __name__ == "__main__":
     #    position corresponding to the reference wavelength is read in the
     #    filtered vectors. Finally, the parameters theta and alpha are
     #    determined from the xc, yc vectors.
-    indx = set(N.where(abs(xc_vec)<3)[0])
-    indy = set(N.where(abs(yc_vec)<3)[0])
-    ind = list(indx.intersection(indy))
-    if (len(ind)<=1):
-        raise ValueError('Not enough points to fit the ADR initial guess')
+    ind = ( N.absolute(xc_vec)<3 ) & ( N.absolute(yc_vec)<3 )
+    if not ind.all():                   # Some centroids outside FoV
+        print "%d/%d centroid positions discarded from ADR initial guess" % \
+              (len(xc_vec[-ind]),nslice)
+        if (len(xc_vec[ind])<=1):
+            raise ValueError('Not enough points to determine ADR initial guess')
     
     xc_vec2 = xc_vec[ind]
     yc_vec2 = yc_vec[ind]
@@ -388,17 +401,17 @@ if __name__ == "__main__":
     p1 = [None]*(11+cube.nslice)
     b1 = [None]*(11+cube.nslice)
     p1[0:11] = [alpha, theta, x0, y0, sigc, -0.2, q, eps, sigk, qk, theta_k]
-    b1[0:11] = [[None, None],
-                [-N.pi, N.pi],
-                [None, None],
-                [None, None],
-                [0.01, None],
-                [-0.3, 0],
+    b1[0:11] = [[None, None],           # alpha
+                [-N.pi, N.pi],          # theta
+                [None, None],           # x0
+                [None, None],           # y0
+                [0.01, None],           # sigc
+                [-0.3, 0],              # alpha (chrom. dependance of sigc)
                 [1.84, 1.84],           # Fixed q
                 [0.42, 0.42],           # Fixed epsilon
-                [0.01, None],
-                [1., None],
-                [0., N.pi]]
+                [0.01, None],           # sigk
+                [1., None],             # qk
+                [0., N.pi]]             # theta_k
     p1[11:11+cube.nslice] = int_vec.tolist()
     b1[11:11+cube.nslice] = [[0, None]] * cube.nslice
 
@@ -427,17 +440,14 @@ if __name__ == "__main__":
     fitpar = data_model.fitpar
 
     print_msg("  Fit result: %s" % fitpar[:11], opts.verbosity, 2)
+    print_msg("  Seeing estimate: %.2f arcsec FWHM" % (fitpar[4]*2.355),
+              opts.verbosity, 0)
 
     # Computing final spectra for object and background =====================
     
     print_msg("Extracting the spectrum...", opts.verbosity, 0)
     spec = comp_spec(opts.input, fitpar[0:11], intpar=[0.43, lbda_ref])
 
-    # The 3D psf model is not normalized to 1 in integral. The result must be
-    # renormalized by (1+eps)
-    spec[1] *= 1 + data_model.fitpar[7]
-    spec[3] *= (1 + data_model.fitpar[7])**2
-    
     # Save star spectrum ==============================
 
     step = inhdr.get('CDELTS')
@@ -470,7 +480,6 @@ if __name__ == "__main__":
 
         basename = os.path.splitext(opts.out)[0]
         plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
-        plot1bis = os.path.extsep.join((basename+"_var" , opts.graph))
         plot2 = os.path.extsep.join((basename+"_fit1", opts.graph))
         plot3 = os.path.extsep.join((basename+"_fit2", opts.graph))
         plot4 = os.path.extsep.join((basename+"_fit3", opts.graph))
@@ -481,43 +490,31 @@ if __name__ == "__main__":
         
         # Plot of the star and sky spectra ------------------------------
 
-        print_msg("Producing plot %s..." % plot1, opts.verbosity, 1)
+        print_msg("Producing spectra plot %s..." % plot1, opts.verbosity, 1)
         
         fig1 = pylab.figure()
-        axS = fig1.add_subplot(2, 1, 1)
-        axB = fig1.add_subplot(2, 1, 2)
-        axS.plot(spec[0], spec[1])
+        axS = fig1.add_subplot(3, 1, 1)
+        axB = fig1.add_subplot(3, 1, 2)
+        axN = fig1.add_subplot(3, 1, 3)
+        axS.plot(spec[0], spec[1], 'b')
         axS.set_title("Star spectrum [%s]" % obj)
         axS.set_xlim(spec[0][0],spec[0][-1])
-        axB.plot(spec[0], spec[2])
+        axS.set_xticklabels([])
+        axB.plot(spec[0], spec[2], 'g')
         axB.set_xlim(spec[0][0],spec[0][-1])
-        axB.set_xlabel("Wavelength [AA]")
         axB.set_title("Background spectrum (per spx)")
+        axB.set_xticklabels([])
+        axN.plot(spec[0], N.sqrt(spec[3]), 'b')
+        axN.plot(spec[0], N.sqrt(spec[4]), 'g')
+        axN.set_title("Error spectra")
+        axN.semilogy()
+        axN.set_xlim(spec[0][0],spec[0][-1])
+        axN.set_xlabel("Wavelength [A]")
         fig1.savefig(plot1)
         
-        # Plot of the star and sky error spectra ------------------------------
-        
-        print_msg("Producing plot %s..." % plot1bis, opts.verbosity, 1)
-        
-        fig1B = pylab.figure()
-        axS = fig1B.add_subplot(2, 1, 1)
-        axB = fig1B.add_subplot(2, 1, 2)
-
-        axS.plot(spec[0], N.sqrt(spec[3]))
-        axS.set_title("Star error spectrum")
-        axS.semilogy()
-        axS.set_xlim(spec[0][0],spec[0][-1])
-        axB.plot(spec[0], N.sqrt(spec[4]))
-        axB.set_xlabel("Wavelength [AA]")
-        axB.set_title("Background error spectrum")
-        axB.semilogy()
-        axB.set_xlim(spec[0][0],spec[0][-1])
-
-        fig1B.savefig(plot1bis)
-
         # Plot of the fit on each slice ------------------------------
         
-        print_msg("Producing plot %s..." % plot2, opts.verbosity, 1)
+        print_msg("Producing slice fit plot %s..." % plot2, opts.verbosity, 1)
 
         ncol = N.floor(N.sqrt(cube.nslice))
         nrow = N.ceil(cube.nslice/float(ncol))
@@ -543,7 +540,7 @@ if __name__ == "__main__":
 
         # Plot of the fit on rows and columns sum ----------------------------
         
-        print_msg("Producing plot %s..." % plot3, opts.verbosity, 1)
+        print_msg("Producing profile plot %s..." % plot3, opts.verbosity, 1)
 
         # Creating a standard SNIFS cube with the adjusted data
         cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
@@ -578,7 +575,7 @@ if __name__ == "__main__":
         
         # Plot of the star center of gravity and adjusted center --------------
         
-        print_msg("Producing plot %s..." % plot4, opts.verbosity, 1)
+        print_msg("Producing ADR plot %s..." % plot4, opts.verbosity, 1)
 
         xfit = fitpar[0] * data_model.func[0].ADR_coef[:,0] * \
                N.cos(fitpar[1]) + fitpar[2]
@@ -607,7 +604,7 @@ if __name__ == "__main__":
         ax4b.set_ylabel("Y center [arcsec]")
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
 
-        ax4c = pylab.subplot(2, 1, 2)
+        ax4c = fig4.add_subplot(2, 1, 2)
         ax4c.scatter(xc_vec, yc_vec,
                      c=cube.lbda[::-1], cmap=matplotlib.cm.Spectral)
         ax4c.plot(xguess, yguess, 'k--')
@@ -626,68 +623,77 @@ if __name__ == "__main__":
                   transform=ax4c.transAxes)
         ax4c.set_xlabel("X center [arcsec]")
         ax4c.set_ylabel("Y center [arcsec]")
+        fig4.text(0.5, 0.93, "ADR plot [%s, airmass=%.2f]" % (obj, airmass), 
+                  horizontalalignment='center', size='large')
         fig4.savefig(plot4)
 
         # Plot dispersion, adjusted core and theoretical dispersion ---------
         
-        print_msg("Producing plot %s..." % plot5, opts.verbosity, 1)
+        print_msg("Producing intrinsic dispersion plot %s..." % plot5,
+                  opts.verbosity, 1)
 
-        core_disp = fitpar[4]*(cube.lbda/lbda_ref)**fitpar[5]
         guess_disp = guesspar[4]*(cube.lbda/lbda_ref)**guesspar[5]
+        core_disp = fitpar[4]*(cube.lbda/lbda_ref)**fitpar[5]
         th_disp = fitpar[4]*(cube.lbda/lbda_ref)**(-0.2)
 
-        pylab.figure()
-        ax = pylab.subplot(2, 1, 2) 
-        pylab.plot(cube.lbda, core_disp, 'b', label="Sigma core (Model)")
-        pylab.plot(cube.lbda, th_disp, 'b--', label="Sigma core (Theoretical)")
-        pylab.legend(loc='best')
-        pylab.xlabel("Wavelength [A]")
-        pylab.ylabel(r'$\sigma_c$')
-        pylab.subplot(2, 1, 1)
-        pylab.plot(cube.lbda, sigc_vec, 'bo', label="Fit 2D")
-        pylab.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
-        pylab.plot(cube.lbda, core_disp, 'b', label="Fit 3D")
-        pylab.legend(loc='best')
-        pylab.xlabel("Wavelength [A]")
-        pylab.ylabel(r'$\sigma_c$')
-        pylab.text(0.03, 0.2,
-                   r'$\rm{Guess:}\hspace{0.5} \sigma_{c}=%4.2f,' \
-                   r'\hspace{0.5} \gamma=-0.2$' % sigc,
-                   transform=ax.transAxes)
-        pylab.text(0.03, 0.1,
-                   r'$\rm{Fit:}\hspace{0.5} \sigma_{c}=%4.2f,' \
-                   r'\hspace{0.5} \gamma=%4.2f$' % (fitpar[4], fitpar[5]),
-                   transform=ax.transAxes)
-        pylab.savefig(plot5)
+        fig5 = pylab.figure()
+        ax5b = fig5.add_subplot(2, 1, 1)
+        ax5b.plot(cube.lbda, sigc_vec, 'bo', label="Fit 2D")
+        ax5b.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
+        ax5b.plot(cube.lbda, core_disp, 'b', label="Fit 3D")
+        ax5b.legend(loc='best')
+        ax5b.set_ylabel(r'$\sigma_c$')
+        ax5b.set_title("Intrinsic dispersion [%s, seeing=%.2f arcsec]" % \
+                       (obj, fitpar[4]*2.355))
+
+        ax5a = fig5.add_subplot(2, 1, 2) 
+        ax5a.plot(cube.lbda, th_disp, 'k--', label="Sigma core (guess 3D)")
+        ax5a.plot(cube.lbda, core_disp, 'b', label="Sigma core (fit 3D)")
+        ax5a.plot((lbda_ref,),(fitpar[4],), 'ro', label='_nolegend_')
+        ax5a.legend(loc='best')
+        ax5a.set_ylabel(r'$\sigma_c$')
+        ax5a.set_xlabel("Wavelength [A]")
+        ax5a.text(0.03, 0.2,
+                  r'$\rm{Guess:}\hspace{0.5} \sigma_{c}=%4.2f,' \
+                  r'\hspace{0.5} \gamma=-0.2$' % sigc,
+                  transform=ax5a.transAxes)
+        ax5a.text(0.03, 0.1,
+                  r'$\rm{Fit:}\hspace{0.5} \sigma_{c}=%4.2f,' \
+                  r'\hspace{0.5} \gamma=%4.2f$' % (fitpar[4], fitpar[5]),
+                  transform=ax5a.transAxes)
+        fig5.savefig(plot5)
 
         # Plot of the other model parameters ------------------------------
         
-        print_msg("Producing plot %s..." % plot6, opts.verbosity, 1)
+        print_msg("Producing model parameter plot %s..." % plot6,
+                  opts.verbosity, 1)
 
-        pylab.figure()
-        ax = pylab.subplot(5, 1, 1)
-        plot_non_chromatic_param(ax, q_vec, cube.lbda, q, fitpar[6], 'q')
-        ax.set_xticklabels([])
-        ax = pylab.subplot(5, 1, 2)
-        plot_non_chromatic_param(ax, eps_vec, cube.lbda, eps, fitpar[7],
+        fig6 = pylab.figure()
+        ax6a = fig6.add_subplot(5, 1, 1)
+        plot_non_chromatic_param(ax6a, q_vec, cube.lbda, q, fitpar[6], 'q')
+        ax6a.set_xticklabels([])
+        ax6a.set_title("Model parameters [%s]" % obj)
+        ax6b = fig6.add_subplot(5, 1, 2)
+        plot_non_chromatic_param(ax6b, eps_vec, cube.lbda, eps, fitpar[7],
                                  '\\epsilon')
-        ax.set_xticklabels([])
-        ax = pylab.subplot(5, 1, 3)
-        plot_non_chromatic_param(ax, sigk_vec, cube.lbda, sigk, fitpar[8],
+        ax6b.set_xticklabels([])
+        ax6c = fig6.add_subplot(5, 1, 3)
+        plot_non_chromatic_param(ax6c, sigk_vec, cube.lbda, sigk, fitpar[8],
                                  '\\sigma_k')
-        ax.set_xticklabels([])
-        ax = pylab.subplot(5, 1, 4)
-        plot_non_chromatic_param(ax, qk_vec, cube.lbda, qk, fitpar[9], 'q_k')
-        ax.set_xticklabels([])
-        ax = pylab.subplot(5, 1, 5)
-        plot_non_chromatic_param(ax, theta_vec, cube.lbda, theta_k, fitpar[10],
+        ax6c.set_xticklabels([])
+        ax6d = fig6.add_subplot(5, 1, 4)
+        plot_non_chromatic_param(ax6d, 1/qk_vec, cube.lbda, 1/qk, 1/fitpar[9], '1/q_k')
+        ax6d.set_xticklabels([])
+        ax6e = fig6.add_subplot(5, 1, 5)
+        plot_non_chromatic_param(ax6e,theta_vec,cube.lbda,theta_k,fitpar[10],
                                  '\\theta_k')
-        pylab.xlabel('Wavelength [A]')
-        pylab.savefig(plot6)
+        ax6e.set_xlabel('Wavelength [A]')
+        fig6.savefig(plot6)
 
         # Plot of the radial profile --------------
 
-        print_msg("Producing plot %s..." % plot7, opts.verbosity, 1)
+        print_msg("Producing radial profile plot %s..." % plot7,
+                  opts.verbosity, 1)
 
         fig7 = pylab.figure()
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
@@ -708,7 +714,8 @@ if __name__ == "__main__":
 
         # Contour plot of each slice ------------------------------
         
-        print_msg("Producing plot %s..." % plot8, opts.verbosity, 1)
+        print_msg("Producing PSF contour plot %s..." % plot8,
+                  opts.verbosity, 1)
 
         fig8 = pylab.figure()
         fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )

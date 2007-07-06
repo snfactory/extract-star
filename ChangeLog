@@ -1,3 +1,9 @@
+2007-07-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (comp_spec): issue sky
+	spectrum normalized to 'per arcsec^2' instead of 'per
+	spaxel'. Minor plotting updates.
+
 2007-06-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (comp_spec): detect and handle
