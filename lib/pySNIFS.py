@@ -21,6 +21,8 @@ from scipy import isscalar
 import numpy as num
 from numpy import float32,float64,nan
 
+import numarray
+
 os.environ['NUMERIX'] = 'numpy'
 import pyfits
 
@@ -696,7 +698,7 @@ class SNIFS_cube:
                 if not nodata:
                     self.data = num.array(self.data,'f')
                     if not isinstance(var,type(None)):
-                        self.var = num.array(self.var)
+                        self.var = num.array(self.var,'f')
                 else:
                     self.data = None
                     self.var = None
@@ -1025,7 +1027,7 @@ class SNIFS_cube:
         xpos_list = self.x.tolist()
         ypos_list = self.y.tolist()
         WR_e3d_file(data_list,var_list,no_list,start_list,self.lstep,xpos_list,ypos_list,\
-                    fits_file,self.e3d_data_header,self.e3d_grp_hdu,self.e3d_extra_hdu_list)
+                    fits_file,self.e3d_data_header,self.e3d_grp_hdu,self.e3d_extra_hdu_list,nslice=self.nslice)
         
 
     def WR_3d_fits(self,fits_file,mode='w+'):
@@ -1334,6 +1336,7 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
                       different lengthes
     """
     ## We need to convert the hdus given in parameters in numarray pyfits hdus.
+    
     pri_hdu = pyfits.PrimaryHDU()
     hdulist = pyfits.HDUList([pri_hdu,grp_hdu]+extra_hdu_list)
     hdulist.writeto('tmp_hdu.fits',clobber=True)
@@ -1378,7 +1381,6 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     tb_hdu.header.update('CDELTS',step)
     tb_hdu.header.update('CRPIXS',1)
     tb_hdu.header.update('EXTNAME','E3D_DATA')
-
 
     for desc in data_header:
         if desc[0]!='XTENSION' and desc[0]!='BITPIX' and desc[0][0:5]!='NAXIS' and desc[0]!='GCOUNT' and \
