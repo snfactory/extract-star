@@ -23,11 +23,11 @@ import numpy as N
 import scipy as S
 from scipy.ndimage import filters as F
 
-def print_msg(str, verbosity, limit=0):
+def print_msg(string, verbosity, limit=0):
     """Print message 'str' if verbosity level >= verbosity limit."""
 
     if verbosity >= limit:
-        print str
+        print string
 
 
 def atmosphericIndex(lbda, P=616, T=2):
@@ -71,7 +71,7 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
 
 def fit_param_hdr(hdr, param, lbda_ref, cube):
 
-    hdr.update('ES_VERS', __version__,'extract_star CVS-Id')
+    hdr.update('ES_VERS', __version__)
     hdr.update('ES_CUBE', cube,       'extract_star input cube')
     hdr.update('ES_ALPHA',param[0],   'extract_star ADR power')
     hdr.update('ES_THETA',param[1],   'extract_star ADR angle')
@@ -305,11 +305,11 @@ if __name__ == "__main__":
                     [-N.pi, N.pi],      # theta
                     [None, None],       # x0
                     [None, None],       # y0
-                    [0.01, None],       # sigc
+                    [0.01, None],       # sigc  
                     [-0.3, 0],          # alpha (chrom. dependance of sigc)
                     [1.84, 1.84],       # Fixed q
                     [0.42, 0.42],       # Fixed epsilon
-                    [0.01, None],       # sigk
+                    [0.01, None],       # sigk 
                     [1., None],         # qk
                     [0., N.pi]]         # theta_k
         b1[11:11+cube2.nslice] = [[0, None]] * cube2.nslice
@@ -390,7 +390,7 @@ if __name__ == "__main__":
         alpha = N.mean([alpha_x, alpha_y])
 
     # 2) Other parameters:
-    sigc   = N.median(sigc_vec*(cube.lbda/lbda_ref)**0.2)
+    sigc   = N.median(sigc_vec*(cube.lbda/lbda_ref)**0.2) 
     q      = N.median(q_vec)
     qk     = N.median(qk_vec)
     eps    = N.median(eps_vec)
@@ -405,11 +405,11 @@ if __name__ == "__main__":
                 [-N.pi, N.pi],          # theta
                 [None, None],           # x0
                 [None, None],           # y0
-                [0.01, None],           # sigc
+                [0.01, None],           # sigc 
                 [-0.3, 0],              # alpha (chrom. dependance of sigc)
                 [1.84, 1.84],           # Fixed q
                 [0.42, 0.42],           # Fixed epsilon
-                [0.01, None],           # sigk
+                [0.01, None],           # sigk 
                 [1., None],             # qk
                 [0., N.pi]]             # theta_k
     p1[11:11+cube.nslice] = int_vec.tolist()
@@ -555,12 +555,17 @@ if __name__ == "__main__":
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):   # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
-            prof_I = cube.slice2d(i, coord='p').sum(axis=0)
-            prof_J = cube.slice2d(i, coord='p').sum(axis=1)
-            err_I = N.sqrt(cube.slice2d(i, coord='p', var=True).sum(axis=0))
-            err_J = N.sqrt(cube.slice2d(i, coord='p', var=True).sum(axis=1))
-            mod_I = cube_fit.slice2d(i, coord='p').sum(axis=0)
-            mod_J = cube_fit.slice2d(i, coord='p').sum(axis=1)
+            # YC - Why is there some NaN's in data slices?
+            # (eg e3d_TC07_153_099_003_17_B.fits)
+            sigSlice = N.nan_to_num(cube.slice2d(i, coord='p'))
+            varSlice = N.nan_to_num(cube.slice2d(i, coord='p', var=True))
+            modSlice = cube_fit.slice2d(i, coord='p')
+            prof_I = sigSlice.sum(axis=0) # Sum along rows
+            prof_J = sigSlice.sum(axis=1) # Sum along columns
+            err_I = N.sqrt(varSlice.sum(axis=0))
+            err_J = N.sqrt(varSlice.sum(axis=1))
+            mod_I = modSlice.sum(axis=0)
+            mod_J = modSlice.sum(axis=1)
             ax.errorbar(range(len(prof_I)),prof_I,err_I, fmt='bo', ms=3)
             ax.plot(mod_I, 'b-')
             ax.errorbar(range(len(prof_J)),prof_J,err_J, fmt='r^', ms=3)
