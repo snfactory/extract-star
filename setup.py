@@ -54,11 +54,11 @@ def main():
           platforms = ["Linux"],
           py_modules = ['pySNIFS', 'pySNIFS_fit'],
           package_dir={'':'lib'},
-          scripts=[os.path.join('apps','extract_star','extract_star.py')],
+          scripts=[os.path.join('apps','extract_star','extract_star.py'),
+                   os.path.join('apps','extract_star','extract_star_2.py')],
           #packages=['pySNIFS','extract_star','cube_explorer'],
           #package_dir={'pySNIFS':'lib'}
           )
-
 
 if __name__ == "__main__":
     main()

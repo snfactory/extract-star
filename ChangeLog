@@ -1,5 +1,7 @@
 2007-10-18  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
+	* setup.py: add extract_star_2.py 
+
 	* apps/extract_star/extract_star_2.py: New extractor based on
 	extract_star with an empirical Gaussian+Moffat PSF function.
 
