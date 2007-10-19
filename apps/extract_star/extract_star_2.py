@@ -297,8 +297,8 @@ class my_psf_function:
         # other params + correlations params (fixed)
         a1 = self.param[4]
         a0 = self.param[5] 
-        ellipticity = self.param[6]
-        rotation = self.param[7]
+        ell = self.param[6]
+        rot = self.param[7]
         s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]  #only long exposure
 
         # aliases
@@ -311,21 +311,23 @@ class my_psf_function:
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
-        ellipse = xrel**2 + ellipticity*yrel**2 + 2*rotation*xrel*yrel
+        ellipse = xrel**2 + ell*yrel**2 + 2*rot*xrel*yrel
 
         es = S.exp(-ellipse/(2*sigma**2))
         ea = (1+ellipse/alpha**2)
         lnea = S.log(ea)
 
         # derivatives
-        grad[2] = -0.5*eta*es*(-2*x+2*x0-2*rotation*yrel)/sigma**2 + ea**(-beta)*(-beta)*(-2*x+2*x0-2*rotation*yrel)/(ea*alpha**2)
-        grad[3] = -0.5*eta*es*(-2*ellipticity*yrel-2*rotation*xrel)/sigma**2 + ea**(-beta)*(-beta)*(-2*ellipticity*yrel-2*rotation*xrel)/(ea*alpha**2)
-        grad[0] = self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
-        grad[1] = delta*self.ADR_coef*(costheta*grad[3]-sintheta*grad[2])
+        grad[2] = eta*es*(xrel + rot*yrel)/sigma**2 + \
+                  ea**(-beta)*(-beta)/(ea*alpha**2)*(-2*xrel-2*rot*yrel)
+        grad[3] = eta*es*(ell*yrel + rot*xrel)/sigma**2 + \
+                  ea**(-beta)*(-beta)/(ea*alpha**2)*(-2*ell*yrel-2*rot*xrel)
+        grad[0] =       self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
+        grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
         grad[4] = e1*es*lbda_rel + eta*ellipse*s1*es*lbda_rel/sigma**3 + ea**(-beta)*(-b1*lbda_rel*lnea-(-2*beta*ellipse*lbda_rel/(ea*alpha**3)))
         grad[5] = e1*es + eta*ellipse*s1*es/sigma**3 + ea**(-beta)*(-b1*lnea-(-2*beta*ellipse/(ea*alpha**3)))        
-        grad[6] = -0.5*eta*es*yrel**2/sigma**2 + ea**(-beta)*(-beta)*yrel**2/(ea*alpha**2)
-        grad[7] = -eta*es*yrel*xrel/sigma**2 + 2*ea**(-beta)*(-beta)*yrel*xrel/(ea*alpha**2)
+        grad[6] = -0.5*eta*es*yrel**2/sigma**2 + ea**(-beta)*(-beta)/(ea*alpha**2)*yrel**2
+        grad[7] = -eta*es*yrel*xrel/sigma**2 + 2*ea**(-beta)*(-beta)/(ea*alpha**2)*yrel*xrel
         grad[8] = eta*es + ea**(-beta) 
 
         grad[0:8] = grad[0:8] * S.reshape(param[8:],(1,len(param[8:]),1))
@@ -462,9 +464,6 @@ if __name__ == "__main__":
         xc = S.average(cube2.x, weights=sl_int)
         yc = S.average(cube2.y, weights=sl_int)
 
-        #ind = S.where((cube2.i<=n)|(cube2.i>=15-n)|(cube2.j<=n)|(cube2.j>=15-n))[0]
-        #sky_sup.append(S.median(S.transpose(cube2.data)[ind])[0])
-
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 2.4, 1., 0., imax]        # my_psf_function;0.43
         b1 = [None]*(8+cube2.nslice)                        # Empty list of length 8+cube2.nslice
@@ -536,10 +535,10 @@ if __name__ == "__main__":
     ADR_coef = 206265*(atmosphericIndex(cube.lbda) -
                        atmosphericIndex(lbda_ref)) / 0.43 # In spaxels
 
-    P = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
-    theta = S.arctan(P[1])
+    polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
+    theta = S.arctan(polADR(1))
     x0 = xc_vec2[S.argmin(S.absolute(lbda_ref - cube.lbda[ind]))]
-    y0 = S.poly1d(P)(x0)
+    y0 = polADR(x0)
     
     delta_x_vec = ((xc_vec2-x0)/(S.cos(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]
     delta_y_vec = ((yc_vec2-y0)/(S.sin(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]
@@ -553,11 +552,11 @@ if __name__ == "__main__":
         delta = S.mean([delta_x, delta_y])
 
     # 2) Other parameters:
-    p = pySNIFS.fit_poly(a0_vec,3,1,cube.lbda/lbda_ref)
-    a0 = S.poly1d(p)[0]
-    a1 = S.poly1d(p)[1]
-    ell    = S.median(ell_vec)
-    rot    = S.median(rot_vec)
+    polAlpha = pySNIFS.fit_poly(a0_vec,3,1,cube.lbda/lbda_ref)
+    a0 = polAlpha.coeffs[1]
+    a1 = polAlpha.coeffs[0]
+    ell = S.median(ell_vec)
+    rot = S.median(rot_vec)
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(8+cube.nslice)
@@ -569,14 +568,15 @@ if __name__ == "__main__":
                [None, None],           # theta      
                [None, None],           # x0         
                [None, None],           # y0         
-               [-2., 0.],              # a1         
-               [0.1, None],            # a0         
+               #[-2., 0.],              # a1         
+               #[0.1, None],            # a0         
+               [None, None],           # a1         
+               [None, None],           # a0         
                [.6, 2.5],              # ellipticity               
                [None, None]]           # rotation   
     b1[8:8+cube.nslice] = [[0, None]] * cube.nslice
 
     p2 = sky_vec.tolist()
-    #2 = [[0.005, s] for s in sky_sup]
     b2 = [[0.005, None]] * cube.nslice
 
     print_msg("  Initial guess: %s" % p1[:11], opts.verbosity, 2)
@@ -797,60 +797,36 @@ if __name__ == "__main__":
                   horizontalalignment='center', size='large')
         fig4.savefig(plot4)
 
-        ##  # Plot dispersion, adjusted core and theoretical dispersion ---------
-        ##  
-        ##  print_msg("Producing intrinsic dispersion plot %s..." % plot5,
-        ##            opts.verbosity, 1)
-        ##  
-        ##  guess_disp = s1 * (guesspar[4]*(cube.lbda/lbda_ref)+guesspar[5]) + s0
-        ##  core_disp  = s1 * (fitpar[4]*(cube.lbda/lbda_ref)+fitpar[5]) + s0
-        ##  th_disp    = fitpar[4]*(cube.lbda/lbda_ref)**(-0.2)
-        ##  
-        ##  fig5 = pylab.figure()
-        ##  ax5b = fig5.add_subplot(2, 1, 1)
-        ##  ax5b.plot(cube.lbda, sigc_vec, 'bo', label="Fit 2D")
-        ##  ax5b.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
-        ##  ax5b.plot(cube.lbda, core_disp, 'b', label="Fit 3D")
-        ##  ax5b.legend(loc='best')
-        ##  ax5b.set_ylabel(r'$\sigma$')
-        ##  ax5b.set_title("Intrinsic dispersion [%s, seeing=%.2f arcsec]" % \
-        ##                 (obj, fitpar[4]*2.355))
-        ##  
-        ##  ax5a = fig5.add_subplot(2, 1, 2) 
-        ##  ax5a.plot(cube.lbda, th_disp, 'k--', label="Sigma core (guess 3D)")
-        ##  ax5a.plot(cube.lbda, core_disp, 'b', label="Sigma core (fit 3D)")
-        ##  ax5a.plot((lbda_ref,),(fitpar[4],), 'ro', label='_nolegend_')
-        ##  ax5a.legend(loc='best')
-        ##  ax5a.set_ylabel(r'$\sigma_c$')
-        ##  ax5a.set_xlabel("Wavelength [A]")
-        ##  ax5a.text(0.03, 0.2,
-        ##            r'$\rm{Guess:}\hspace{0.5} \sigma_{c}=%4.2f,' \
-        ##            r'\hspace{0.5} \gamma=-0.2$' % sigc,
-        ##            transform=ax5a.transAxes)
-        ##  ax5a.text(0.03, 0.1,
-        ##            r'$\rm{Fit:}\hspace{0.5} \sigma_{c}=%4.2f,' \
-        ##            r'\hspace{0.5} \gamma=%4.2f$' % (fitpar[4], fitpar[5]),
-        ##            transform=ax5a.transAxes)
-        ##  fig5.savefig(plot5)
-
         # Plot of the other model parameters ------------------------------
         
         print_msg("Producing model parameter plot %s..." % plot6,
                   opts.verbosity, 1)
         
+        guess_disp = a0+a1*cube.lbda/lbda_ref
+        fit_disp   = fitpar[5]+fitpar[4]*cube.lbda/lbda_ref
+        th_disp    = (fitpar[4]+fitpar[5])*(cube.lbda/lbda_ref)**(-0.2)
+
         fig6 = pylab.figure()
-        ax6a = fig6.add_subplot(4, 1, 1)
-        plot_non_chromatic_param(ax6a, a1_vec, cube.lbda, a1, fitpar[4], 'a1')
+        ax6a = fig6.add_subplot(2, 1, 1)
+        ax6a.plot(cube.lbda, a0_vec, 'bo', label="Fit 2D")
+        ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
+        ax6a.plot(cube.lbda, fit_disp, 'b', label="Fit 3D")
+        ax6a.plot(cube.lbda, th_disp, 'g', label="Theoretical")
+        ax6a.legend(loc='best')
+        ax6a.set_ylabel(r'$\alpha$')
+        ax6a.text(0.03, 0.8,
+                  r'$\rm{Guess:}\hspace{0.5} a_0,a_1 = %4.2f,%4.2f,\hspace{0.5} ' \
+                  r'\rm{Fit:}\hspace{0.5} a_0,a_1 = %4.2f,%4.2f$' % \
+                  (a0,a1, fitpar[5],fitpar[4]),
+                  transform=ax6a.transAxes, fontsize=11)
         ax6a.set_xticklabels([])
         ax6a.set_title("Model parameters [%s]" % obj)
-        ax6b = fig6.add_subplot(4, 1, 2)
-        plot_non_chromatic_param(ax6b, a0_vec, cube.lbda, a0, fitpar[5], 'a0')
-        ax6b.set_xticklabels([])
+        
         ax6c = fig6.add_subplot(4, 1, 3)
-        plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[6], 'ellipticity')
+        plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[6],'1/q')
         ax6c.set_xticklabels([])
         ax6d = fig6.add_subplot(4, 1, 4)
-        plot_non_chromatic_param(ax6d, rot_vec, cube.lbda, rot, fitpar[7], 'rotation')
+        plot_non_chromatic_param(ax6d, rot_vec, cube.lbda, rot, fitpar[7], '\\theta')
         fig6.savefig(plot6)
 
         # Plot of the radial profile --------------

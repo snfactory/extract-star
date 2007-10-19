@@ -1,3 +1,8 @@
+2007-10-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star_2.py: plot updates. Remove
+	constraints on a0,a1 3D-fit.
+
 2007-10-18  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* setup.py: add extract_star_2.py 
