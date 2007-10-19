@@ -360,7 +360,7 @@ if __name__ == "__main__":
     #    position corresponding to the reference wavelength is read in the
     #    filtered vectors. Finally, the parameters theta and alpha are
     #    determined from the xc, yc vectors.
-    ind = ( N.absolute(xc_vec)<3 ) & ( N.absolute(yc_vec)<3 )
+    ind = ( N.absolute(xc_vec)<7 ) & ( N.absolute(yc_vec)<7 )
     if not ind.all():                   # Some centroids outside FoV
         print "%d/%d centroid positions discarded from ADR initial guess" % \
               (len(xc_vec[-ind]),nslice)
@@ -374,7 +374,7 @@ if __name__ == "__main__":
 
     P = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
     theta = N.arctan(P[1])
-    x0 = xc_vec2[N.argmin(N.abs(lbda_ref - cube.lbda))]
+    x0 = xc_vec2[N.argmin(N.abs(lbda_ref - cube.lbda[ind]))]
     y0 = S.poly1d(P)(x0)
     
     alpha_x_vec = ((xc_vec2-x0)/(N.cos(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]

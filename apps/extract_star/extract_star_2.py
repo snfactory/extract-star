@@ -74,7 +74,7 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par):
 
 def fit_param_hdr(hdr,param,lbda_ref,cube):
     
-    hdr.update('ES_VERS' ,__version__,'extract_star CVS-Id')
+    hdr.update('ES_VERS' ,__version__)
     hdr.update('ES_CUBE' ,cube,       'extract_star input cube')
     hdr.update('ES_DELTA',param[0],   'extract_star ADR power')
     hdr.update('ES_THETA',param[1],   'extract_star ADR angle')
@@ -524,7 +524,7 @@ if __name__ == "__main__":
     #    position corresponding to the reference wavelength is read in the
     #    filtered vectors. Finally, the parameters theta and delta are
     #    determined from the xc, yc vectors.
-    ind = ( S.absolute(xc_vec)<3 ) & ( S.absolute(yc_vec)<3 )
+    ind = ( S.absolute(xc_vec)<7 ) & ( S.absolute(yc_vec)<7 )
     if not ind.all():                   # Some centroids outside FoV
         print "%d/%d centroid positions discarded from ADR initial guess" % \
               (len(xc_vec[-ind]),nslice)
@@ -538,7 +538,7 @@ if __name__ == "__main__":
 
     P = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
     theta = S.arctan(P[1])
-    x0 = xc_vec2[S.argmin(S.absolute(lbda_ref - cube.lbda))]
+    x0 = xc_vec2[S.argmin(S.absolute(lbda_ref - cube.lbda[ind]))]
     y0 = S.poly1d(P)(x0)
     
     delta_x_vec = ((xc_vec2-x0)/(S.cos(theta)*ADR_coef[ind]))[ADR_coef[ind]!=0]
@@ -720,12 +720,17 @@ if __name__ == "__main__":
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):   # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
-            prof_I = cube.slice2d(i, coord='p').sum(axis=0)
-            prof_J = cube.slice2d(i, coord='p').sum(axis=1)
-            err_I = S.sqrt(cube.slice2d(i, coord='p', var=True).sum(axis=0))
-            err_J = S.sqrt(cube.slice2d(i, coord='p', var=True).sum(axis=1))
-            mod_I = cube_fit.slice2d(i, coord='p').sum(axis=0)
-            mod_J = cube_fit.slice2d(i, coord='p').sum(axis=1)
+            # YC - Why is there some NaN's in data slices?
+            # (eg e3d_TC07_153_099_003_17_B.fits)
+            sigSlice = S.nan_to_num(cube.slice2d(i, coord='p'))
+            varSlice = S.nan_to_num(cube.slice2d(i, coord='p', var=True))
+            modSlice = cube_fit.slice2d(i, coord='p')
+            prof_I = sigSlice.sum(axis=0) # Sum along rows
+            prof_J = sigSlice.sum(axis=1) # Sum along columns
+            err_I = S.sqrt(varSlice.sum(axis=0))
+            err_J = S.sqrt(varSlice.sum(axis=1))
+            mod_I = modSlice.sum(axis=0)
+            mod_J = modSlice.sum(axis=1)
             ax.errorbar(range(len(prof_I)),prof_I,err_I, fmt='bo', ms=3)
             ax.plot(mod_I, 'b-')
             ax.errorbar(range(len(prof_J)),prof_J,err_J, fmt='r^', ms=3)
@@ -835,11 +840,11 @@ if __name__ == "__main__":
         
         fig6 = pylab.figure()
         ax6a = fig6.add_subplot(4, 1, 1)
-        plot_non_chromatic_param(ax6a, [a1]*nslice, cube.lbda, a1, fitpar[4], 'a1')
+        plot_non_chromatic_param(ax6a, a1_vec, cube.lbda, a1, fitpar[4], 'a1')
         ax6a.set_xticklabels([])
         ax6a.set_title("Model parameters [%s]" % obj)
         ax6b = fig6.add_subplot(4, 1, 2)
-        plot_non_chromatic_param(ax6b, [a0]*nslice, cube.lbda, a0, fitpar[5], 'a0')
+        plot_non_chromatic_param(ax6b, a0_vec, cube.lbda, a0, fitpar[5], 'a0')
         ax6b.set_xticklabels([])
         ax6c = fig6.add_subplot(4, 1, 3)
         plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[6], 'ellipticity')
