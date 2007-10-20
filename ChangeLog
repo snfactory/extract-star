@@ -1,3 +1,9 @@
+2007-10-20  yannick.copin  <yannick.copin@laposte.net>
+
+	* apps/extract_star/extract_star_2.py: lots of (simplified)
+	rewrites, now fits alpha = a0 + a1*(lbda-lbda_ref) to get a
+	meaningful a0.
+
 2007-10-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: plot updates. Remove
