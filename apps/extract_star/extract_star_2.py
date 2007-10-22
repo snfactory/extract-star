@@ -140,14 +140,19 @@ def linear_fit_PSFnCte(param, weight, cube, model):
 
     return obj,sky,var_obj,var_sky
     
-def comp_spec(cube_file, psf_param, intpar=[None, None]):
+def comp_spec(cube_file, psf_param, efftime, intpar=[None, None]):
 
     cube = pySNIFS.SNIFS_cube(cube_file)
     cube.x /= intpar[0]  # x in spaxel
     cube.y /= intpar[0]  # y in spaxel
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     cube.var[cube.var>1e20] = 0
-    model = my_psf_function(intpar, cube)
+    if efftime > 5:
+        model = long_exposure_psf(intpar, cube)
+        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]  # long exposures
+    else:
+        model = short_exposure_psf(intpar, cube)
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6]     # short exposures
     
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
@@ -167,7 +172,7 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
     # The 3D psf model is not normalized to 1 in integral. The result must be
     # renormalized by (eps), eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) + S.pi*alpha**2 / ((beta-1)*(S.sqrt(ell)))
     
-    s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]             #only long exposure
+                 #only long exposure
     
     lbda_rel = model.l[:,0] - model.lbda_ref
     alpha    = psf_param[4] + psf_param[5]*lbda_rel
@@ -194,7 +199,7 @@ def comp_spec(cube_file, psf_param, intpar=[None, None]):
   
     return spec
 
-class my_psf_function:
+class long_exposure_psf:
     """
     Empirical PSF 3D function used by the L{model} class.
     """
@@ -210,7 +215,7 @@ class my_psf_function:
         self.npar_ind = 1
         self.npar_cor = 8
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
-        self.name = 'my_PSF_function'
+        self.name = 'long_exposure_psf'
         self.x = S.zeros((cube.nslice,cube.nlens),'d')
         self.y = S.zeros((cube.nslice,cube.nlens),'d')
         self.l = S.zeros(cube.data.T.shape,'d')
@@ -247,13 +252,13 @@ class my_psf_function:
         x0 = delta*self.ADR_coef*S.cos(theta) + xref
         y0 = delta*self.ADR_coef*S.sin(theta) + yref
 
-        # other params + correlations params (fixed)
+        # other params
         a0  = self.param[4] 
         a1  = self.param[5]
         ell = self.param[6]
         rot = self.param[7]
 
-        # aliases
+        # aliases + correlations params (fixed)
         lbda_rel = self.l - self.lbda_ref
         alpha = a0 + a1*lbda_rel
 
@@ -291,17 +296,154 @@ class my_psf_function:
         x0 = delta*self.ADR_coef*costheta + xref
         y0 = delta*self.ADR_coef*sintheta + yref
 
-        # other params + correlations params (fixed)
+        # other params
         a0  = self.param[4] 
         a1  = self.param[5]
         ell = self.param[6]
         rot = self.param[7]
 
-        # aliases
+        # aliases + correlations params (fixed)
         lbda_rel = self.l - self.lbda_ref
         alpha = a0 + a1*lbda_rel
 
         s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
+        beta  = b1*alpha+b0
+        sigma = s1*alpha+s0
+        eta   = e1*alpha+e0
+        
+        dx = self.x - x0
+        dy = self.y - y0
+        r2 = dx**2 + ell*dy**2 + 2*rot*dx*dy
+        gaussian = S.exp(-r2/2/sigma**2)
+        ea = 1 + r2/alpha**2
+        moffat = ea**(-beta)
+        logea = S.log(ea)
+
+        # derivatives
+        tmp = eta*gaussian/sigma**2 + 2*beta*moffat/ea/alpha**2
+        grad[2] = tmp*(    dx + rot*dy)
+        grad[3] = tmp*(ell*dy + rot*dx)
+        grad[0] =       self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
+        grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
+        grad[4] = e1*gaussian + eta*r2*s1*gaussian/sigma**3 + \
+                  moffat*( -b1*logea + 2*beta*r2/(ea*alpha**3) )
+        grad[5] = grad[4] * lbda_rel
+        grad[6] = -tmp/2 * dy**2
+        grad[7] = -tmp   * dx*dy
+        grad[8] = eta*gaussian + moffat
+
+        grad[0:8] *= self.param[S.newaxis,8:,S.newaxis]
+        
+        return grad
+
+class short_exposure_psf:
+    """
+    Empirical PSF 3D function used by the L{model} class.
+    """
+    def __init__(self,intpar=[None,None],cube=None):
+        """
+        Initiating the class.
+        @param intpar: Internal parameters (pixel size in cube spatial unit and reference wavelength). A
+            list of two numbers.
+        @param cube: Input cube. This is a L{SNIFS_cube} object.
+        """
+        self.pix = intpar[0]
+        self.lbda_ref = intpar[1]
+        self.npar_ind = 1
+        self.npar_cor = 8
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.name = 'long_exposure_psf'
+        self.x = S.zeros((cube.nslice,cube.nlens),'d')
+        self.y = S.zeros((cube.nslice,cube.nlens),'d')
+        self.l = S.zeros(cube.data.T.shape,'d')
+        self.x[:][:] = cube.x
+        self.y[:][:] = cube.y
+        self.l[:][:] = cube.lbda
+        self.l = S.transpose(self.l)
+        self.n_ref = atmosphericIndex(self.lbda_ref)
+        self.ADR_coef = 206265*(atmosphericIndex(self.l) - self.n_ref) / 0.43 #ADR in spaxels
+
+    def comp(self,param):
+        """
+        Compute the function.
+        @param param: Input parameters of the polynomial. A list of numbers:
+                - C{param[0:8]}: The 8 parameters of the PSF shape
+                     - C{param[0]}: Atmospheric dispersion power
+                     - C{param[1]}: Atmospheric dispersion position angle
+                     - C{param[2]}: X center at the reference wavelength
+                     - C{param[3]}: Y center at the reference wavelength
+                     - C{param[4]}: Moffat radius origin 
+                     - C{param[5]}: Moffat radius coefficient
+                     - C{param[6]}: Ellipticity
+                     - C{param[7]}: Rotation
+                - C{param[8:]} : The Intensity parameters (one for each slice in the cube).
+        """
+
+        self.param = S.asarray(param)
+
+        # ADR params
+        delta = self.param[0]
+        theta = self.param[1]
+        xref  = self.param[2]
+        yref  = self.param[3]
+        x0 = delta*self.ADR_coef*S.cos(theta) + xref
+        y0 = delta*self.ADR_coef*S.sin(theta) + yref
+
+        # other params
+        a0  = self.param[4] 
+        a1  = self.param[5]
+        ell = self.param[6]
+        rot = self.param[7]
+
+        # aliases + correlations params (fixed)
+        lbda_rel = self.l - self.lbda_ref
+        alpha = a0 + a1*lbda_rel
+
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
+        beta  = b1*alpha+b0
+        sigma = s1*alpha+s0
+        eta   = e1*alpha+e0
+
+        dx  = self.x - x0
+        dy  = self.y - y0
+        r2 = dx**2 + ell*dy**2 + 2*rot*dx*dy
+        gaussian = S.exp(-r2/2/sigma**2)
+        ea = 1 + r2/alpha**2
+        moffat = ea**(-beta)
+
+        # function
+        return self.param[8:,S.newaxis] * ( eta*gaussian + moffat )
+    
+    def deriv(self,param):
+        """
+        Compute the derivative of the function with respect to its parameters.
+        @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
+        @param correlation: Input parameters psf correlations. A list of 6 numbers.
+        """
+        self.param = S.asarray(param)
+        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
+
+        # ADR params
+        delta = self.param[0]
+        theta = self.param[1]
+        xref  = self.param[2]
+        yref  = self.param[3]
+        costheta = S.cos(theta)
+        sintheta = S.sin(theta)
+        x0 = delta*self.ADR_coef*costheta + xref
+        y0 = delta*self.ADR_coef*sintheta + yref
+
+        # other params
+        a0  = self.param[4] 
+        a1  = self.param[5]
+        ell = self.param[6]
+        rot = self.param[7]
+
+        # aliases + correlations params (fixed)
+        lbda_rel = self.l - self.lbda_ref
+        alpha = a0 + a1*lbda_rel
+
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
@@ -461,7 +603,7 @@ if __name__ == "__main__":
         yc = S.average(cube2.y, weights=sl_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 0., 1., 2.4, 0., imax]        # my_psf_function;0.43
+        p1 = [0., 0., xc, yc, 0., 1., 2.4, 0., imax]        # psf function;0.43
         b1 = [None]*(8+cube2.nslice)                        # Empty list of length 8+cube2.nslice
         b1[0:8] = [[None, None],                            # delta
                    [-S.pi, S.pi],                           # theta
@@ -472,19 +614,32 @@ if __name__ == "__main__":
                    [.6, 2.5],                               # ellipticity 
                    [None, None]]                            # rotation   
         b1[8:8+cube2.nslice] = [[0, None]] * cube2.nslice   
-                                                            
-        p2 = [sky]                                          # poly2D;0
-        b2 = [[0.005, None]]
+
+        if efftime > 5:
+            p2 = [sky]                                          # poly2D;0
+            b2 = [[0.005, None]]
+        else:
+            p2 = [0.]                                          # poly2D;0
+            b2 = [[0.0, 0.0]]
         
         print_msg("    Initial guess: %s" % [p1,p2], opts.verbosity, 2)        
         
         # Instanciating of a model class
         lbda_ref = cube2.lbda[0]
-        sl_model = pySNIFS_fit.model(data=cube2,
-                                     func=['my_psf_function;0.43, %f' % lbda_ref,
-                                           'poly2D;0'],
-                                     param=[p1,p2], bounds=[b1,b2],
-                                     myfunc={'my_psf_function':my_psf_function})
+
+        if efftime > 5:
+            sl_model = pySNIFS_fit.model(data=cube2,
+                                         func=['long_exposure_psf;0.43, %f' % lbda_ref,
+                                               'poly2D;0'],
+                                         param=[p1,p2], bounds=[b1,b2],
+                                         myfunc={'long_exposure_psf':long_exposure_psf})
+
+        else:
+            sl_model = pySNIFS_fit.model(data=cube2,
+                                         func=['short_exposure_psf;0.43, %f' % lbda_ref,
+                                               'poly2D;0'],
+                                         param=[p1,p2], bounds=[b1,b2],
+                                         myfunc={'short_exposure_psf':short_exposure_psf})        
 
         # Fit of the current slice
         if opts.verbosity >= 3:
@@ -571,18 +726,29 @@ if __name__ == "__main__":
                [None, None]]           # rotation   
     b1[8:8+cube.nslice] = [[0, None]] * cube.nslice
 
-    p2 = sky_vec.tolist()
-    b2 = [[0.005, None]] * cube.nslice
+    if efftime > 5:
+        p2 = sky_vec.tolist()
+        b2 = [[0.005, None]] * cube.nslice
+    else:
+        p2 = sky_vec.tolist()
+        b2 = [[0.0, 0.0]] * cube.nslice        
 
     print_msg("  Initial guess: %s" % p1[:11], opts.verbosity, 2)
     
     # Instanciating the model class
-    data_model = pySNIFS_fit.model(data=cube,
-                                   func=['my_psf_function;0.43, %f' % lbda_ref,
-                                         'poly2D;0'],
-                                   param=[p1,p2], bounds=[b1,b2],
-                                   myfunc={'my_psf_function':my_psf_function})
-    
+    if efftime > 5:
+        data_model = pySNIFS_fit.model(data=cube,
+                                       func=['long_exposure_psf;0.43, %f' % lbda_ref,
+                                             'poly2D;0'],
+                                       param=[p1,p2], bounds=[b1,b2],
+                                       myfunc={'long_exposure_psf':long_exposure_psf})
+    else:
+        data_model = pySNIFS_fit.model(data=cube,
+                                       func=['short_exposure_psf;0.43, %f' % lbda_ref,
+                                             'poly2D;0'],
+                                       param=[p1,p2], bounds=[b1,b2],
+                                       myfunc={'short_exposure_psf':short_exposure_psf})
+        
     guesspar = data_model.flatparam
     
     # The fit is launched twice. This is a dirty trick to avoid it to get
@@ -603,7 +769,7 @@ if __name__ == "__main__":
     # Computing final spectra for object and background =====================
     
     print_msg("Extracting the spectrum...", opts.verbosity, 0)
-    spec = comp_spec(opts.input, fitpar[0:8], intpar=[0.43, lbda_ref])
+    spec = comp_spec(opts.input, fitpar[0:8], efftime, intpar=[0.43, lbda_ref])
 
     # Save star spectrum ==============================
     
@@ -703,9 +869,15 @@ if __name__ == "__main__":
         cube_fit.x /= 0.43     # x in spaxel 
         cube_fit.y /= 0.43     # y in spaxel
 
-        func1 = my_psf_function(intpar=[data_model.func[0].pix,
-                                        data_model.func[0].lbda_ref],
-                                cube=cube_fit)
+        if efftime >5:
+            func1 = long_exposure_psf(intpar=[data_model.func[0].pix,
+                                              data_model.func[0].lbda_ref],
+                                      cube=cube_fit)
+        else:
+            func1 = short_exposure_psf(intpar=[data_model.func[0].pix,
+                                              data_model.func[0].lbda_ref],
+                                      cube=cube_fit)
+            
         func2 = pySNIFS_fit.poly2D(0, cube_fit)
         
         cube_fit.data = func1.comp(fitpar[0:func1.npar]) + \
@@ -841,8 +1013,9 @@ if __name__ == "__main__":
                     cube_fit.data[i], 'r,')
             ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
                     func1.comp(fitpar[0:func1.npar])[i], 'g,')
-            ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
-                    func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i], 'c,')
+            if efftime > 5:
+                ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
+                        func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i], 'c,')
             ax.semilogy()
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
