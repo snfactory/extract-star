@@ -174,8 +174,8 @@ def comp_spec(cube_file, psf_param, efftime, intpar=[None, None]):
     
                  #only long exposure
     
-    lbda_rel = model.l[:,0] - model.lbda_ref
-    alpha    = psf_param[4] + psf_param[5]*lbda_rel
+    lbda_rel = model.l[:,0] / model.lbda_ref
+    alpha    = psf_param[4]*lbda_rel**psf_param[5]
     beta     = b1*alpha+b0
     sigma    = s1*alpha+s0
     eta      = e1*alpha+e0
@@ -235,8 +235,8 @@ class long_exposure_psf:
                      - C{param[1]}: Atmospheric dispersion position angle
                      - C{param[2]}: X center at the reference wavelength
                      - C{param[3]}: Y center at the reference wavelength
-                     - C{param[4]}: Moffat radius origin 
-                     - C{param[5]}: Moffat radius coefficient
+                     - C{param[4]}: Moffat radius norm a0 
+                     - C{param[5]}: Moffat radius power a1
                      - C{param[6]}: Ellipticity
                      - C{param[7]}: Rotation
                 - C{param[8:]} : The Intensity parameters (one for each slice in the cube).
@@ -259,8 +259,8 @@ class long_exposure_psf:
         rot = self.param[7]
 
         # aliases + correlations params (fixed)
-        lbda_rel = self.l - self.lbda_ref
-        alpha = a0 + a1*lbda_rel
+        lbda_rel = self.l / self.lbda_ref
+        alpha = a0*lbda_rel**a1
 
         s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
         beta  = b1*alpha+b0
@@ -303,8 +303,8 @@ class long_exposure_psf:
         rot = self.param[7]
 
         # aliases + correlations params (fixed)
-        lbda_rel = self.l - self.lbda_ref
-        alpha = a0 + a1*lbda_rel
+        lbda_rel = self.l / self.lbda_ref
+        alpha = a0*lbda_rel**a1
 
         s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
         beta  = b1*alpha+b0
@@ -325,9 +325,9 @@ class long_exposure_psf:
         grad[3] = tmp*(ell*dy + rot*dx)
         grad[0] =       self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
         grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
-        grad[4] = e1*gaussian + eta*r2*s1*gaussian/sigma**3 + \
-                  moffat*( -b1*logea + 2*beta*r2/(ea*alpha**3) )
-        grad[5] = grad[4] * lbda_rel
+        grad[4] = gaussian * lbda_rel**a1 * ( e1 + eta*r2*s1/sigma**3 ) + \
+                  moffat*( -b1 * lbda_rel**a1 * logea + 2*beta*r2/(a0*ea*alpha**2) )
+        grad[5] = grad[4] * a0 * S.log(lbda_rel)
         grad[6] = -tmp/2 * dy**2
         grad[7] = -tmp   * dx*dy
         grad[8] = eta*gaussian + moffat
@@ -372,8 +372,8 @@ class short_exposure_psf:
                      - C{param[1]}: Atmospheric dispersion position angle
                      - C{param[2]}: X center at the reference wavelength
                      - C{param[3]}: Y center at the reference wavelength
-                     - C{param[4]}: Moffat radius origin 
-                     - C{param[5]}: Moffat radius coefficient
+                     - C{param[4]}: Moffat radius norm a0
+                     - C{param[5]}: Moffat radius power a1
                      - C{param[6]}: Ellipticity
                      - C{param[7]}: Rotation
                 - C{param[8:]} : The Intensity parameters (one for each slice in the cube).
@@ -396,8 +396,8 @@ class short_exposure_psf:
         rot = self.param[7]
 
         # aliases + correlations params (fixed)
-        lbda_rel = self.l - self.lbda_ref
-        alpha = a0 + a1*lbda_rel
+        lbda_rel = self.l / self.lbda_ref
+        alpha = a0*lbda_rel**a1
 
         s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
         beta  = b1*alpha+b0
@@ -440,8 +440,8 @@ class short_exposure_psf:
         rot = self.param[7]
 
         # aliases + correlations params (fixed)
-        lbda_rel = self.l - self.lbda_ref
-        alpha = a0 + a1*lbda_rel
+        lbda_rel = self.l / self.lbda_ref
+        alpha = a0*lbda_rel**a1
 
         s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
         beta  = b1*alpha+b0
@@ -462,9 +462,9 @@ class short_exposure_psf:
         grad[3] = tmp*(ell*dy + rot*dx)
         grad[0] =       self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
         grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
-        grad[4] = e1*gaussian + eta*r2*s1*gaussian/sigma**3 + \
-                  moffat*( -b1*logea + 2*beta*r2/(ea*alpha**3) )
-        grad[5] = grad[4] * lbda_rel
+        grad[4] = gaussian * lbda_rel**a1 * ( e1 + eta*r2*s1/sigma**3 ) + \
+                  moffat*( -b1 * lbda_rel**a1 * logea + 2*beta*r2/(a0*ea*alpha**2) )
+        grad[5] = grad[4] * a0 * S.log(lbda_rel)
         grad[6] = -tmp/2 * dy**2
         grad[7] = -tmp   * dx*dy
         grad[8] = eta*gaussian + moffat
@@ -603,14 +603,14 @@ if __name__ == "__main__":
         yc = S.average(cube2.y, weights=sl_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 2.4, 0., 1., 0., imax]        # psf function;0.43
+        p1 = [0., 0., xc, yc, 2., 0, 1., 0., imax]        # psf function;0.43
         b1 = [None]*(8+cube2.nslice)                        # Empty list of length 8+cube2.nslice
         b1[0:8] = [[None, None],                            # delta
                    [-S.pi, S.pi],                           # theta
                    [None, None],                            # x0
                    [None, None],                            # y0
-                   [0.1, None],                             # a0 
-                   [0.,0.],                                 # a1
+                   [None, None],                            # a0 
+                   [0, 0],                                  # a1
                    [.6, 2.5],                               # ellipticity 
                    [None, None]]                            # rotation   
         b1[8:8+cube2.nslice] = [[0, None]] * cube2.nslice   
@@ -699,23 +699,20 @@ if __name__ == "__main__":
         delta = S.mean([delta_x, delta_y])
 
     # 2) Other parameters:
-    polAlpha = pySNIFS.fit_poly(a0_vec,3,1,cube.lbda-lbda_ref)
-    a1,a0 = polAlpha.coeffs
+    a0  = S.median(a0_vec*(cube.lbda/lbda_ref)**(-1/3.))
     ell = S.median(ell_vec)
     rot = S.median(rot_vec)
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(8+cube.nslice)
     b1 = [None]*(8+cube.nslice)
-    p1[0:8] = [delta, theta, x0, y0, a0, a1, ell, rot]
+    p1[0:8] = [delta, theta, x0, y0, a0, -0.33, ell, rot]
     p1[8:8+cube.nslice] = int_vec.tolist()
     
     b1[0:8] = [[None, None],           # delta      
                [None, None],           # theta      
                [None, None],           # x0         
                [None, None],           # y0         
-               #[0.1, None],            # a0         
-               #[-2., 0.],              # a1         
                [None, None],           # a0         
                [None, None],           # a1         
                [.6, 2.5],              # ellipticity               
@@ -756,7 +753,7 @@ if __name__ == "__main__":
     fitpar = data_model.fitpar
 
     print_msg("  Fit result: %s" % fitpar[:8], opts.verbosity, 2)
-    #print_msg("  Seeing estimate: %.2f arcsec FWHM" % (fitpar[4]*2.355), opts.verbosity, 0)
+    #print_msg("  Seeing estimate: %.2f arcsec FWHM" % (1.55 * fitpar[4]**0.6 * lbda_ref**(0.6*fitpar[5])), opts.verbosity, 0)
 
     # Computing final spectra for object and background =====================
     
@@ -962,9 +959,9 @@ if __name__ == "__main__":
         print_msg("Producing model parameter plot %s..." % plot6,
                   opts.verbosity, 1)
         
-        guess_disp = a0 + a1*(cube.lbda - lbda_ref)
-        fit_disp   = fitpar[4] + fitpar[5]*(cube.lbda - lbda_ref)
-        th_disp    = fitpar[4]*(cube.lbda/lbda_ref)**(-0.2)
+        guess_disp = a0*(cube.lbda / lbda_ref)**(-1/3.)
+        fit_disp   = fitpar[4]*(cube.lbda/lbda_ref)**fitpar[5]
+        th_disp    = fitpar[4]*(cube.lbda/lbda_ref)**(-1/3.)
 
         fig6 = pylab.figure()
         ax6a = fig6.add_subplot(2, 1, 1)
@@ -973,9 +970,9 @@ if __name__ == "__main__":
         ax6a.plot(cube.lbda, fit_disp, 'b', label="Fit 3D")
         ax6a.plot(cube.lbda, th_disp, 'g', label="Theoretical")
         ax6a.text(0.03, 0.8,
-                  r'$\rm{Guess:}\hspace{0.5} a_0=%.2f, a_1=%.1f\rm{ppm},\hspace{0.5} ' \
-                  r'\rm{Fit:}\hspace{0.5} a_0=%.2f, a_1=%.1f\rm{ppm}$' % \
-                  (a0,a1*1e6, fitpar[4],fitpar[5]*1e6),
+                  r'$\rm{Guess:}\hspace{0.5} a_0=%.2f, a_1=-1/3,\hspace{0.5} ' \
+                  r'\rm{Fit:}\hspace{0.5} a_0=%.2f, a_1=%.1f$' % \
+                  (a0,fitpar[4],fitpar[5]),
                   transform=ax6a.transAxes, fontsize=11)
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
