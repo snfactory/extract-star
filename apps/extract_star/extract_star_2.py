@@ -794,10 +794,10 @@ if __name__ == "__main__":
         plot2 = os.path.extsep.join((basename+"_fit1", opts.graph))
         plot3 = os.path.extsep.join((basename+"_fit2", opts.graph))
         plot4 = os.path.extsep.join((basename+"_fit3", opts.graph))
-        plot5 = os.path.extsep.join((basename+"_fit4", opts.graph))
-        plot6 = os.path.extsep.join((basename+"_fit5", opts.graph))
-        plot7 = os.path.extsep.join((basename+"_fit6", opts.graph))
-        plot8 = os.path.extsep.join((basename+"_fit7", opts.graph))
+        plot6 = os.path.extsep.join((basename+"_fit4", opts.graph))
+        plot7 = os.path.extsep.join((basename+"_fit5", opts.graph))
+        plot8 = os.path.extsep.join((basename+"_fit6", opts.graph))
+        plot5 = os.path.extsep.join((basename+"_fit7", opts.graph))
         
         # Plot of the star and sky spectra ------------------------------
         
@@ -1020,7 +1020,8 @@ if __name__ == "__main__":
 
         fig8 = pylab.figure()
         fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        extent = (cube.x.min(),cube.x.max(),cube.y.min(),cube.y.max())
+        extent = (cube.x.min()-0.5,cube.x.max()+0.5,
+                  cube.y.min()-0.5,cube.y.max()+0.5)
         for i in xrange(cube.nslice):                              # Loop over meta-slices
             ax = fig8.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
@@ -1034,8 +1035,34 @@ if __name__ == "__main__":
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
+            ax.axis(extent)
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
         fig8.savefig(plot8)
+
+        # Residuals of each slice ------------------------------
+        
+        print_msg("Producing residuals plot %s..." % plot5,
+                  opts.verbosity, 1)
+
+        fig5 = pylab.figure()
+        fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
+        for i in xrange(cube.nslice):                # Loop over meta-slices
+            ax = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
+            data = cube.slice2d(i, coord='p')
+            var = cube.slice2d(i, coord='p', var=True)
+            fit = cube_fit.slice2d(i, coord='p')
+            res = S.nan_to_num((data - fit)**2/var) # Contrib. to chi2
+            vmin,vmax = pylab.prctile(res, (3.,97.))     # Percentiles
+            ax.imshow(res, origin='lower', extent=extent, vmin=vmin, vmax=vmax)
+            ax.plot((xfit[i],),(yfit[i],), 'k+')
+            pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
+            ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
+                    horizontalalignment='left', transform=ax.transAxes)
+            ax.axis(extent)
+            if ax.is_last_row() and ax.is_first_col():
+                ax.set_xlabel("I", fontsize=8)
+                ax.set_ylabel("J", fontsize=8)
+        fig5.savefig(plot5)
 
