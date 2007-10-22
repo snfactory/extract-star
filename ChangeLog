@@ -2,6 +2,8 @@
 
 	* apps/extract_star/extract_star_2.py: add short exposure psf
 	function.
+	
+	* apps/extract_star/extract_star_2.py: modify the bounds.
 
 2007-10-20  yannick.copin  <yannick.copin@laposte.net>
 

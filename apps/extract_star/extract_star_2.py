@@ -352,7 +352,7 @@ class short_exposure_psf:
         self.npar_ind = 1
         self.npar_cor = 8
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
-        self.name = 'long_exposure_psf'
+        self.name = 'short_exposure_psf'
         self.x = S.zeros((cube.nslice,cube.nlens),'d')
         self.y = S.zeros((cube.nslice,cube.nlens),'d')
         self.l = S.zeros(cube.data.T.shape,'d')
@@ -603,7 +603,7 @@ if __name__ == "__main__":
         yc = S.average(cube2.y, weights=sl_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 0., 1., 2.4, 0., imax]        # psf function;0.43
+        p1 = [0., 0., xc, yc, 2.4, 0., 1., 0., imax]        # psf function;0.43
         b1 = [None]*(8+cube2.nslice)                        # Empty list of length 8+cube2.nslice
         b1[0:8] = [[None, None],                            # delta
                    [-S.pi, S.pi],                           # theta
@@ -615,12 +615,8 @@ if __name__ == "__main__":
                    [None, None]]                            # rotation   
         b1[8:8+cube2.nslice] = [[0, None]] * cube2.nslice   
 
-        if efftime > 5:
-            p2 = [sky]                                          # poly2D;0
-            b2 = [[0.005, None]]
-        else:
-            p2 = [0.]                                          # poly2D;0
-            b2 = [[0.0, 0.0]]
+        p2 = [sky]                                          # poly2D;0
+        b2 = [[0., None]]
         
         print_msg("    Initial guess: %s" % [p1,p2], opts.verbosity, 2)        
         
@@ -726,12 +722,8 @@ if __name__ == "__main__":
                [None, None]]           # rotation   
     b1[8:8+cube.nslice] = [[0, None]] * cube.nslice
 
-    if efftime > 5:
-        p2 = sky_vec.tolist()
-        b2 = [[0.005, None]] * cube.nslice
-    else:
-        p2 = sky_vec.tolist()
-        b2 = [[0.0, 0.0]] * cube.nslice        
+    p2 = sky_vec.tolist()
+    b2 = [[0., None]] * cube.nslice
 
     print_msg("  Initial guess: %s" % p1[:11], opts.verbosity, 2)
     
@@ -1013,9 +1005,8 @@ if __name__ == "__main__":
                     cube_fit.data[i], 'r,')
             ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
                     func1.comp(fitpar[0:func1.npar])[i], 'g,')
-            if efftime > 5:
-                ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
-                        func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i], 'c,')
+            ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
+                    func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i], 'c,')
             ax.semilogy()
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
