@@ -129,8 +129,8 @@ def comp_spec(cube, psf_param, intpar=[None, None],poly_deg=0):
     b = weight*cube.data
     B = N.array([N.dot(N.transpose(X[i]),b[i]) for i in N.arange(cube.nslice)])
     C = N.array([L.inv(a) for a in A])
-    #S = N.array([L.solve(A[i],B[i]) for i in N.arange(cube.nslice)])
-    S = N.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in N.arange(cube.nslice)])
+    S = N.array([L.solve(A[i],B[i]) for i in N.arange(cube.nslice)])
+    #S = N.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in N.arange(cube.nslice)])
     V = N.array([N.diag(c) for c in C])
     
 ##     obj = S[:,0]
