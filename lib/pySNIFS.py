@@ -389,6 +389,46 @@ class spectrum:
             hdulist.append(hdu_var)
         hdulist.writeto(fits_file, clobber=True) # Overwrite
 
+
+
+class spec_list:
+    def __init__(self,slist):
+        for s in slist:
+            if not isinstance(s,spectrum):
+                raise TypeError('The list elements must be pySNIFS.spectrum objects')
+        self.list = slist
+        
+    def WR_fits_file(self,fits_file,header_list=None):
+                
+        hdulist = pyfits.HDUList()
+        hdu = pyfits.PrimaryHDU()
+        if header_list is not None:
+            for desc in header_list:
+                if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
+                       desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
+                       desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
+                       desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
+                       desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS':
+                    hdu.header.update(desc[0],desc[1])
+        hdulist.append(hdu)
+        for s in self.list:
+            hdu = pyfits.ImageHDU()
+            hdu.data = num.array(s.data)
+            hdu.header.update('NAXIS', 1)
+            hdu.header.update('NAXIS1', s.len,after='NAXIS')
+            hdu.header.update('CRVAL1', s.start)
+            hdu.header.update('CDELT1', s.step)
+            hdulist.append(hdu)
+            if s.has_var:
+                hdu_var = pyfits.ImageHDU()
+                hdu_var.data = num.array(s.var)
+                hdu_var.header.update('NAXIS', 1)
+                hdu_var.header.update('NAXIS1', s.len,after='NAXIS')
+                hdu_var.header.update('CRVAL1', s.start)
+                hdu_var.header.update('CDELT1', s.step)
+                hdulist.append(hdu_var)
+        hdulist.writeto(fits_file, clobber=True) # Overwrite
+
 ########################## Image #######################################
 
 class image_array:
@@ -749,7 +789,7 @@ class SNIFS_cube:
                     self.no = num.array(no)
                     self.lbda = num.array(lbda)  
           
-    def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15):
+    def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):
         """
         Extract a 2D slice (individual slice or average of several ones) from a cube and return it as an array
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -760,6 +800,7 @@ class SNIFS_cube:
         @param nx: dimension of the slice in x
         @param ny: dimension of the slice in y
         @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
+        @param NAN: Flag to set non existing spaxel value to nan. if NAN=False, non existing spaxels will be set to 0
         """
         if weight == None and n == None:
             raise ValueError("Slices to be averaged must be given either as a list or as a weight spectrum")
@@ -795,7 +836,10 @@ class SNIFS_cube:
                     raise ValueError("Coordinates flag should be either 'p' or 'w'")
 
             if n1 >= 0 and n2 <= num.shape(self.data)[0]:
-                slice_2D = num.zeros((nx,ny),float32) * nan
+                if NAN:
+                    slice_2D = num.zeros((nx,ny),float32) * nan
+                else:
+                    slice_2D = num.zeros((nx,ny),float32)
                 i = num.array(self.i)
                 j = num.array(self.j)
                 if var:
@@ -819,7 +863,10 @@ class SNIFS_cube:
                     lbda = self.lstart+num.arange(imax-imin)*self.lstep
                     tck = I.splrep(weight.x,weight.data,s=0)
                     w = I.splev(lbda,tck)
-                    slice_2D = num.zeros((nx,ny),float32) * nan
+                    if NAN:
+                        slice_2D = num.zeros((nx,ny),float32) * nan
+                    else:
+                        slice_2D = num.zeros((nx,ny),float32)
                     i = num.array(self.i)
                     j = num.array(self.j)
                     if var:
@@ -851,11 +898,15 @@ class SNIFS_cube:
         if (no is not None and ind is not None) or (no is None and ind is None):
             raise TypeError("lens number (no) OR spec index (ind) should be given.")
         else:
-            if (no is not None):
-                if no in self.no.tolist():
-                    return data[:,num.argmax(self.no == no,axis=-1)]
-                else:
-                    raise IndexError("no lens #%d" % no)
+            if (not isinstance(no,list) and not isinstance(no,num.ndarray)) and (no is not None):
+                if (no is not None):
+                    if no in self.no.tolist():
+                        return data[:,num.argmax(self.no == no,axis=-1)]
+                    else:
+                        raise IndexError("no lens #%d" % no)
+            elif(no is not None):
+                s = num.sum(num.array([num.transpose(data)[self.get_lindex(n)] for n in no]),0)
+                return s
             else:
                 if not isinstance(ind,list):
                     if 0 <= ind < num.shape(data)[1]:
@@ -896,6 +947,7 @@ class SNIFS_cube:
         @param num_array: Flag to chose between numarray or numeric array format
         """
         spec = spectrum(x=self.lbda,data=self.spec(no),var=self.spec(no,var=True),num_array=num_array)
+        
         if hasattr(self,'lstep'):
             spec.step = self.lstep
         if hasattr(self,'lstart'):
@@ -903,7 +955,7 @@ class SNIFS_cube:
 
         return spec
     
-    def disp_slice(self,n=None,coord='w',weight=None,aspect='equal',scale='lin',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15):
+    def disp_slice(self,n=None,coord='w',weight=None,aspect='equal',scale='lin',vmin=None,vmax=None,cmap=pylab.cm.jet,var=False,contour=False,ima=True,nx=15,ny=15,NAN=True):
         """
         Display a 2D slice.
         @param n: If n is a list of 2 values [n1,n2], the function returns the sum of the slices between n1
@@ -919,8 +971,9 @@ class SNIFS_cube:
         @param nx: dimension of the slice in x
         @param ny: dimension of the slice in y
         @param weight: Spectrum giving the weights to be applied to each slice before lambda integration
+        @param NAN: Flag to set non existing spaxel value to nan. if NAN=False, non existing spaxels will be set to 0
         """
-        slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny,weight=weight)
+        slice = self.slice2d(n,coord,var=var,nx=nx,ny=ny,weight=weight,NAN=NAN)
         if vmin != None and vmax != None:
             if vmin > vmax:
                 raise ValueError("vmin must be lower than vmax.")
@@ -1453,3 +1506,25 @@ def comp_cdg(ima):
     sy = sqrt(num.sum(num.sum((ima*(y-yc)**2)))/num.sum(num.sum(ima)))
 
     return xc,yc,sx,sy
+
+def zerolike(cube):
+    newcube = SNIFS_cube()
+    newcube.x = cube.x
+    newcube.y = cube.y
+    newcube.i = cube.i
+    newcube.j = cube.j
+    newcube.lbda = cube.lbda
+    newcube.lend = cube.lend
+    newcube.lstart = cube.lstart
+    newcube.lstep = cube.lstep
+    newcube.data = cube.data* 0.
+    newcube.var = cube.var* 0.
+    newcube.nlens = cube.nlens
+    newcube.no = cube.no
+    newcube.nslice = cube.nslice
+    newcube.e3d_data_header = cube.e3d_data_header
+    newcube.e3d_extra_hdu_list = cube.e3d_extra_hdu_list
+    newcube.e3d_file = cube.e3d_file
+    newcube.e3d_grp_hdu = cube.e3d_grp_hdu
+    
+    return newcube
