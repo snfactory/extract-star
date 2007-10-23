@@ -9,8 +9,8 @@
 
 """
 Primarily based on the point source extractor of Emmanuel Pecontal
-(extract_star.py).  This version of extract_star only replaces double
-gaussian PSF profile by an empirical PSF profile (Gaussain + Moffat).
+(extract_star.py).  This version of extract_star replaces double
+gaussian PSF profile by an empirical PSF profile (Gaussian + Moffat).
 """
 
 __author__ = "Clement BUTON"
@@ -89,10 +89,10 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg):
     hdr.update('ES_A1'   ,param[5],   'extract_star ref. a1')
     hdr.update('ES_ELL'  ,param[6],   'extract_star ref. ellipticity')
     hdr.update('ES_ROT'  ,param[7],   'extract_star ref. rotation')
-##     hdr.update('SEEING'  ,  ,         'extract_star seeing')              # Seeing estimate (FWHM in arcsec)
-    hdr.update('ES_SDEG', sky_deg,    'extract_star sky polynomial background degree')    
+    hdr.update('ES_SDEG', sky_deg,    'extract_star polynomial bkgnd degree')
 
 def comp_spec(cube, psf_param, efftime, intpar=[None, None],poly_deg=0):
+    
     npar_poly = int((poly_deg+1)*(poly_deg+2)/2)                # Number of parameters of the polynomial background
     
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
@@ -590,14 +590,14 @@ if __name__ == "__main__":
 
     # Options ==============================
 
-    usage = "usage: [%prog] [options] -i inE3D.fits -d sky_deg" \
+    usage = "usage: [%prog] [options] -i inE3D.fits " \
             "-o outSpec.fits -s outSky.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-i", "--in", type="string", dest="input", 
                       help="Input datacube (euro3d format)")
     parser.add_option("-d", "--deg", type="int", dest="sky_deg", 
-                      help="Degree of the sky background polynomial [%default]",
+                      help="Sky polynomial background degree [%default]",
                       default=0 )
     parser.add_option("-o", "--out", type="string", 
                       help="Output star spectrum")
@@ -629,6 +629,7 @@ if __name__ == "__main__":
     efftime = inhdr.get('EFFTIME')
     airmass = inhdr.get('AIRMASS', 0.0)    
     channel = inhdr.get('CHANNEL', 'Unknown').upper()
+
     if channel.startswith('B'):
         slices=[10, 900, 65]
     elif channel.startswith('R'):
@@ -636,8 +637,13 @@ if __name__ == "__main__":
     else:
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
                      (opts.input, channel))
+    if efftime > 5.:                    # Long exposure
+        psfFn = long_exposure_psf
+    else:                               # Short exposure
+        psfFn = short_exposure_psf
 
-    print_msg("  Object: %s, Airmass: %.2f" % (obj,airmass),
+    print_msg("  Object: %s, Airmass: %.2f; Efftime: %.1fs [%s]" % \
+              (obj, airmass, efftime, efftime>5 and 'long' or 'short'),
               opts.verbosity, 0)
     print_msg("  Channel: %s, extracting slices: %s" % (channel,slices),
               opts.verbosity, 0)
@@ -746,18 +752,13 @@ if __name__ == "__main__":
     print_msg("  Initial guess: %s" % p1[:11], opts.verbosity, 2)
     
     # Instanciating the model class
-    if efftime > 5:
-        data_model = pySNIFS_fit.model(data=cube,
-                                       func=['long_exposure_psf;0.43, %f' % lbda_ref, 'poly2D;%d'%opts.sky_deg],
-                                       param=[p1,p2],
-                                       bounds=[b1,b2],
-                                       myfunc={'long_exposure_psf':long_exposure_psf})
-    else:
-        data_model = pySNIFS_fit.model(data=cube,
-                                       func=['short_exposure_psf;0.43, %f' % lbda_ref, 'poly2D;%d'%opts.sky_deg],
-                                       param=[p1,p2],
-                                       bounds=[b1,b2],
-                                       myfunc={'short_exposure_psf':short_exposure_psf})
+    data_model = pySNIFS_fit.model(data=cube,
+                                   func=['%s;0.43,%f' % \
+                                         (psfFn.__name__,lbda_ref),
+                                         'poly2D;%d' % opts.sky_deg],
+                                   param=[p1,p2],
+                                   bounds=[b1,b2],
+                                   myfunc={psfFn.__name__:psfFn})
         
     guesspar = data_model.flatparam
     
@@ -828,29 +829,25 @@ if __name__ == "__main__":
         print_msg("Producing spectra plot %s..." % plot1, opts.verbosity, 1)
         
         fig1 = pylab.figure()
-        axS = fig1.add_subplot(2, 1, 1)
-        axB = fig1.add_subplot(2, 1, 2)
-
+        axS = fig1.add_subplot(3, 1, 1)
+        axB = fig1.add_subplot(3, 1, 2)
+        axN = fig1.add_subplot(3, 1, 3)
+        axS.plot(star_spec.x, star_spec.data, 'b')
         axS.set_title("Star spectrum [%s]" % obj)
+        axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
-        spl = I.UnivariateSpline(star_spec.x,star_spec.data,w=1/S.sqrt(star_var.data),s=star_spec.len/1.5)
-        x = star_spec.x.tolist()+star_spec.x[-1::-1].tolist()
-        y = (spl(star_spec.x)-2*S.sqrt(star_var.data)).tolist()+(spl(star_spec.x)+2*S.sqrt(star_var.data))[-1::-1].tolist()
-        axS.fill(x,y,facecolor='k',alpha=0.2)
-        star_spec.overplot(ax=axS,color='b')
-        axS.legend(['signal','+- 2 sigma'],loc='best')
-        
-        axB.set_title("Mean background spectrum (per spx)")
-        bkg_spec.data = bkg_spec.data / cube.nlens
-        bkg_spec.var = bkg_spec.var / (cube.nlens)**2
-        spl = I.UnivariateSpline(bkg_spec.x,bkg_spec.data,w=1/S.sqrt(bkg_spec.var),s=bkg_spec.len/1.5)
-        x = bkg_spec.x.tolist()+bkg_spec.x[-1::-1].tolist()
-        y = (spl(bkg_spec.x)-2*S.sqrt(bkg_spec.var)).tolist()+(spl(bkg_spec.x)+2*S.sqrt(bkg_spec.var))[-1::-1].tolist()
-        axB.fill(x,y,facecolor='k',alpha=0.2)
-        bkg_spec.overplot(ax=axB,color='b')
-        axB.legend(['signal','+- 2 sigma'],loc='best')
-        axB.set_xlabel("Wavelength [A]")
-        
+        bkg_spec.data /= cube.nlens
+        bkg_spec.var  /= cube.nlens**2
+        axB.plot(bkg_spec.x, bkg_spec.data, 'g')
+        axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
+        axB.set_title("Background spectrum (per spx)")
+        axB.set_xticklabels([])
+        axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
+        axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
+        axN.set_title("Error spectra")
+        axN.semilogy()
+        axN.set_xlim(star_spec.x[0],star_spec.x[-1])
+        axN.set_xlabel("Wavelength [A]")
         fig1.savefig(plot1)
         
         # Plot of the fit on each slice ------------------------------
@@ -888,15 +885,9 @@ if __name__ == "__main__":
         cube_fit.x /= 0.43     # x in spaxel 
         cube_fit.y /= 0.43     # y in spaxel
 
-        if efftime >5:
-            func1 = long_exposure_psf(intpar=[data_model.func[0].pix,
-                                              data_model.func[0].lbda_ref],
-                                      cube=cube_fit)
-        else:
-            func1 = short_exposure_psf(intpar=[data_model.func[0].pix,
-                                              data_model.func[0].lbda_ref],
-                                      cube=cube_fit)
-            
+        func1 = psfFn(intpar=[data_model.func[0].pix,
+                              data_model.func[0].lbda_ref],
+                      cube=cube_fit)            
         func2 = pySNIFS_fit.poly2D(0, cube_fit)
         
         cube_fit.data = func1.comp(fitpar[0:func1.npar]) + \
@@ -989,7 +980,7 @@ if __name__ == "__main__":
         print_msg("Producing model parameter plot %s..." % plot6,
                   opts.verbosity, 1)
         
-        guess_disp = a0*(cube.lbda / lbda_ref)**(-1/3.)
+        guess_disp = a0*(cube.lbda/lbda_ref)**(-1/3.)
         fit_disp   = fitpar[4]*(cube.lbda/lbda_ref)**fitpar[5]
         th_disp    = fitpar[4]*(cube.lbda/lbda_ref)**(-1/3.)
 
@@ -1001,7 +992,7 @@ if __name__ == "__main__":
         ax6a.plot(cube.lbda, th_disp, 'g', label="Theoretical")
         ax6a.text(0.03, 0.8,
                   r'$\rm{Guess:}\hspace{0.5} a_0=%.2f, a_1=-1/3,\hspace{0.5} ' \
-                  r'\rm{Fit:}\hspace{0.5} a_0=%.2f, a_1=%.1f$' % \
+                  r'\rm{Fit:}\hspace{0.5} a_0=%.2f, a_1=%.2f$' % \
                   (a0,fitpar[4],fitpar[5]),
                   transform=ax6a.transAxes, fontsize=11)
         leg = ax6a.legend(loc='best')
@@ -1083,7 +1074,7 @@ if __name__ == "__main__":
             data = cube.slice2d(i, coord='p')
             var = cube.slice2d(i, coord='p', var=True)
             fit = cube_fit.slice2d(i, coord='p')
-            res = S.nan_to_num((data - fit)**2/var) # Contrib. to chi2
+            res = S.nan_to_num((data - fit)/S.sqrt(var)) 
             vmin,vmax = pylab.prctile(res, (3.,97.))     # Percentiles
             ax.imshow(res, origin='lower', extent=extent, vmin=vmin, vmax=vmax)
             ax.plot((xfit[i],),(yfit[i],), 'k+')
