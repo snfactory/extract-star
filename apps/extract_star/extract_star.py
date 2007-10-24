@@ -122,9 +122,6 @@ def comp_spec(cube, psf_param, intpar=[None, None],poly_deg=0):
             X[:,:,n] = weight*cube.x**(d-j)*cube.y**j
             n=n+1
 
-    Norm = N.mean(cube.data)
-    cube.data = cube.data / Norm
-    cube.var = cube.var / Norm**2
     A = N.array([N.dot(N.transpose(x),x) for x in X])
     b = weight*cube.data
     B = N.array([N.dot(N.transpose(X[i]),b[i]) for i in N.arange(cube.nslice)])
@@ -149,8 +146,8 @@ def comp_spec(cube, psf_param, intpar=[None, None],poly_deg=0):
     V[:,0] *= (1 + psf_param[7])**2
 
     # Change sky normalization from 'per spaxel' to 'per arcsec**2'
-    S[:,0] /= intpar[0]**2                 # intpar[0] is spaxel width
-    V[:,0] /= intpar[0]**4
+##     S[:,0] /= intpar[0]**2                 # intpar[0] is spaxel width
+##     V[:,0] /= intpar[0]**4
     
 ##     spec = N.zeros((2*npar_poly, cube.nslice), 'd')
 ##     spec[0,:] = cube.lbda
