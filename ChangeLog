@@ -1,3 +1,9 @@
+2007-10-25  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star_2.py: sky spectra and var_sky
+	spectra can now be read by quick_plot but !!! var_sky
+	normalization is still false !!!
+
 2007-10-23  yannick.copin  <yannick.copin@laposte.net>
 
 	* apps/extract_star/extract_star_2.py: remove spectrum+/-2sigma

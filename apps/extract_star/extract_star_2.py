@@ -162,14 +162,10 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None],poly_deg=0):
     D[:,0] *= eps
     V[:,0] *= eps**2
 
-    # Change sky normalization from 'per spaxel' to 'per arcsec**2'
-##     D[:,0] /= intpar[0]**2                 # intpar[0] is spaxel width
-##     V[:,0] /= intpar[0]**4
-    
 ##     spec = S.zeros((2*npar_poly, cube.nslice), 'd')
 ##     spec[0,:] = cube.lbda
 ##     spec[1:npar_poly+2,:] = D
-##     spec[npar_poly+2:,:] =  V 
+##     spec[npar_poly+2:,:]  = V 
   
     return cube.lbda,D,V
 
@@ -772,7 +768,7 @@ if __name__ == "__main__":
     fitpar = data_model.fitpar
 
     print_msg("  Fit result: %s" % fitpar[:8], opts.verbosity, 2)
-    #print_msg("  Seeing estimate: %.2f arcsec FWHM" % (1.55 * fitpar[4]**0.6 * lbda_ref**(0.6*fitpar[5])), opts.verbosity, 0)
+##     print_msg("  Seeing estimate: %.2f arcsec FWHM" % (1.55 * fitpar[4]**0.6 * lbda_ref**(0.6*fitpar[5])), opts.verbosity, 0)
 
     # Computing final spectra for object and background =====================
     
@@ -794,14 +790,25 @@ if __name__ == "__main__":
     
     # Save sky spectrum ==============================
 
-    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg)
-    sky_spec = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in S.transpose(spec)[1:]])
-    sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
-    sky_var = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in S.transpose(var)[1:]])
-    sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+    
+    sky_spec_list = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in S.transpose(spec)[1:]])
+##     sky_spec_list.WR_fits_file(opts.sky,header_list=inhdr.items())
+    sky_var_list = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in S.transpose(var)[1:]])
+##     sky_var_list.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
-    bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec.list,sky_var.list,opts.sky_deg)
+    bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec_list.list,sky_var_list.list,opts.sky_deg)
+
+    bkg_spec.data /= cube.nlens         # Per spaxels
+    bkg_spec.var  /= cube.nlens**2
+    
+    bkg_spec.data /= 0.43**2            # Per arcsec^2
+    bkg_spec.var  /= 0.43**4
+
+    sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
+    sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+    sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
+    sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
     # Create output graphics ==============================
     
@@ -822,31 +829,34 @@ if __name__ == "__main__":
         plot5 = os.path.extsep.join((basename+"_fit7", opts.graph))
         
         # Plot of the star and sky spectra ------------------------------
-        
+
         print_msg("Producing spectra plot %s..." % plot1, opts.verbosity, 1)
         
         fig1 = pylab.figure()
+        
         axS = fig1.add_subplot(3, 1, 1)
         axB = fig1.add_subplot(3, 1, 2)
         axN = fig1.add_subplot(3, 1, 3)
+        
         axS.plot(star_spec.x, star_spec.data, 'b')
         axS.set_title("Star spectrum [%s]" % obj)
         axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
-        bkg_spec.data /= cube.nlens
-        bkg_spec.var  /= cube.nlens**2
+
         axB.plot(bkg_spec.x, bkg_spec.data, 'g')
         axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
         axB.set_title("Background spectrum (per spx)")
         axB.set_xticklabels([])
+        
         axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
         axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
         axN.set_title("Error spectra")
         axN.semilogy()
         axN.set_xlim(star_spec.x[0],star_spec.x[-1])
         axN.set_xlabel("Wavelength [A]")
-        fig1.savefig(plot1)
         
+        fig1.savefig(plot1)
+
         # Plot of the fit on each slice ------------------------------
         
         print_msg("Producing slice fit plot %s..." % plot2, opts.verbosity, 1)
@@ -855,14 +865,15 @@ if __name__ == "__main__":
         nrow = S.ceil(cube.nslice/float(ncol))
         
         fig2 = pylab.figure()
+        
         fig2.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):   # Loop over meta-slices
+        for i in xrange(cube.nslice):                              # Loop over meta-slices
             ax = fig2.add_subplot(nrow, ncol, i+1)
             data = data_model.data.data[i,:]
             fit = data_model.evalfit()[i,:]
             fmin = min(data.min(), fit.min()) - 2e-2
-            ax.plot(data-fmin)          # Signal
-            ax.plot(fit-fmin)           # Fit
+            ax.plot(data-fmin)                                     # Signal
+            ax.plot(fit-fmin)                                      # Fit
             ax.semilogy()
             ax.set_xlim(0,len(data))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
@@ -871,6 +882,7 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Spaxel ID", fontsize=8)
                 ax.set_ylabel("Flux + cte", fontsize=8)
+                
         fig2.savefig(plot2)
 
         # Plot of the fit on rows and columns sum ----------------------------
@@ -879,8 +891,8 @@ if __name__ == "__main__":
 
         # Creating a standard SNIFS cube with the adjusted data
         cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
-        cube_fit.x /= 0.43     # x in spaxel 
-        cube_fit.y /= 0.43     # y in spaxel
+        cube_fit.x /= 0.43                                         # x in spaxel 
+        cube_fit.y /= 0.43                                         # y in spaxel
 
         func1 = psfFn(intpar=[data_model.func[0].pix,
                               data_model.func[0].lbda_ref],
@@ -891,16 +903,17 @@ if __name__ == "__main__":
                         func2.comp(fitpar[func1.npar:func1.npar+func2.npar])
 
         fig3 = pylab.figure()
+        
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):   # Loop over slices
+        for i in xrange(cube.nslice):                              # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
             # YC - Why is there some NaN's in data slices?
             # (eg e3d_TC07_153_099_003_17_B.fits)
             sigSlice = S.nan_to_num(cube.slice2d(i, coord='p'))
             varSlice = S.nan_to_num(cube.slice2d(i, coord='p', var=True))
             modSlice = cube_fit.slice2d(i, coord='p')
-            prof_I = sigSlice.sum(axis=0) # Sum along rows
-            prof_J = sigSlice.sum(axis=1) # Sum along columns
+            prof_I = sigSlice.sum(axis=0)                          # Sum along rows
+            prof_J = sigSlice.sum(axis=1)                          # Sum along columns
             err_I = S.sqrt(varSlice.sum(axis=0))
             err_J = S.sqrt(varSlice.sum(axis=1))
             mod_I = modSlice.sum(axis=0)
@@ -915,6 +928,7 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I (blue) or J (red)", fontsize=8)
                 ax.set_ylabel("Flux", fontsize=8)
+                
         fig3.savefig(plot3)
         
         # Plot of the star center of gravity and adjusted center --------------
@@ -931,6 +945,7 @@ if __name__ == "__main__":
                  S.sin(guesspar[1]) + guesspar[3]
 
         fig4 = pylab.figure()
+        
         ax4a = fig4.add_subplot(2, 2, 1)
         ax4a.plot(cube.lbda, xc_vec, 'b.', label="Fit 2D")
         ax4a.plot(cube.lbda, xguess, 'k--', label="Guess 3D")
@@ -970,6 +985,7 @@ if __name__ == "__main__":
         ax4c.set_ylabel("Y center [spaxels]")
         fig4.text(0.5, 0.93, "ADR plot [%s, airmass=%.2f]" % (obj, airmass), 
                   horizontalalignment='center', size='large')
+        
         fig4.savefig(plot4)
 
         # Plot of the other model parameters ------------------------------
@@ -982,6 +998,7 @@ if __name__ == "__main__":
         th_disp    = fitpar[4]*(cube.lbda/lbda_ref)**(-1/3.)
 
         fig6 = pylab.figure()
+        
         ax6a = fig6.add_subplot(2, 1, 1)
         ax6a.plot(cube.lbda, a0_vec, 'bo', label="Fit 2D")
         ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
@@ -1004,15 +1021,18 @@ if __name__ == "__main__":
         ax6d = fig6.add_subplot(4, 1, 4)
         plot_non_chromatic_param(ax6d, rot_vec/S.pi*180, cube.lbda,
                                  rot/S.pi*180, fitpar[7]/S.pi*180, '\\theta')
+        
         fig6.savefig(plot6)
 
         # Plot of the radial profile --------------
 
         print_msg("Producing radial profile plot %s..." % plot7,
                   opts.verbosity, 1)
+        
         fig7 = pylab.figure()
+        
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):   # Loop over slices
+        for i in xrange(cube.nslice):                              # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
             ax.plot(S.hypot(cube.x-xfit[i],cube.y-yfit[i]),
                     cube.data[i], 'b.')
@@ -1029,6 +1049,7 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Radius [spaxels]", fontsize=8)
                 ax.set_ylabel("Flux", fontsize=8)
+                
         fig7.savefig(plot7)
 
         # Contour plot of each slice ------------------------------
@@ -1037,6 +1058,7 @@ if __name__ == "__main__":
                   opts.verbosity, 1)
 
         fig8 = pylab.figure()
+        
         fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
                   cube.y.min()-0.5,cube.y.max()+0.5)
@@ -1057,6 +1079,7 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
+                
         fig8.savefig(plot8)
 
         # Residuals of each slice ------------------------------
@@ -1065,6 +1088,7 @@ if __name__ == "__main__":
                   opts.verbosity, 1)
 
         fig5 = pylab.figure()
+        
         fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):                # Loop over meta-slices
             ax = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
@@ -1082,5 +1106,6 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
+                
         fig5.savefig(plot5)
 
