@@ -1,5 +1,8 @@
 2007-10-25  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
+	* apps/extract_star/extract_star_2.py: bug in var_sky
+	normalization corrected.
+	
 	* apps/extract_star/extract_star_2.py: sky spectra and var_sky
 	spectra can now be read by quick_plot but !!! var_sky
 	normalization is still false !!!

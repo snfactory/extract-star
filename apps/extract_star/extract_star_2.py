@@ -134,18 +134,18 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None],poly_deg=0):
     b = weight*cube.data
     B = S.array([S.dot(S.transpose(X[i]),b[i]) for i in S.arange(cube.nslice)])
     C = S.array([L.inv(a) for a in A])
-    D = S.array([L.solve(A[i],B[i]) for i in S.arange(cube.nslice)])
-##     D = S.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in S.arange(cube.nslice)])
-    V = S.array([S.diag(c) for c in C])
+    Spec = S.array([L.solve(A[i],B[i]) for i in S.arange(cube.nslice)])
+##     Spec = S.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in S.arange(cube.nslice)])
+    Var = S.array([S.diag(c) for c in C])
     
-##     obj = D[:,0]
-##     sky0 = D[:,1]
-##     sky_slope = S.sqrt(D[:,2]**2 + D[:,3]**2)*S.sign(D[:,2]/D[:,3])
-##     sky_orient = S.arctan(D[:,2]/D[:,3])*180/S.pi
-##     var_obj = V[:,0]
-##     var_sky0 = V[:,1]
-##     var_sky_slope = (D[:,2]*sqrt(V[:,2]) + D[:,3]*sqrt(V[:,3]))**2 / sky_slope**2
-##     var_sky_orient = (180/S.pi)**2*(D[:,3]*sqrt(V[:,2]) + D[:,2]*sqrt(V[:,3]))**2 / sky_slope**4
+##     obj = Spec[:,0]
+##     sky0 = Spec[:,1]
+##     sky_slope = S.sqrt(Spec[:,2]**2 + Spec[:,3]**2)*S.sign(Spec[:,2]/Spec[:,3])
+##     sky_orient = S.arctan(Spec[:,2]/Spec[:,3])*180/S.pi
+##     var_obj = Var[:,0]
+##     var_sky0 = Var[:,1]
+##     var_sky_slope = (Spec[:,2]*sqrt(Var[:,2]) + Spec[:,3]*sqrt(Var[:,3]))**2 / sky_slope**2
+##     var_sky_orient = (180/S.pi)**2*(Spec[:,3]*sqrt(Var[:,2]) + Spec[:,2]*sqrt(Var[:,3]))**2 / sky_slope**4
 
     # The 3D psf model is not normalized to 1 in integral. The result must be
     # renormalized by (eps), eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) + S.pi*alpha**2 / ((beta-1)*(S.sqrt(ell)))
@@ -159,15 +159,15 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None],poly_deg=0):
     
     eps = S.pi*(2*eta*sigma**2 + alpha**2/(beta-1) )/S.sqrt(ell)    
     
-    D[:,0] *= eps
-    V[:,0] *= eps**2
+    Spec[:,0] *= eps
+    Var[:,0] *= eps**2
 
 ##     spec = S.zeros((2*npar_poly, cube.nslice), 'd')
 ##     spec[0,:] = cube.lbda
-##     spec[1:npar_poly+2,:] = D
-##     spec[npar_poly+2:,:]  = V 
+##     spec[1:npar_poly+2,:] = Spec
+##     spec[npar_poly+2:,:]  = Var 
   
-    return cube.lbda,D,V
+    return cube.lbda,Spec,Var
 
 def get_start(cube,poly_deg,verbosity,efftime):
     npar_poly = int((poly_deg+1)*(poly_deg+2)/2)            # Number of parameters of the polynomial background
@@ -279,27 +279,27 @@ def get_start(cube,poly_deg,verbosity,efftime):
 
     return xc_vec,yc_vec,a0_vec,a1_vec,ell_vec,rot_vec,int_vec,sky_vec
 
-def build_sky_cube(cube,sky,sky_var,deg):
+## def build_sky_cube(cube,sky,sky_var,deg):
 
-    npar_poly = len(sky)
-    poly = pySNIFS_fit.poly2D(deg,cube)
-    cube2 = pySNIFS.zerolike(cube)
-    cube2.x = (cube2.x)**2
-    cube2.y = (cube2.y)**2
-    poly2 = pySNIFS_fit.poly2D(deg,cube2)
-    param = S.zeros((npar_poly,cube.nslice),'d')
-    vparam = S.zeros((npar_poly,cube.nslice),'d')
-    for i in S.arange(npar_poly):
-        param[i,:] = sky[i].data
-        vparam[i,:] = sky_var[i].data
-    data = poly.comp(S.ravel(param))
-    var = poly2.comp(S.ravel(vparam))
-    bkg_cube = pySNIFS.zerolike(cube)
-    bkg_cube.data = data
-    bkg_cube.var = var
-    bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
+##     npar_poly = len(sky)
+##     poly = pySNIFS_fit.poly2D(deg,cube)
+##     cube2 = pySNIFS.zerolike(cube)
+##     cube2.x = (cube2.x)**2
+##     cube2.y = (cube2.y)**2
+##     poly2 = pySNIFS_fit.poly2D(deg,cube2)
+##     param = S.zeros((npar_poly,cube.nslice),'d')
+##     vparam = S.zeros((npar_poly,cube.nslice),'d')
+##     for i in S.arange(npar_poly):
+##         param[i,:] = sky[i].data
+##         vparam[i,:] = sky_var[i].data
+##     data = poly.comp(S.ravel(param))
+##     var = poly2.comp(S.ravel(vparam))
+##     bkg_cube = pySNIFS.zerolike(cube)
+##     bkg_cube.data = data
+##     bkg_cube.var = var
+##     bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
 
-    return bkg_cube,bkg_spec
+##     return bkg_cube,bkg_spec
 
 # PSF classes ========================================================
 
@@ -792,23 +792,35 @@ if __name__ == "__main__":
 
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg)
     
-    sky_spec_list = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in S.transpose(spec)[1:]])
-##     sky_spec_list.WR_fits_file(opts.sky,header_list=inhdr.items())
-    sky_var_list = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in S.transpose(var)[1:]])
-##     sky_var_list.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+##     sky_spec_list = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in S.transpose(spec)[1:]])
+## ##     sky_spec_list.WR_fits_file(opts.sky,header_list=inhdr.items())
+##     sky_var_list = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in S.transpose(var)[1:]])
+## ##     sky_var_list.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
-    bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec_list.list,sky_var_list.list,opts.sky_deg)
+##     bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec_list.list,sky_var_list.list,opts.sky_deg)
 
-    bkg_spec.data /= cube.nlens         # Per spaxels
-    bkg_spec.var  /= cube.nlens**2
+##     bkg_spec.data /= cube.nlens         # Per spaxels
+##     bkg_spec.var  /= cube.nlens**2
     
-    bkg_spec.data /= 0.43**2            # Per arcsec^2
-    bkg_spec.var  /= 0.43**4
+##     bkg_spec.data /= 0.43**2            # Per arcsec^2
+##     bkg_spec.var  /= 0.43**4
 
-    sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
-    sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
-    sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
-    sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+##     sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
+##     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+##     sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
+##     sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+
+    spec[:,1:] /= 0.43**2            # Per arcsec^2
+    var[:,1:]  /= 0.43**4
+
+    prefix = [''] + [ 'a%d_' % n for n in range(1,npar_poly) ]
+
+    # Loop in reverse order to finish with 0th-order (for later plot)
+    for i,pre in enumerate(prefix[::-1]): 
+        sky_spec = pySNIFS.spectrum(data=spec[:,npar_poly-i], start=lbda[0], step=step)
+        sky_spec.WR_fits_file(pre+opts.sky,header_list=inhdr.items())
+        sky_var = pySNIFS.spectrum(data=var[:,npar_poly-i],start=lbda[0],step=step)
+        sky_var.WR_fits_file('var_'+pre+opts.sky,header_list=inhdr.items())
 
     # Create output graphics ==============================
     
@@ -843,13 +855,16 @@ if __name__ == "__main__":
         axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
 
-        axB.plot(bkg_spec.x, bkg_spec.data, 'g')
-        axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
+##         axB.plot(bkg_spec.x, bkg_spec.data, 'g')
+##         axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
+        axB.plot(sky_spec.x, sky_spec.data, 'g')
+        axB.set_xlim(sky_spec.x[0],sky_spec.x[-1])        
         axB.set_title("Background spectrum (per spx)")
         axB.set_xticklabels([])
         
         axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
-        axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
+##         axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
+        axN.plot(sky_spec.x, S.sqrt(sky_var.data), 'g')
         axN.set_title("Error spectra")
         axN.semilogy()
         axN.set_xlim(star_spec.x[0],star_spec.x[-1])
