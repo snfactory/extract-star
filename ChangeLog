@@ -1,3 +1,11 @@
+2007-10-29  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star_2.py: change names between
+	extract_star.py (v 1.32) and extract_star_2.py (v 1.13).
+
+	* apps/extract_star/extract_star.py: change names between
+	extract_star.py (v 1.32) and extract_star_2.py (v 1.13).
+
 2007-10-25  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: bug in var_sky
