@@ -8,16 +8,11 @@
 ######################################################################
 
 from pySNIFS import *
-#import numarray
 import scipy
+from scipy import optimize
 import numpy
-import copy as COP
-from numpy import *
-import sys, math 
 import numpy.linalg.linalg as la 
-from numpy.linalg.linalg import norm 
-
-def find(X)     : return numpy.where(X)[0]
+from copy import deepcopy
 
 __author__ = '$Author$'
 __version__ = '$Revision$'
@@ -469,11 +464,9 @@ class model:
     def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None,myfunc=None):
         self.fitpar = None
         
-        if param == None:
+        if param is None:
             raise ValueError, "A set of model parameters values must be provided."
             
-        if (not isinstance(data,SNIFS_cube)) and (not isinstance(data,spectrum)) and (not isinstance(data,image_array)):
-            raise TypeError, "data array must be a SNIFS_cube, image_array or spectrum object."
         if isinstance(data,SNIFS_cube):
             self.model_1D = False
             self.model_2D = False
@@ -492,7 +485,7 @@ class model:
             self.data.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
             self.data.x = self.data.i*data.stepx+data.startx
             self.data.y = self.data.j*data.stepy+data.starty
-        else:
+        elif isinstance(data,spectrum):
             self.model_1D = True
             self.model_2D = False
             self.model_3D = False
@@ -506,6 +499,9 @@ class model:
             self.data.i = None
             self.data.j = None
             self.data.no = None
+        else:
+            raise TypeError("data array must be a SNIFS_cube, image_array or spectrum object.")
+            
         
         func_dict = {}
         func_dict['gaus1D']=gaus1D
@@ -516,23 +512,23 @@ class model:
         func_dict['SNIFS_psf_3D']=SNIFS_psf_3D
         
         # We add in the available function dictionary the user's ones
-        if (myfunc) != None:
-            if not isinstance(myfunc,dict):
-                raise ValueError,'The users functions must be provided as a dictionary {\'name1\':func1,\
-                \'name2\':func2...}'
-            func_dict.update(myfunc)
+        if myfunc is not None:
+            try:
+                func_dict.update(myfunc)
+            except:
+                raise ValueError("User functions must be provided as dictionary {'name1':func1, 'name2':func2...}")
 
         if self.model_1D:
             avail_func = ['gaus1D','poly1D']
-            if myfunc != None:
+            if myfunc is not None:
                 avail_func = avail_func+myfunc.keys()
                 
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
-            if myfunc != None:
+            if myfunc is not None:
                 avail_func = avail_func+myfunc.keys()
                 
-        if data.var == None:
+        if data.var is None:
             #self.weight = SNIFS_cube()
             self.weight = scipy.ones(shape(self.data.data),'d')
             #self.weight.ones_from(self.data)
@@ -561,8 +557,6 @@ class model:
         self.khi2 = None
 
         ######### Function list analysis #########
-        if not isinstance(func,list):
-            raise TypeError, "Parameter func should be a list."
 
         self.func = []
         for f in func:
@@ -583,8 +577,6 @@ class model:
                 self.func.append(func_dict[fstring](internal_param,self.data))
 
         ######### Parameter list analysis #########
-        if not isinstance(param,list):
-            raise TypeError, "param must be a list of arrays."
         if len(param) != len(func):
             raise ValueError, "param list and func list must have the same length."
         for i,f in enumerate(self.func):
@@ -592,17 +584,12 @@ class model:
                 raise ValueError, "Function %s must have %d parameters, %d given." % \
                       (f.name, f.npar, len(param[i]))
         self.param = param
-        nparam = [len(param[i]) for i in arange(len(param))]
-        #self.flatparam = numarray.zeros(sum(nparam),'d')
-        self.flatparam = scipy.zeros(sum(nparam),'d')
+        nparam = [ len(p) for p in param ]
         self.nparam = sum(nparam)
-        n = 0
-        for i in arange(len(param)):
-            self.flatparam[n:n+nparam[i]] = param[i]
-            n = n + nparam[i]
+        self.flatparam = scipy.concatenate(param).astype('d')
 
         ######### Bounds list analysis #########
-        if bounds == None:
+        if bounds is None:
             self.bounds = None
         else:
             if len(param) != len(bounds):
@@ -618,30 +605,25 @@ class model:
  
     def new_param(self,param=None):
         """ Store new parameters for the model evaluation. """
-        nparam = [len(param[i]) for i in arange(len(param))]
-        if not isinstance(param,list):
-            raise TypeError, "param must be a list of arrays."
-        if scipy.size(param) != scipy.size(self.param) or len(param) != len(self.param):
+        nparam = [ len(p) for p in param ]
+        if scipy.size(param) != scipy.size(self.param) or \
+               len(param) != len(self.param):
             raise ValueError, "param has not the correct size."
         self.param = param
-        self.flatparam = scipy.zeros(sum(nparam),'d')
-        n = 0
-        for i in range(len(param)):
-            self.flatparam[n:n+nparam[i]] = param[i]
-            n = n + nparam[i]
+        self.flatparam = scipy.concatenate(param).astype('d')
    
     def eval(self):
         """ Evaluate the model at the current parameters stored in the field flatparam."""
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
-            val = val + f.comp(self.flatparam[i:i+f.npar])
-            i=i+f.npar
+            val += f.comp(self.flatparam[i:i+f.npar])
+            i += f.npar
         return val
 
     def evalfit(self):
         """ Evaluate the model at the last fitted parameters stored in the field fitpar."""
-        if self.fitpar == None:
+        if self.fitpar is None:
             raise ValueError, "No fit parameter to evaluate model."
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
@@ -652,9 +634,8 @@ class model:
 
     def res_eval(self,param=None):
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
-        if param == None:
-            #param = numarray.copy.deepcopy(self.flatparam)
-            param = COP.deepcopy(self.flatparam)
+        if param is None:
+            param = deepcopy(self.flatparam)
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
@@ -665,7 +646,7 @@ class model:
 
     def res_evalfit(self):
         """ Evaluate the residuals at the last fitted parameters stored in the field fitpar."""
-        if self.fitpar == None:
+        if self.fitpar is None:
             raise ValueError, "No parameter to estimate function value."
         val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
@@ -678,13 +659,11 @@ class model:
     def objfun(self,param=None):
         """ Compute the objective function to be minimized: Sum(weight*(data-model)^2) at the given parameters values."""
         #val = sum(self.res_eval(param=param)**2 * self.weight.data,1)
-        val = sum(self.res_eval(param=param)**2 * self.weight,1)
-        val = sum(val)
-        return val
+        return (self.res_eval(param=param)**2 * self.weight).sum()
         
     def objgrad(self,param=None):
         """ Compute the gradient of the objective function at the given parameters value."""
-        if param == None:
+        if param is None:
             param = self.flatparam
         #val1 = self.res_eval(param=param) * self.weight.data
         val1 = self.res_eval(param=param) * self.weight
@@ -743,7 +722,7 @@ class model:
 
         
     def param_error(self,param=None):
-        if param == None:
+        if param is None:
             param = self.fitpar
         jac = self.objgrad
         #print 'jac: ',shape(jac(param))
@@ -770,12 +749,12 @@ class model:
         return newparam
 
     def save_fit_as_SNIFS_cube(self):
-        fit_cube = COP.deepcopy(self.data)
+        fit_cube = deepcopy(self.data)
         fit_cube.data = self.evalfit()
         return fit_cube
 
     def save_guess_as_SNIFS_cube(self):
-        guess_cube = COP.deepcopy(self.data)
+        guess_cube = deepcopy(self.data)
         guess_cube.data = self.eval()
         return guess_cube
         
@@ -826,14 +805,14 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
     return der
 
 def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
-    if param==None:
+    if param is None:
         param=init_param(func)
     if not isinstance(spec,spectrum):
         raise TypeError, 'spec must be a pySNIFS.spectrum'
     # copying the input spectrum into a temporary one
-    spec2 = COP.deepcopy(spec)
+    spec2 = deepcopy(spec)
     spec2.data = spec2.data/scipy.mean(spec2.data) # Normalisation of the data
-    if spec2.var != None:
+    if spec2.var is not None:
         spec2.var = spec2.var/scipy.mean(spec2.var) # Normalisation of the data
     mod_spec = model(data=spec2,func=func,param=param,bounds=bounds)
     mod_spec.fit()
@@ -886,7 +865,7 @@ def fnnls(XtX, Xty, tol = 0) :
  
   if tol == 0 : 
     eps = 2.2204e-16 
-    tol = 10 * eps * norm(XtX,1)*max(m, n)
+    tol = 10 * eps * la.norm(XtX,1)*max(m, n)
   #end 
  
   P = numpy.zeros(n, 'i') 
@@ -902,8 +881,12 @@ def fnnls(XtX, Xty, tol = 0) :
   # set up iteration criterion 
   iter = 0 
   itmax = 30 * n 
- 
+
   # outer loop to put variables into set to hold positive coefficients 
+
+  def find(X):
+      return numpy.where(X)[0]
+
   while any(Z) and any(w[ZZ] > tol) : 
     wt = w[ZZ].max() 
     t = find(w[ZZ] == wt) 

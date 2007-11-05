@@ -9,19 +9,12 @@
 
 import os
 
-#import scipy
-from scipy import optimize
 from scipy import cos,sin,pi,exp
-from scipy.special import *
 from scipy import interpolate as I
 from scipy.ndimage import filters as F
-from scipy import std
-from scipy import isscalar
 
 import numpy as num
 from numpy import float32,float64,nan
-
-import numarray
 
 os.environ['NUMERIX'] = 'numpy'
 import pyfits
@@ -112,7 +105,7 @@ class spectrum:
                     self.var = num.array(var_fits[0].data)
                 else:
                     self.var = None
-                if not isinstance(self.var,type(None)):
+                if self.var is not None:
                     if len(self.var) != len(self.data):
                         raise ValueError('Data and variance spectra '
                                          'must have the same length')
@@ -203,7 +196,7 @@ class spectrum:
         
         self.data = num.array(self.data)
         self.x = num.array(self.x)
-        if not isinstance(self.var,type(None)):
+        if self.var is not None:
             self.var = num.array(self.var)
               
         if self.var is None:
@@ -289,22 +282,22 @@ class spectrum:
         self.intervals = []
         if intervals is None:
             return
+
         if not isinstance(intervals,list):
             raise ValueError("Interval must be provided as a list of 2 elements tuples")
-        else:
-            for interval in intervals:
-                if not isinstance(interval,tuple):
-                    raise ValueError("Intervals must be provided as a list of 2 elements tuples")
+
+        for interval in intervals:
+            if not isinstance(interval,tuple):
+                raise ValueError("Intervals must be provided as a list of 2 elements tuples")
+            if len(interval) == 2:
+                if interval[0] < min(self.x) or interval[1] > max(self.x):
+                    raise ValueError("Interval bounds must be numbers between xmin and xmax.")
                 else:
-                    if len(interval) == 2:
-                        if not isscalar(interval[0]) or interval[0] < min(self.x) or interval[1] > max(self.x):
-                            raise ValueError("Interval bounds must be numbers between xmin and xmax.")
-                        else:
-                            ind_min = self.index(min(interval))
-                            ind_max = self.index(max(interval))
-                            self.index_list = self.index_list + (num.arange(ind_max-ind_min+1)+ind_min).tolist()
-                            self.intervals.append((ind_min,ind_max))
-                    else:
+                    ind_min = self.index(min(interval))
+                    ind_max = self.index(max(interval))
+                    self.index_list = self.index_list + (num.arange(ind_max-ind_min+1)+ind_min).tolist()
+                    self.intervals.append((ind_min,ind_max))
+            else:
                         raise ValueError("Interval must be provided as a list of 2 elements tuples")
 
     def reset_interval(self):
@@ -675,7 +668,7 @@ class SNIFS_cube:
 
             tdata = num.transpose(num.array([data[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
                                                        for i in range(len(data))]))
-            if not isinstance(var,type(None)):
+            if var is not None:
                 tvar = num.transpose(num.array([var[i][common_lstart-spec_sta[i]:common_lend-spec_sta[i]] \
                                                           for i in range(len(var))]))
                                                           
@@ -705,7 +698,7 @@ class SNIFS_cube:
             if not s:
                 if not nodata:
                     self.data = tdata[lmin - common_lstart:lmax - common_lstart:lstep]
-                    if not isinstance(var,type(None)):
+                    if var is not None:
                         self.var = tvar[lmin - common_lstart:lmax - common_lstart:lstep]
                 else:
                     self.data = None
@@ -715,7 +708,7 @@ class SNIFS_cube:
                 if not nodata:
                     self.data = F.uniform_filter(tdata,(lstep,1))\
                                 [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]
-                    if not isinstance(var,type(None)):
+                    if var is not None:
                         self.var = F.uniform_filter(tvar,(lstep,1))\
                                    [lmin - common_lstart + lstep/2:lmax - common_lstart+lstep/2:lstep]/lstep
                 else:
@@ -737,7 +730,7 @@ class SNIFS_cube:
             if not num_array:
                 if not nodata:
                     self.data = num.array(self.data,'f')
-                    if not isinstance(var,type(None)):
+                    if var is not None:
                         self.var = num.array(self.var,'f')
                 else:
                     self.data = None
@@ -895,7 +888,8 @@ class SNIFS_cube:
             data = data * mask
             return num.sum(data,1)
         
-        if (no is not None and ind is not None) or (no is None and ind is None):
+        if (no is not None and ind is not None) or \
+               (no is None and ind is None):
             raise TypeError("lens number (no) OR spec index (ind) should be given.")
         else:
             if (not isinstance(no,list) and not isinstance(no,num.ndarray)) and (no is not None):
@@ -1211,7 +1205,7 @@ class SNIFS_mask:
         elif isinstance(no_list,int):
             no_list = [no_list]
         for no in no_list:
-            if not no in self.no:
+            if no not in self.no:
                 raise ValueError('lens #%d not present in mask'%no)
         for no in no_list:
             if lbda is None:
@@ -1234,7 +1228,7 @@ class SNIFS_mask:
         @param no: lens number
         @param yy: y position where to compute the x value
         """
-        if not no in self.no:
+        if no not in self.no:
             raise ValueError('lens #%d not present in mask'%no)
         x,y = self.get_spec_lens(no)
         x = num.array(x)[num.argsort(y)]
@@ -1298,7 +1292,7 @@ def common_bounds_cube(cube_list):
         raise ValueError("Missing attribute lstep in datacubes.")
     else:
         meanstep = num.mean([cube.lstep for cube in cube_list])
-        if std([cube.lstep for cube in cube_list]) > eps*meanstep:
+        if num.std([cube.lstep for cube in cube_list]) > eps*meanstep:
             raise ValueError("All cubes should have the same step.")
         xinf = max([min(cube.lbda) for cube in cube_list])
         xsup = min([max(cube.lbda) for cube in cube_list])
@@ -1500,10 +1494,11 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
 def comp_cdg(ima):
     ima = num.abs(ima)
     x,y = indices(shape(ima))[0]*1.,indices(shape(ima))[1]*1.
-    xc = num.sum(num.sum(ima*x))/num.sum(num.sum(ima))
-    yc = num.sum(num.sum(ima*y))/num.sum(num.sum(ima))
-    sx = sqrt(num.sum(num.sum((ima*(x-xc)**2)))/num.sum(num.sum(ima)))
-    sy = sqrt(num.sum(num.sum((ima*(y-yc)**2)))/num.sum(num.sum(ima)))
+    norm = ima.sum()
+    xc = (ima*x).sum()/norm
+    yc = (ima*y).sum()/norm
+    sx = sqrt(((ima*(x-xc)**2)).sum()/norm)
+    sy = sqrt(((ima*(y-yc)**2)).sum()/norm)
 
     return xc,yc,sx,sy
 

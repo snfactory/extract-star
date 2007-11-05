@@ -1,3 +1,8 @@
+2007-11-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* lib/pySNIFS.py: 
+	* lib/pySNIFS_fit.py: "pythonication" and optimization.
+
 2007-11-05  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: back to a linear
