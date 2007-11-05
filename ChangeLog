@@ -1,3 +1,8 @@
+2007-11-05  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: back to a linear
+	representation of alpha.
+
 2007-10-29  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: change names between
