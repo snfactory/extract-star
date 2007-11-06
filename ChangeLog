@@ -1,3 +1,8 @@
+2007-11-06  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* lib/pySNIFS.py: 
+	* lib/pySNIFS_fit.py: namespace debugging.
+
 2007-11-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS.py: 

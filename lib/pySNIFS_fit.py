@@ -8,7 +8,7 @@
 ######################################################################
 
 from pySNIFS import *
-import scipy
+import scipy as S
 from scipy import optimize
 import numpy
 import numpy.linalg.linalg as la 
@@ -32,8 +32,9 @@ class gaus1D:
     def __init__(self,cube=None):
         """
         Initiating the class.
-        @param cube: Input cube. This is a L{SNIFS_cube} object with only one spaxel. It is built from a
-            L{spectrum} object by the L{model} class.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with
+                     only one spaxel. It is built from a
+                     L{spectrum} object by the L{model} class.
         """
         self.npar_ind = 0
         self.npar_cor = 3
@@ -41,24 +42,27 @@ class gaus1D:
         #self.l = zeros(shape(transpose(cube.data)),Float64)
         self.name = 'gaus1D'
         #self.l[:][:] = cube.lbda
-        self.l = reshape(cube.lbda,shape(cube.data))
+        self.l = S.reshape(cube.lbda,S.shape(cube.data))
             
     def comp(self,param):
         """
         Compute the gaussian function.
-        @param param: Input parameters of the gaussian. A list of three number: [xc,sigma,I] 
+        @param param: Input parameters of the gaussian. A list of three
+                      number: [xc,sigma,I]
         """
         self.param = param
-        val = param[2] * scipy.exp(-0.5*(((self.l-param[0])/param[1])**2))
+        val = param[2] * S.exp(-0.5*(((self.l-param[0])/param[1])**2))
         return val
 
     def deriv(self,param):
         """
-        Compute the derivative of the gaussian function with respect to the parameters.
-        @param param: Input parameters of the gaussian. A list of three number: [xc,sigma,I] 
+        Compute the derivative of the gaussian function with respect to the
+        parameters.
+        @param param: Input parameters of the gaussian. A list of three
+                      number: [xc,sigma,I]
         """
-        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
-        expo = scipy.exp(-0.5*(((self.l-param[0])/param[1])**2))
+        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.l),'d')
+        expo = S.exp(-0.5*(((self.l-param[0])/param[1])**2))
         val = expo * param[2] * (self.l-param[0])/param[1]**2
         grad[0] = val
         val = expo * param[2] * (self.l-param[0])**2 / param[1]**3
@@ -74,32 +78,35 @@ class poly1D:
         """
         Initiating the class.
         @param deg: Degree of the polynomial
-        @param cube: Input cube. This is a L{SNIFS_cube} object with only one spaxel. It is built from a
-            L{spectrum} object by the L{model} class.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one
+                     spaxel. It is built from a L{spectrum} object by the
+                     L{model} class.
         """
         self.deg = deg
         self.npar_ind = 0
         self.npar_cor = deg+1
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'poly1D'
-        self.l = reshape(cube.lbda,shape(cube.data))
+        self.l = S.reshape(cube.lbda,S.shape(cube.data))
         
     def comp(self,param):
         """
         Compute the polynomial.
-        @param param: Input parameters of the polynomial. A list of deg+1 numbers.
+        @param param: Input parameters of the polynomial. A list of deg+1
+                      numbers.
         """
-        val = scipy.poly1d(param[::-1])(self.l)
+        val = S.poly1d(param[::-1])(self.l)
         return val
     
     def deriv(self,param):
         """
         Compute the derivative of the polynomial with respect to its parameters.
-        @param param: Input parameters of the polynomial. A list of deg+1 numbers.
+        @param param: Input parameters of the polynomial. A list of deg+1
+                      numbers.
         """
-        grad = [(self.l)**i for i in arange(self.npar_cor)]
-        grad = scipy.array(grad)
-        #grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
+        grad = [ self.l**i for i in range(self.npar_cor) ]
+        grad = S.array(grad)
+        #grad = S.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
         #for i in arange(self.npar_cor):
         #    grad[i] = l**i
         return grad
@@ -115,39 +122,43 @@ class gaus2D:
     def __init__(self,cube=None):
         """
         Initiating the class.
-        @param cube: Input cube. This is a L{SNIFS_cube} object with only one wavelength. It is built from a
-            spectrum object by the L{model} class.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one
+                     wavelength. It is built from a spectrum object by the
+                     L{model} class.
         """ 
         self.nslice = cube.nslice
         self.npar_ind = 5
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gaus2D'
-        self.x = zeros(shape(cube.data),'d')
-        self.y = zeros(shape(cube.data),'d')
+        self.x = S.zeros(S.shape(cube.data),'d')
+        self.y = S.zeros(S.shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
 
     def comp(self,param):
         """
         Compute the gaussian function.
-        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I] 
+        @param param: Input parameters of the gaussian. A list of five number:
+                      [xc,yc,sx,sy,I]
         """
         self.param = param
-        tab_param_ind = transpose(reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
-        val = tab_param_ind[:,4:5] * scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
+        tab_param_ind = S.transpose(S.reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
+        val = tab_param_ind[:,4:5] * S.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         return val
     
     def deriv(self,param):
         """
-        Compute the derivative of the gaussian function with respect to the parameters.
-        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I]
+        Compute the derivative of the gaussian function with respect to the
+        parameters.
+        @param param: Input parameters of the gaussian. A list of five number:
+                      [xc,yc,sx,sy,I]
         """
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
+        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
+        grad = S.ones((self.npar_ind,)+S.shape(self.x),'d')
 
-        expo = scipy.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
+        expo = S.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         val = expo * tab_param_ind[:,4:5] * (self.x-tab_param_ind[:,0:1])/(tab_param_ind[:,2:3])**2
         grad[0] = val
         val = expo * tab_param_ind[:,4:5] * (self.y-tab_param_ind[:,1:2])/(tab_param_ind[:,3:4])**2
@@ -168,8 +179,9 @@ class gaus2D_integ:
         """
         Initiating the class.
         @param pix: Size of the pixel in spatial units of the cube.
-        @param cube: Input cube. This is a L{SNIFS_cube} object with only one wavelength. It is built from an
-            L{image_array} object by the class model.
+        @param cube: Input cube. This is a L{SNIFS_cube} object with only one
+                     wavelength. It is built from an L{image_array} object by
+                     the class model.
         """ 
         self.nslice = cube.nslice
         self.pix = pix
@@ -177,18 +189,19 @@ class gaus2D_integ:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gauss2D_integ'
-        self.x = zeros(shape(cube.data),'d')
-        self.y = zeros(shape(cube.data),'d')
+        self.x = S.zeros(S.shape(cube.data),'d')
+        self.y = S.zeros(S.shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         
     def comp(self,param):
         """
         Compute the gaussian function.
-        @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I] 
+        @param param: Input parameters of the gaussian. A list of five number:
+                      [xc,yc,sx,sy,I]
         """
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
+        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
         sq2 = sqrt(2)
         xpcn = (self.x + self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
         xmcn = (self.x - self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
@@ -203,8 +216,8 @@ class gaus2D_integ:
         @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I]
         """
         self.param = param
-        tab_param_ind = transpose(reshape(param,(self.npar_ind,self.nslice)))
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
+        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
+        grad = S.ones((self.npar_ind,)+S.shape(self.x),'d')
         sqpi_2 = sqrt(pi/2.)
         sq2 = sqrt(2.)
         xpc = (self.x + self.pix/2 - tab_param_ind[:,0:1])
@@ -215,10 +228,10 @@ class gaus2D_integ:
         xmcn = xmc/(sq2*tab_param_ind[:,2:3])
         ypcn = ypc/(sq2*tab_param_ind[:,3:4])
         ymcn = ymc/(sq2*tab_param_ind[:,3:4])
-        gxp = scipy.exp(-xpcn**2)
-        gxm = scipy.exp(-xmcn**2)
-        gyp = scipy.exp(-ypcn**2)
-        gym = scipy.exp(-ymcn**2)
+        gxp = S.exp(-xpcn**2)
+        gxm = S.exp(-xmcn**2)
+        gyp = S.exp(-ypcn**2)
+        gym = S.exp(-ymcn**2)
         Ix = sqpi_2*tab_param_ind[:,2:3]*(erf(xpcn)-erf(xmcn))
         Iy = sqpi_2*tab_param_ind[:,3:4]*(erf(ypcn)-erf(ymcn))
         grad[0] = tab_param_ind[:,4:5]*Iy*(gxm-gxp)
@@ -245,8 +258,8 @@ class poly2D:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'poly2D'
-        self.x = zeros(shape(cube.data),'d')
-        self.y = zeros(shape(cube.data),'d')
+        self.x = S.zeros(S.shape(cube.data),'d')
+        self.y = S.zeros(S.shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         
@@ -256,12 +269,13 @@ class poly2D:
         @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
         """
         self.param = param
-        tab_param_ind = transpose(reshape(transpose(param),(self.npar_ind,self.nslice)))
+        tab_param_ind = S.transpose(S.reshape(S.transpose(param),
+                                              (self.npar_ind,self.nslice)))
         n = 0
-        val = scipy.ones(shape(self.x),'d') * tab_param_ind[:,0:1]
+        val = S.ones(S.shape(self.x),'d') * tab_param_ind[:,0:1]
         #print str(self.param[0])
-        for d in arange(self.deg)+1:
-            for j in arange(d+1):
+        for d in S.arange(self.deg)+1:
+            for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
                 val = val + tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
                 n=n+1
@@ -273,13 +287,14 @@ class poly2D:
         @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
         """
         self.param = param
-        tab_param_ind = transpose(reshape(transpose(param),(self.npar_ind,self.nslice)))
+        tab_param_ind = S.transpose(S.reshape(S.transpose(param),
+                                              (self.npar_ind,self.nslice)))
         n = 0
-        grad = scipy.ones((self.npar_ind,)+shape((self.x)),'d')
+        grad = S.ones((self.npar_ind,)+S.shape((self.x)),'d')
         #print str(self.param[0])
 
-        for d in arange(self.deg)+1:
-            for j in arange(d+1):
+        for d in S.arange(self.deg)+1:
+            for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
                 grad[n+1] = self.x**(d-j) * self.y**(j)
                 n=n+1
@@ -307,15 +322,20 @@ class SNIFS_psf_3D:
         self.npar_cor = 11
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'SNIFS_psf_3D'
-        self.x = zeros((cube.nslice,cube.nlens),'d')
-        self.y = zeros((cube.nslice,cube.nlens),'d')
-        self.l = zeros(shape(transpose(cube.data)),'d')
+        self.x = S.zeros((cube.nslice,cube.nlens),'d')
+        self.y = S.zeros((cube.nslice,cube.nlens),'d')
+        self.l = S.zeros(S.shape(S.transpose(cube.data)),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         self.l[:][:] = cube.lbda
         self.l = transpose(self.l)
-        self.n_ref = 1e-6*(64.328 + 29498.1/(146.-1./(self.lbda_ref*1e-4)**2) + 255.4/(41.-1./(self.lbda_ref*1e-4)**2)) + 1.
-        self.ADR_coef = 206265*(1e-6*(64.328 + 29498.1/(146.-1./(self.l*1e-4)**2) + 255.4/(41.-1./(self.l*1e-4)**2)) + 1. - self.n_ref)
+        self.n_ref = 1e-6*(64.328 + \
+                           29498.1/(146.-1./(self.lbda_ref*1e-4)**2) + \
+                           255.4/(41.-1./(self.lbda_ref*1e-4)**2)) + 1.
+        self.ADR_coef = 206265*(1e-6*(64.328 + \
+                                      29498.1/(146.-1./(self.l*1e-4)**2) + \
+                                      255.4/(41.-1./(self.l*1e-4)**2)) + 1. - \
+                                self.n_ref)
         
     def comp(self,param):
         """
@@ -368,7 +388,7 @@ class SNIFS_psf_3D:
         Iwx = (erf(xrwp)-erf(xrwm))/2.
         Iwy = (erf(yrwp)-erf(yrwm))/2.
         #return sigma_c
-        return reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
+        return S.reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
     
     def deriv(self,param):
         """
@@ -376,7 +396,7 @@ class SNIFS_psf_3D:
         @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
         """
         self.param = param    
-        grad = scipy.zeros((self.npar_cor+self.npar_ind,)+shape(self.x),'d')
+        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
         
         costp = cos(self.param[1])
         sintp = sin(self.param[1])
@@ -414,23 +434,27 @@ class SNIFS_psf_3D:
         yrwm = (yr - self.pix/2)/(sq2*sig_wy)
 
     
-        gxrcp = scipy.exp(-xrcp**2)
-        gxrcm = scipy.exp(-xrcm**2)
-        gyrcp = scipy.exp(-yrcp**2)
-        gyrcm = scipy.exp(-yrcm**2)
-        gxrwp = scipy.exp(-xrwp**2)
-        gxrwm = scipy.exp(-xrwm**2)
-        gyrwp = scipy.exp(-yrwp**2)
-        gyrwm = scipy.exp(-yrwm**2)
+        gxrcp = S.exp(-xrcp**2)
+        gxrcm = S.exp(-xrcm**2)
+        gyrcp = S.exp(-yrcp**2)
+        gyrcm = S.exp(-yrcm**2)
+        gxrwp = S.exp(-xrwp**2)
+        gxrwm = S.exp(-xrwm**2)
+        gyrwp = S.exp(-yrwp**2)
+        gyrwm = S.exp(-yrwm**2)
         Icx = (erf(xrcp)-erf(xrcm))/2.
         Icy = (erf(yrcp)-erf(yrcm))/2.
         Iwx = (erf(xrwp)-erf(xrwm))/2.
         Iwy = (erf(yrwp)-erf(yrwm))/2.
         
-        grad[2] = Icy*cost*(gxrcm-gxrcp)/sqrt(2*pi)/sig_cx + Icx*sint*(gyrcm-gyrcp)/sqrt(2*pi)/sig_cy + \
-                  eps*(Iwy*cost*(gxrwm-gxrwp)/sqrt(2*pi)/sig_wx + Iwx*sint*(gyrwm-gyrwp)/sqrt(2*pi)/sig_wy)
-        grad[3] = Icy*sint*(gxrcp-gxrcm)/sqrt(2*pi)/sig_cx + Icx*cost*(gyrcm-gyrcp)/sqrt(2*pi)/sig_cy + \
-                  eps*(Iwy*sint*(gxrwp-gxrwm)/sqrt(2*pi)/sig_wx + Iwx*cost*(gyrwm-gyrwp)/sqrt(2*pi)/sig_wy)
+        grad[2] = Icy*cost*(gxrcm-gxrcp)/sqrt(2*pi)/sig_cx + \
+                  Icx*sint*(gyrcm-gyrcp)/sqrt(2*pi)/sig_cy + \
+                  eps*(Iwy*cost*(gxrwm-gxrwp)/sqrt(2*pi)/sig_wx + \
+                       Iwx*sint*(gyrwm-gyrwp)/sqrt(2*pi)/sig_wy)
+        grad[3] = Icy*sint*(gxrcp-gxrcm)/sqrt(2*pi)/sig_cx + \
+                  Icx*cost*(gyrcm-gyrcp)/sqrt(2*pi)/sig_cy + \
+                  eps*(Iwy*sint*(gxrwp-gxrwm)/sqrt(2*pi)/sig_wx + \
+                       Iwx*cost*(gyrwm-gyrwp)/sqrt(2*pi)/sig_wy)
         grad[0] = self.ADR_coef*(costp*grad[2] + sintp*grad[3])
         grad[1] = self.param[0]*self.ADR_coef*(costp*grad[3]-sintp*grad[2])
         der_cx = Icy*(gxrcm*xrcm-gxrcp*xrcp)/sqrt(pi)/sig_cx**2
@@ -442,13 +466,14 @@ class SNIFS_psf_3D:
         grad[5] = grad[4] * self.param[4] * log(lbda_rel)
         grad[6] = eps*sigma_c**2*q*(der_wx + der_wy)
         grad[7] = Iwx*Iwy
-        grad[8] = sigma_k*(der_cx+q_k**2*der_cy \
-                                            + eps*(der_wx+q_k**2*der_wy))
+        grad[8] = sigma_k*(der_cx+q_k**2*der_cy + eps*(der_wx+q_k**2*der_wy))
         grad[9] = q_k*sigma_k**2 *(der_cy+eps*der_wy)
-        grad[10] = (Icy*yr/sqrt(2*pi)/sig_cx)*(gxrcm-gxrcp) + (Icx*xr/sqrt(2*pi)/sig_cy)*(gyrcp-gyrcm)\
-                  + eps*((Iwy*yr/sqrt(2*pi)/sig_wx)*(gxrwm-gxrwp) + (Iwx*xr/sqrt(2*pi)/sig_wy)*(gyrwp-gyrwm))
+        grad[10] = (Icy*yr/sqrt(2*pi)/sig_cx)*(gxrcm-gxrcp) + \
+                   (Icx*xr/sqrt(2*pi)/sig_cy)*(gyrcp-gyrcm) + \
+                   eps*((Iwy*yr/sqrt(2*pi)/sig_wx)*(gxrwm-gxrwp) + \
+                        (Iwx*xr/sqrt(2*pi)/sig_wy)*(gyrwp-gyrwm))
         grad[11] = Icx*Icy + eps*Iwx*Iwy
-        grad[0:11] = grad[0:11] * reshape(param[11:],(1,len(param[11:]),1))
+        grad[0:11] = grad[0:11] * S.reshape(param[11:],(1,len(param[11:]),1))
         
         return grad
 
@@ -465,7 +490,7 @@ class model:
         self.fitpar = None
         
         if param is None:
-            raise ValueError, "A set of model parameters values must be provided."
+            raise ValueError("A set of model parameters values must be provided.")
             
         if isinstance(data,SNIFS_cube):
             self.model_1D = False
@@ -477,12 +502,13 @@ class model:
             self.model_2D = True
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = scipy.reshape(scipy.ravel(data.data),(1,len(scipy.ravel(data.data))))
-            self.data.lbda = scipy.array([0])
+            self.data.data = S.reshape(S.ravel(data.data),
+                                       (1,len(S.ravel(data.data))))
+            self.data.lbda = S.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
-            self.data.i = scipy.ravel(indices((data.nx,data.ny))[0]) 
-            self.data.j = scipy.ravel(indices((data.nx,data.ny))[1]) 
+            self.data.i = S.ravel(indices((data.nx,data.ny))[0]) 
+            self.data.j = S.ravel(indices((data.nx,data.ny))[1]) 
             self.data.x = self.data.i*data.stepx+data.startx
             self.data.y = self.data.j*data.stepy+data.starty
         elif isinstance(data,spectrum):
@@ -490,7 +516,8 @@ class model:
             self.model_2D = False
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = scipy.reshape(data.data[data.index_list],(len(data.index_list),1))
+            self.data.data = S.reshape(data.data[data.index_list],
+                                       (len(data.index_list),1))
             self.data.lbda = data.x[data.index_list]
             self.data.nslice = len(data.index_list)
             self.data.nlens = 1
@@ -530,21 +557,28 @@ class model:
                 
         if data.var is None:
             #self.weight = SNIFS_cube()
-            self.weight = scipy.ones(shape(self.data.data),'d')
+            self.weight = S.ones(S.shape(self.data.data),'d')
             #self.weight.ones_from(self.data)
         else:
             if self.model_3D:
                 #self.weight = SNIFS_cube()
-                #self.weight.data = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
-                self.weight = scipy.array(where(data.var!=0,1./abs(data.var),0.),'d')
+                #self.weight.data = S.array(where(data.var!=0,1./abs(data.var),0.),'d')
+                self.weight = S.where(data.var!=0,
+                                          1./S.absolute(data.var),
+                                          0.).astype('d')
             elif self.model_2D:# TODO: Implement the variance
-                self.data.var = scipy.reshape(scipy.ravel(data.var),(1,len(scipy.ravel(data.var))))
-                self.weight = scipy.array(where(self.data.var!=0,1./abs(self.data.var),0.),'d')
+                self.data.var = S.array(data.var)
+                self.data.var = self.data.var.reshape(1,self.data.var.size)
+                self.weight = S.where(self.data.var!=0,
+                                          1./S.absolute(self.data.var),
+                                          0.).astype('d')
                 
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
-                weight_val = scipy.array(where(data.var[data.index_list]!=0,1./abs(data.var[data.index_list]),0.),'d')
-                self.weight = scipy.reshape(weight_val,(len(data.index_list),1))
+                weight_val = S.where(data.var[data.index_list]!=0,
+                                         1./S.absolute(data.var[data.index_list]),
+                                         0.).astype('d')
+                self.weight = S.reshape(weight_val,(len(data.index_list),1))
                 #self.weight.lbda = data.x
                 #self.weight.nslice = data.len
                 #self.weight.nlens = 1
@@ -571,7 +605,7 @@ class model:
                 self.func.append(func_dict[fstring](self.data))
             else:
                 inpar_string = f.split(';')[1]
-                internal_param = [float(inpar_string.split(',')[i]) for i in arange(len(inpar_string.split(',')))]
+                internal_param = [float(x) for x in inpar_string.split(',')]
                 if len(internal_param) == 1:
                     internal_param = internal_param[0]
                 self.func.append(func_dict[fstring](internal_param,self.data))
@@ -580,13 +614,13 @@ class model:
         if len(param) != len(func):
             raise ValueError, "param list and func list must have the same length."
         for i,f in enumerate(self.func):
-            if f.npar != size(param[i]):
+            if f.npar != S.size(param[i]):
                 raise ValueError, "Function %s must have %d parameters, %d given." % \
                       (f.name, f.npar, len(param[i]))
         self.param = param
         nparam = [ len(p) for p in param ]
-        self.nparam = sum(nparam)
-        self.flatparam = scipy.concatenate(param).astype('d')
+        self.nparam = S.sum(nparam)
+        self.flatparam = S.concatenate(param).astype('d')
 
         ######### Bounds list analysis #########
         if bounds is None:
@@ -596,25 +630,25 @@ class model:
                 raise ValueError, "There must be one bound pairs for each variable."
             self.bounds = []
             n = 0
-            for i in arange(len(param)):
+            for i in range(len(param)):
                 if len(param[i]) != len(bounds[i]):
                     raise ValueError, "Function #%d has not the same bound pairs and variables number." % i
-                for j in arange(len(param[i])):
+                for j in range(len(param[i])):
                     self.bounds.append(bounds[i][j])
                 n = n + nparam[i]
  
     def new_param(self,param=None):
         """ Store new parameters for the model evaluation. """
         nparam = [ len(p) for p in param ]
-        if scipy.size(param) != scipy.size(self.param) or \
+        if S.size(param) != S.size(self.param) or \
                len(param) != len(self.param):
             raise ValueError, "param has not the correct size."
         self.param = param
-        self.flatparam = scipy.concatenate(param).astype('d')
+        self.flatparam = S.concatenate(param).astype('d')
    
     def eval(self):
         """ Evaluate the model at the current parameters stored in the field flatparam."""
-        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
+        val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val += f.comp(self.flatparam[i:i+f.npar])
@@ -625,7 +659,7 @@ class model:
         """ Evaluate the model at the last fitted parameters stored in the field fitpar."""
         if self.fitpar is None:
             raise ValueError, "No fit parameter to evaluate model."
-        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
+        val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val = val + f.comp(self.fitpar[i:i+f.npar])
@@ -636,7 +670,7 @@ class model:
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
         if param is None:
             param = deepcopy(self.flatparam)
-        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
+        val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val = val + f.comp(param[i:i+f.npar])
@@ -648,7 +682,7 @@ class model:
         """ Evaluate the residuals at the last fitted parameters stored in the field fitpar."""
         if self.fitpar is None:
             raise ValueError, "No parameter to estimate function value."
-        val = scipy.zeros((self.data.nslice,self.data.nlens),'d')
+        val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func: 
             val =val+ f.comp(self.fitpar[i:i+f.npar])
@@ -657,68 +691,70 @@ class model:
         return val
 
     def objfun(self,param=None):
-        """ Compute the objective function to be minimized: Sum(weight*(data-model)^2) at the given parameters values."""
+        """ Compute the objective function to be minimized:
+        Sum(weight*(data-model)^2) at the given parameters values."""
         #val = sum(self.res_eval(param=param)**2 * self.weight.data,1)
         return (self.res_eval(param=param)**2 * self.weight).sum()
         
     def objgrad(self,param=None):
-        """ Compute the gradient of the objective function at the given parameters value."""
+        """ Compute the gradient of the objective function at the given
+        parameters value."""
         if param is None:
             param = self.flatparam
         #val1 = self.res_eval(param=param) * self.weight.data
         val1 = self.res_eval(param=param) * self.weight
-        val2 = scipy.zeros(scipy.size(param),'d')
+        val2 = S.zeros(S.size(param),'d')
         i = 0
         for f in self.func:
             deriv = -2*val1 * f.deriv(param[i:i+f.npar])
             if f.npar_cor != 0:
-                temp = sum(deriv[0:f.npar_cor],2)
-                val2[i:i+f.npar_cor] = sum(temp,1)
-            for n in arange(f.npar_ind):
+                temp = S.sum(deriv[0:f.npar_cor],2)
+                val2[i:i+f.npar_cor] = S.sum(temp,1)
+            for n in range(f.npar_ind):
                 val2[i+f.npar_cor+n*self.data.nslice:
-                     i+f.npar_cor+(n+1)*self.data.nslice]=sum(deriv[n+f.npar_cor],1)
+                     i+f.npar_cor+(n+1)*self.data.nslice] = \
+                     S.sum(deriv[n+f.npar_cor],axis=1)
             i=i+f.npar
         return val2
    
 
     def check_grad(self,eps=1e-3):
-        """ Check the gradient of the objective function at the current parameters stored in the field flatparam."""
+        """ Check the gradient of the objective function at the current
+        parameters stored in the field flatparam."""
         print "%20s %20s %20s" % ("Finite difference","Objgrad","Rel. diff.")
-        approx_grad = scipy.optimize.approx_fprime(self.flatparam, self.objfun, eps)
+        approx_grad = S.optimize.approx_fprime(self.flatparam, self.objfun, eps)
         comp_grad = self.objgrad()
-        for n in arange(scipy.size(self.flatparam)):
+        for n in range(S.size(self.flatparam)):
             print "%20.6f %20.6f %20.6f" % (approx_grad[n],comp_grad[n],
                                             abs(approx_grad[n]-comp_grad[n]) / \
                                             max([abs(comp_grad[n]),1e-10]))
     
     def save_fit(self):
-        """ Save the last fit parameters (fitpar) into the current parameters (flatparam and param)."""
-        self.flatparam = scipy.array(self.fitpar,'d')
+        """ Save the last fit parameters (fitpar) into the current parameters
+        (flatparam and param)."""
+        self.flatparam = S.array(self.fitpar,'d')
         self.param = self.unflat_param(self.fitpar)
     
-    def fit(self,disp=False,save=False,deriv=True,maxfun=1000,msge=0,scale=None):
-        
-        """ Perform the model fitting by minimizing the objective function objfun."""
-        x0 = scipy.zeros(scipy.size(self.flatparam),'d')
-        for i in arange(scipy.size(self.flatparam)): x0[i] = self.flatparam[i]
-
-        if deriv: xopt = scipy.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                                 fprime=self.objgrad, 
-                                                 approx_grad=False, bounds=self.bounds,
-                                                 messages=msge,maxfun=maxfun,scale=scale)
-        else:     xopt = scipy.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                                 approx_grad=True, bounds=self.bounds,
-                                                 messages=msge,maxfun=maxfun)
-
-        res = scipy.array(xopt[2])
+    def fit(self, disp=False, save=False, deriv=True,
+            maxfun=1000, msge=0, scale=None):
+        """ Perform the model fitting by minimizing the objective function
+        objfun."""
+        xopt = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                   fprime=deriv and self.objgrad or None, 
+                                   approx_grad=not deriv,
+                                   bounds=self.bounds,
+                                   messages=msge,maxfun=maxfun,
+                                   scale=deriv and scale or None)
+        res = S.array(xopt[2])
         self.fitpar = res
         
         if disp:
             return res
+        
         if save:
-            self.flatparam = scipy.array(self.fitpar,'d')
+            self.flatparam = S.array(self.fitpar,'d')
         self.khi2 = self.objfun(param=res) / \
-                    (self.data.nlens*self.data.nslice + scipy.size(self.flatparam))
+                    (self.data.nlens*self.data.nslice + S.size(self.flatparam))
 
         
     def param_error(self,param=None):
@@ -729,17 +765,17 @@ class model:
         hess = lambda param: approx_deriv(jac,param,order=2)
         #print 'hess: ',shape(hess(param))
         try:
-            cov = scipy.linalg.inv(hess(param))
+            cov = S.linalg.inv(hess(param))
             return cov
         except:
             return numpy.zeros((len(param),len(param)),'d')
  
     def flat_param(self,param=None):
-        param = scipy.array(scipy.cast['f'](param),shape=(scipy.size(param))).tolist()
+        param = S.array(S.cast['f'](param),shape=S.size(param)).tolist()
         return param
 
     def unflat_param(self,param):
-        if scipy.size(param) != scipy.size(self.param):
+        if S.size(param) != S.size(self.param):
             raise ValueError, "Parameter list does not have the right size."
         newparam = []
         i = 0
@@ -768,39 +804,39 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
     S.optimize.approx_fprime corresponds to approx_deriv(order=2).
 
     S.derivative only works with univariate function. One could use
-    scipy.optimize.approx_fprime (and associated check_grad) instead, but it
+    S.optimize.approx_fprime (and associated check_grad) instead, but it
     only works with scalar function (e.g. chi2), and it cannot therefore be
     used to check model derivatives or hessian.
     """
 
     if order == 2:                      # Simplest crudest differentiation
-        weights = scipy.array([-1,1])
+        weights = S.array([-1,1])
     elif order == 3:                    # Simplest symmetric diff.
-        weights = scipy.array([-1,0,1])/2.
+        weights = S.array([-1,0,1])/2.
     elif order == 5:
-        weights = scipy.array([1,-8,0,8,-1])/12.
+        weights = S.array([1,-8,0,8,-1])/12.
     elif order == 7:
-        weights = scipy.array([-1,9,-45,0,45,-9,1])/60.
+        weights = S.array([-1,9,-45,0,45,-9,1])/60.
     elif order == 9:
-        weights = scipy.array([3,-32,168,-672,0,672,-168,32,-3])/840.
+        weights = S.array([3,-32,168,-672,0,672,-168,32,-3])/840.
     else:
         raise NotImplementedError
 
     if dpars is None:
-        dpars = scipy.ones(len(pars))*eps  # N
-    mat = scipy.diag(dpars)                 # NxN
+        dpars = S.ones(len(pars))*eps  # N
+    mat = S.diag(dpars)                 # NxN
 
-    delta = scipy.arange(len(weights)) - (len(weights)-1)//2
+    delta = S.arange(len(weights)) - (len(weights)-1)//2
     df = 0
     for w,d in zip(weights,delta):
         if w:
-            df += w*scipy.array([ func(pars+d*dpi, *args) for dpi in mat]) # NxS
+            df += w*S.array([ func(pars+d*dpi, *args) for dpi in mat]) # NxS
 
     f = func(pars, *args)               # S
     if f.ndim==0:                       # func returns a scalar S=()
         der = df/dpars                  # N
     else:                               # func returns an array of shape S
-        der = df/dpars[...,scipy.newaxis]   # NxS
+        der = df/dpars[...,S.newaxis]   # NxS
 
     return der
 
@@ -811,9 +847,9 @@ def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
         raise TypeError, 'spec must be a pySNIFS.spectrum'
     # copying the input spectrum into a temporary one
     spec2 = deepcopy(spec)
-    spec2.data = spec2.data/scipy.mean(spec2.data) # Normalisation of the data
+    spec2.data = spec2.data/S.mean(spec2.data) # Normalisation of the data
     if spec2.var is not None:
-        spec2.var = spec2.var/scipy.mean(spec2.var) # Normalisation of the data
+        spec2.var = spec2.var/S.mean(spec2.var) # Normalisation of the data
     mod_spec = model(data=spec2,func=func,param=param,bounds=bounds)
     mod_spec.fit()
     return mod_spec.fitpar

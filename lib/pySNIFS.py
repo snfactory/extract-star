@@ -617,9 +617,9 @@ class SNIFS_cube:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) != 2 and len(slices) != 3:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if 1 in array([not isinstance(sl,int) for sl in slices]):
+                if False in [isinstance(sl,int) for sl in slices]:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if 1 in array([sl<0 for sl in slices]):
+                if False in [sl>=0 for sl in slices]:
                     raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
                 if len(slices) == 3:
                     if slices[2] == 0:
@@ -1270,15 +1270,17 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
         bin = (Max-Min)/nbin
         
     bin_array = num.arange(nbin)*bin + Min
-    n = searchsorted(sort(data), bin_array)
-    n = concatenate([n, [len(data)]])
+    n = num.searchsorted(num.sort(data), bin_array)
+    n = num.concatenate([n, [len(data)]])
     data = n[1:]-n[:-1]
     x = bin_array
     hist = spectrum(data=data,x=x)
     
     hist.len = len(bin_array)
     if cumul:
-        hist.data = num.array([float(num.sum(hist.data[0:i+1])) for i in num.arange(hist.len)])/float(num.sum(hist.data))
+        hist.data = num.array([float(num.sum(hist.data[0:i+1]))
+                               for i in num.arange(hist.len)]) / \
+                               float(num.sum(hist.data))
     return hist
 
 def common_bounds_cube(cube_list):
