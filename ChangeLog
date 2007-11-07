@@ -1,3 +1,8 @@
+2007-11-07  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: add an option to choose the
+	polynomial degree of alpha.
+
 2007-11-07  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (comp_spec): check for
