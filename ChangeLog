@@ -2,6 +2,7 @@
 
 	* apps/extract_star/extract_star.py: Change relative lambda in
 	lambda/lambda_ref - 1.
+	* apps/extract_star/extract_star.py: Minor bug corrected. 
 
 2007-11-07  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 

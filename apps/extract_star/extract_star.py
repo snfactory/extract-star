@@ -847,13 +847,13 @@ if __name__ == "__main__":
     else:
         data_model.fit(maxfun=2000, save=True)
 
-    # Fit each param alone (test) 
-    polAlpha         = pySNIFS.fit_poly(alpha_mat[:,0],3,3,lbda_rel)
-    polEllipticity   = pySNIFS.fit_poly(ell_vec       ,3,3,lbda_rel)
-    polPositionAngle = pySNIFS.fit_poly(PA_vec        ,3,3,lbda_rel)
-    Ellipticity      = polEllipticity.coeffs
-    PositionAngle    = polPositionAngle.coeffs
-    Alpha            = polAlpha.coeffs
+##     # Fit each param alone (test) 
+##     polAlpha         = pySNIFS.fit_poly(alpha_mat[:,0],3,3,lbda_rel)
+##     polEllipticity   = pySNIFS.fit_poly(ell_vec       ,3,3,lbda_rel)
+##     polPositionAngle = pySNIFS.fit_poly(PA_vec        ,3,3,lbda_rel)
+##     Ellipticity      = polEllipticity.coeffs
+##     PositionAngle    = polPositionAngle.coeffs
+##     Alpha            = polAlpha.coeffs
     
     # Storing result and guess parameters
     fitpar           = data_model.fitpar
@@ -1106,13 +1106,13 @@ if __name__ == "__main__":
             guess_disp += alpha[::-1][i] * lbda_rel**i
             fit_disp   += fitpar[6+i] * lbda_rel**i
 
-        tryA = 0
-        tryE = 0
-        tryP = 0
-        for i in S.arange(4):
-            tryA += Alpha[::-1][i] * lbda_rel**i
-            tryE += Ellipticity[::-1][i] * lbda_rel**i
-            tryP += PositionAngle[::-1][i] * lbda_rel**i
+##         tryA = 0
+##         tryE = 0
+##         tryP = 0
+##         for i in S.arange(4):
+##             tryA += Alpha[::-1][i] * lbda_rel**i
+##             tryE += Ellipticity[::-1][i] * lbda_rel**i
+##             tryP += PositionAngle[::-1][i] * lbda_rel**i
             
         fig6 = pylab.figure()
 
@@ -1120,7 +1120,7 @@ if __name__ == "__main__":
         ax6a.errorbar(cube.lbda, alpha_mat[:,0],error_mat[:,6], fmt='b.', ecolor='blue', label="Fit 2D")
         ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
         ax6a.plot(cube.lbda, fit_disp, 'g', label="Fit 3D")
-        ax6a.plot(cube.lbda, tryA, 'r', label="Fit on meta slices  (deg 3)")
+##         ax6a.plot(cube.lbda, tryA, 'r', label="Fit on meta slices  (deg 3)")
         ax6a.plot(cube.lbda, fit_disp + confidence_alpha, 'g:',label='_nolegend_')
         ax6a.plot(cube.lbda, fit_disp - confidence_alpha, 'g:',label='_nolegend_')
 
@@ -1143,7 +1143,7 @@ if __name__ == "__main__":
         plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[4],'1/q',
                                  error_vec=error_mat[:,4],
                                  confidence=confidence_ell)
-        ax6c.plot(cube.lbda, tryE, 'r', label="Fit on meta slices (deg 3)")
+##         ax6c.plot(cube.lbda, tryE, 'r', label="Fit on meta slices (deg 3)")
         
         ax6c.set_xticklabels([])
         ax6d = fig6.add_subplot(4, 1, 4)
@@ -1151,7 +1151,7 @@ if __name__ == "__main__":
                                  PA/S.pi*180, fitpar[5]/S.pi*180, 'PA',
                                  error_vec=error_mat[:,5]/S.pi*180,
                                  confidence=confidence_PA)
-        ax6d.plot(cube.lbda, tryP/S.pi*180, 'r', label="Fit on meta slices (deg 3)")
+##         ax6d.plot(cube.lbda, tryP/S.pi*180, 'r', label="Fit on meta slices (deg 3)")
 
         fig6.savefig(plot6)
 
