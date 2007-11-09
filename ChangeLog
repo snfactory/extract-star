@@ -1,3 +1,8 @@
+2007-11-09  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: Correct determination of
+	theta_guest for the 3D fit.
+
 2007-11-08  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Change relative lambda in

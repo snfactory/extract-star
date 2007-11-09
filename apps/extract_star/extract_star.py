@@ -62,7 +62,7 @@ def atmosphericIndex(lbda, P=616, T=2):
     n = 1 + (n-1) * P * \
         ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / \
         ( 720.883*(1 + 0.003661*T) )
-
+    
     return n
 
 def confidence_interval(lbda_rel, cov, coeff):
@@ -101,8 +101,8 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
     hdr.update('ES_KHI2' ,khi2,              'extract_star khi square')    
     hdr.update('ES_DELTA',param[0],          'extract_star ADR power')
     hdr.update('ES_THETA',param[1],          'extract_star ADR angle')
-    hdr.update('ES_X0'   ,param[2],          'extract_star x0')
-    hdr.update('ES_Y0'   ,param[3],          'extract_star y0')
+    hdr.update('ES_XC'   ,param[2],          'extract_star xc')
+    hdr.update('ES_YC'   ,param[3],          'extract_star yc')
     hdr.update('ES_ELL'  ,param[4],          'extract_star ellipticity')
     hdr.update('ES_PA'   ,param[5],          'extract_star pos. angle')    
     for i in S.arange(alphaDeg + 1):
@@ -206,7 +206,7 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
     xc_vec    = S.zeros(nslice, dtype='d')
     yc_vec    = S.zeros(nslice, dtype='d')
     ell_vec   = S.zeros(nslice, dtype='d')
-    PA_vec   = S.zeros(nslice, dtype='d')
+    PA_vec    = S.zeros(nslice, dtype='d')
     int_vec   = S.zeros(nslice, dtype='d')
     khi2_vec  = S.zeros(nslice, dtype='d')
     sky_vec   = S.zeros((nslice,npar_poly), dtype='d')
@@ -241,8 +241,8 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
         b1 = [None]*(npar_psf+cube_star.nslice)                    # Empty list of length +cube2.nslice
         b1[0:7] = [[None, None],                                   # delta
                    [-S.pi, S.pi],                                  # theta
-                   [None, None],                                   # x0
-                   [None, None],                                   # y0
+                   [None, None],                                   # xc
+                   [None, None],                                   # yc
                    [None, None],                                   # a0 
                    [0, None],                                      # ellipticity 
                    [None, None]]                                   # PA
@@ -306,25 +306,39 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
 
     return delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_mat,int_vec,sky_vec,khi2_vec,error_mat
 
-## def create_log_file(filename,khi2,xc,yc,ell,PA,alpha,delta,theta,model,nslice):
+def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,model,nslice):
 
-##     logfile = open(filename,'w')
-##     logfile.write('extract_star.py results file for '+opts.file+'\n\n'\
-##                   +'slice   khi2'+'    xc '+'     yc '+'   a0 '+'   a1 '+'   a2 '+'  ell '+'   PA '+'  delta'+'  theta'+'\n')
+    def strParam(i,param,j=0,k=5):
 
-##     for i,k in enumerate(khi2):
-##         logfile.write(str(i+1)+'/'+str(nslice)+' :'\
-##                       +' '+str(k)[:6]\
-##                       +' '+str(xc[i])[:6]\
-##                       +' '+str(yc[i])[:6]\
-##                       +' '+str(a0[i])[:6]\
-##                       +' '+str(a1[i])[:6]\
-##                       +' '+str(a2[i])[:6]\
-##                       +' '+str(ell[i])[:6]\
-##                       +' '+str(PA[i])[:6]\
-##                       +'   '+str(delta[i])[:6]\
-##                       +'    '+str(theta[i])[:6]\
-##                       +'\n')
+        if len(S.shape(param))==1:
+            if param[i]>0:
+                return ' '+str(param[i])[:k]
+            else:
+                return ' '+str(param[i])[:k+1]
+
+        elif len(S.shape(param))==2:
+            if param[i][j]>0:
+                return ' '+str(param[i][j])[:k]
+            else:
+                return ' '+str(param[i][j])[:k+1]
+
+    A = ''.join([' a%d ' %i for i in S.arange(len(alpha[0]))])
+
+    logfile = open(filename,'w')
+    logfile.write('extract_star.py : results file for '+opts.input+'\n\n'\
+                  +'slice '+' delta '+' theta '+' xc '+' yc '+' ell '+' PA '+'%s'%A+' khi2'+'\n')
+
+    for i,khi in enumerate(khi2):
+        logfile.write('%2s/%2s'%(i+1,nslice)+' :'\
+                      +strParam(i,delta)\
+                      +strParam(i,theta)\
+                      +strParam(i,xc)\
+                      +strParam(i,yc)\
+                      +strParam(i,ell)\
+                      +strParam(i,PA,k=3)\
+                      +''.join([strParam(i,alpha,j) for j in S.arange(len(alpha[i]))])
+                      +' '+str(khi)\
+                      +'\n')
 
 ##     logfile.write('\n\n'+'3Dfit : '+str(khi2)[:6]\
 ##                   +' '+str(model.fitpar[2])[:6]\
@@ -336,7 +350,7 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
 ##                   +' '+str(model.fitpar[8])[:6]\
 ##                   +' '+str(model.fitpar[0])[:6]\
 ##                   +' '+str(model.fitpar[1])[:6])
-##     logfile.close()
+    logfile.close()
 
 ## def build_sky_cube(cube,sky,sky_var,deg):
 
@@ -411,10 +425,12 @@ class long_exposure_psf:
         # ADR params
         delta = self.param[0]
         theta = self.param[1]
-        xref  = self.param[2]
-        yref  = self.param[3]
-        x0 = delta*self.ADR_coef*S.cos(theta) + xref
-        y0 = delta*self.ADR_coef*S.sin(theta) + yref
+        xc    = self.param[2]
+        yc    = self.param[3]
+        costheta = S.cos(theta)
+        sintheta = S.sin(theta)        
+        x0 = delta*self.ADR_coef*costheta + xc
+        y0 = delta*self.ADR_coef*sintheta + yc
 
         # other params
         ell = self.param[4]
@@ -456,13 +472,13 @@ class long_exposure_psf:
         # ADR params
         delta = self.param[0]
         theta = self.param[1]
-        xref  = self.param[2]
-        yref  = self.param[3]
+        xc    = self.param[2]
+        yc    = self.param[3]
         costheta = S.cos(theta)
         sintheta = S.sin(theta)
-        x0 = delta*self.ADR_coef*costheta + xref
-        y0 = delta*self.ADR_coef*sintheta + yref
-
+        x0 = delta*self.ADR_coef*costheta + xc
+        y0 = delta*self.ADR_coef*sintheta + yc
+        
         # other params
         ell = self.param[4]
         PA = self.param[5]
@@ -556,10 +572,12 @@ class short_exposure_psf:
         # ADR params
         delta = self.param[0]
         theta = self.param[1]
-        xref  = self.param[2]
-        yref  = self.param[3]
-        x0 = delta*self.ADR_coef*S.cos(theta) + xref
-        y0 = delta*self.ADR_coef*S.sin(theta) + yref
+        xc    = self.param[2]
+        yc    = self.param[3]
+        costheta = S.cos(theta)
+        sintheta = S.sin(theta)        
+        x0 = delta*self.ADR_coef*costheta + xc
+        y0 = delta*self.ADR_coef*sintheta + yc
 
         # other params
         ell = self.param[4]
@@ -601,12 +619,12 @@ class short_exposure_psf:
         # ADR params
         delta = self.param[0]
         theta = self.param[1]
-        xref  = self.param[2]
-        yref  = self.param[3]
+        xc    = self.param[2]
+        yc    = self.param[3]
         costheta = S.cos(theta)
         sintheta = S.sin(theta)
-        x0 = delta*self.ADR_coef*costheta + xref
-        y0 = delta*self.ADR_coef*sintheta + yref
+        x0 = delta*self.ADR_coef*costheta + xc
+        y0 = delta*self.ADR_coef*sintheta + yc
 
         # other params
         ell = self.param[4]
@@ -778,7 +796,6 @@ if __name__ == "__main__":
     # slice by slice 2D fit
     lbda_ref = cube.lbda.mean()
     nslice = cube.nslice
-
     lbda_rel = cube.lbda / lbda_ref - 1
     
     # the xc, yc vectors obtained from 2D fit are smoothed, then the
@@ -786,7 +803,7 @@ if __name__ == "__main__":
     # filtered vectors. Finally, the parameters theta and delta are
     # determined from the xc, yc vectors.
     ind = ( S.absolute(xc_vec)<7 ) & ( S.absolute(yc_vec)<7 )
-    if not ind.all():                   # Some centroids outside FoV
+    if not ind.all():                                              # Some centroids outside FoV
         print "%d/%d centroid positions discarded from ADR initial guess" % \
               (len(xc_vec[-ind]),nslice)
         if (len(xc_vec[ind])<=1):
@@ -797,12 +814,16 @@ if __name__ == "__main__":
     ADR_coef = 206265*(atmosphericIndex(cube.lbda) -
                        atmosphericIndex(lbda_ref)) / SpaxelSize    # In spaxels
 
-    polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
+    polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)    
+    xc = xc_vec2[S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
+    yc = polADR(xc)
+    
     delta = S.tan(S.arccos(1./airmass))
-    theta = S.arctan(polADR(1))         # YC: seems buggy
-    #theta = S.arctan2(polADR(1),-1)     # YC: not better...
-    x0 = xc_vec2[S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
-    y0 = polADR(x0)
+
+    if (xc_vec2[-1]-xc_vec2[0])>0:
+        theta = S.pi + S.arctan(polADR(1))
+    else:
+        theta = S.arctan(polADR(1))
 
     # 2) Other parameters:
     polAlpha = pySNIFS.fit_poly(alpha_mat[:,0],3,alphaDeg,lbda_rel)
@@ -813,12 +834,12 @@ if __name__ == "__main__":
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(npar_psf+nslice)
     b1 = [None]*(npar_psf+nslice)
-    p1[0:6] = [delta, theta, x0, y0, ell, PA]
+    p1[0:6] = [delta, theta, xc, yc, ell, PA]
     p1[6:npar_psf] = alpha[::-1]
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
     b1[0:6] = [[None, None],                                       # delta 
-               [-S.pi, S.pi],                                      # theta 
+               [None, None],                                       # theta 
                [None, None],                                       # x0 
                [None, None],                                       # y0 
                [0., None],                                         # ellipticity 
@@ -904,12 +925,11 @@ if __name__ == "__main__":
                                    start=lbda[0],step=step)
         sky_var.WR_fits_file('var_'+pre+opts.sky,header_list=inhdr.items())
 
-##     # Save file with fitted parameters ====================================
+    # Save file with fitted parameters 
+    if opts.file:
 
-##     if opts.file:
-
-##         create_log_file(opts.file,khi2_vec,xc_vec,yc_vec,a0_vec,a1_vec,a2_vec,ell_vec,PA_vec,delta_vec,theta_vec,data_model,nslice)
-
+        create_log_file(opts.file,delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_mat,khi2_vec,data_model,nslice)
+        
     # Create output graphics =================================================
 
     if opts.plot:
@@ -1080,13 +1100,13 @@ if __name__ == "__main__":
                   r'$\rm{Guess:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
                   r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
                   r'\theta=%6.2f^\circ$' % \
-                  (x0, y0, delta, theta*180./S.pi),
+                  (xc, yc, delta, theta*180/2*S.pi),
                   transform=ax4c.transAxes)
         ax4c.text(0.03, 0.75,
                   r'$\rm{Fit:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
                   r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
                   r'\theta=%6.2f^\circ$' % \
-                  (fitpar[2], fitpar[3], fitpar[0], fitpar[1]*180./S.pi),
+                  (fitpar[2], fitpar[3], fitpar[0], fitpar[1]*180/2*S.pi),
                   transform=ax4c.transAxes)
         ax4c.set_xlabel("X center [spaxels]")
         ax4c.set_ylabel("Y center [spaxels]")
