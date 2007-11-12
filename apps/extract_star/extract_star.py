@@ -179,10 +179,10 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
 
     return cube.lbda,Spec,Var
 
-def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
+def get_start(cube,poly_deg,verbosity,psfFn):
     npar_poly = int((poly_deg+1)*(poly_deg+2)/2)                   # Number of parameters of the polynomial background
-    npar_psf  = 6 + alphaDeg + 1                                   # Number of parameters of the psf
-    n = 2
+    npar_psf  = 7                       # Number of parameters of the psf
+    n = 2                               # Nb of edge spx used for sky estimate
     if n>7:
         raise ValueError('The number of edge pixels should be less than 7')
     cube_sky = pySNIFS.SNIFS_cube()
@@ -211,7 +211,7 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
     khi2_vec  = S.zeros(nslice, dtype='d')
     sky_vec   = S.zeros((nslice,npar_poly), dtype='d')
     error_mat = S.zeros((nslice,npar_psf+1), dtype='d')
-    alpha_mat = S.zeros((nslice,alphaDeg+1), dtype='d')
+    alpha_vec = S.zeros(nslice, dtype='d')
     
     for i in xrange(cube.nslice):
         cube_sky.var   = copy.deepcopy(cube.var[i,  S.newaxis])
@@ -236,17 +236,15 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 1., 0., 2.4, imax]                   # psf function;SpaxelSize
-        p1[7:7] = [0.]*alphaDeg
         
-        b1 = [None]*(npar_psf+cube_star.nslice)                    # Empty list of length +cube2.nslice
-        b1[0:7] = [[None, None],                                   # delta
-                   [-S.pi, S.pi],                                  # theta
-                   [None, None],                                   # xc
-                   [None, None],                                   # yc
-                   [None, None],                                   # a0 
-                   [0, None],                                      # ellipticity 
-                   [None, None]]                                   # PA
-        b1[7:7+alphaDeg] = [[0.,0.]]*alphaDeg                      # a1,... 
+        b1 = [None]*(npar_psf+cube_star.nslice) # Empty list of length +cube2.nslice
+        b1[0:7] = [[None, None],        # delta
+                   [-S.pi, S.pi],       # theta
+                   [None, None],        # xc
+                   [None, None],        # yc
+                   [0., None],          # ellipticity 
+                   [None, None],        # PA
+                   [0., None]]          # alpha
         b1[npar_psf:npar_psf+cube_star.nslice] = [[0, None]] * cube_star.nslice 
 
         p2 = [p0]+[0.]*(npar_poly-1)
@@ -260,7 +258,7 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
         model_star = pySNIFS_fit.model(data=cube_star,
                                        func=['%s;%f,%f,%f' % \
                                              (psfFn.__name__,
-                                              SpaxelSize,lbda_ref,alphaDeg),
+                                              SpaxelSize,lbda_ref,0), # a0=cte
                                              'poly2D;%d' % poly_deg],
                                        param=[p1,p2],
                                        bounds=[b1,b2],
@@ -289,14 +287,13 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
         tmp = []
         for j in S.arange(alphaDeg + 1):
             tmp.append(model_star.fitpar[6+j])
-        alpha_mat[i]   = S.array(tmp, dtype='d')
-        alpha_mat[i]   = S.array(tmp, dtype='d')        
         delta_vec[i]   = model_star.fitpar[0]
         theta_vec[i]   = model_star.fitpar[1]
         xc_vec[i]      = model_star.fitpar[2]
         yc_vec[i]      = model_star.fitpar[3]
         ell_vec[i]     = model_star.fitpar[4]
         PA_vec[i]      = model_star.fitpar[5]
+        alpha_vec[i]   = model_star.fitpar[6]
         int_vec[i]     = model_star.fitpar[npar_psf]
         sky_vec[i]     = model_star.fitpar[npar_psf+1]
         khi2_vec[i]    = model_star.khi2
@@ -304,7 +301,7 @@ def get_start(cube,poly_deg,verbosity,psfFn,alphaDeg=3):
 
         print_msg("    Fit result: %s" % model_star.fitpar, opts.verbosity, 2)
 
-    return delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_mat,int_vec,sky_vec,khi2_vec,error_mat
+    return delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,int_vec,sky_vec,khi2_vec,error_mat
 
 def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,model,nslice):
 
@@ -784,7 +781,7 @@ if __name__ == "__main__":
 
     print_msg("Slice-by-slice 2D-fitting...", opts.verbosity, 0)
 
-    delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_mat,int_vec,sky_vec,khi2_vec,error_mat = get_start(cube,opts.sky_deg,0,psfFn,alphaDeg=alphaDeg)
+    delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,int_vec,sky_vec,khi2_vec,error_mat = get_start(cube,opts.sky_deg,0,psfFn)
 
     print_msg("", opts.verbosity, 1)
 
@@ -826,7 +823,7 @@ if __name__ == "__main__":
         theta = S.arctan(polADR(1))
 
     # 2) Other parameters:
-    polAlpha = pySNIFS.fit_poly(alpha_mat[:,0],3,alphaDeg,lbda_rel)
+    polAlpha = pySNIFS.fit_poly(alpha_vec,3,alphaDeg,lbda_rel)
     alpha = polAlpha.coeffs 
     ell = S.median(ell_vec)
     PA = S.median(PA_vec)
@@ -838,14 +835,14 @@ if __name__ == "__main__":
     p1[6:npar_psf] = alpha[::-1]
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
-    b1[0:6] = [[None, None],                                       # delta 
-               [None, None],                                       # theta 
-               [None, None],                                       # x0 
-               [None, None],                                       # y0 
-               [0., None],                                         # ellipticity 
-               [None, None]]                                       # PA
-    b1[6:npar_psf] = [[None, None]] * (alphaDeg+1)
-    b1[npar_psf:npar_psf+nslice] = [[0, None]] * nslice
+    b1[0:6] = [[None, None],            # delta 
+               [None, None],            # theta 
+               [None, None],            # x0 
+               [None, None],            # y0 
+               [0., None],              # ellipticity 
+               [None, None]]            # PA
+    b1[6:npar_psf] = [[0,None]] + [[None, None]] * alphaDeg # a0 > 0
+    b1[npar_psf:npar_psf+nslice] = [[0, None]] * nslice # Intensities
 
     p2 = sky_vec.squeeze()
     b2 = ([[0.,None]]+[[None,None]]*(npar_poly-1))*nslice 
@@ -869,7 +866,7 @@ if __name__ == "__main__":
         data_model.fit(maxfun=2000, save=True)
 
 ##     # Fit each param alone (test) 
-##     polAlpha         = pySNIFS.fit_poly(alpha_mat[:,0],3,3,lbda_rel)
+##     polAlpha         = pySNIFS.fit_poly(alpha_vec,3,3,lbda_rel)
 ##     polEllipticity   = pySNIFS.fit_poly(ell_vec       ,3,3,lbda_rel)
 ##     polPositionAngle = pySNIFS.fit_poly(PA_vec        ,3,3,lbda_rel)
 ##     Ellipticity      = polEllipticity.coeffs
@@ -928,7 +925,7 @@ if __name__ == "__main__":
     # Save file with fitted parameters 
     if opts.file:
 
-        create_log_file(opts.file,delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_mat,khi2_vec,data_model,nslice)
+        create_log_file(opts.file,delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,khi2_vec,data_model,nslice)
         
     # Create output graphics =================================================
 
@@ -1137,7 +1134,7 @@ if __name__ == "__main__":
         fig6 = pylab.figure()
 
         ax6a = fig6.add_subplot(2, 1, 1)
-        ax6a.errorbar(cube.lbda, alpha_mat[:,0],error_mat[:,6], fmt='b.', ecolor='blue', label="Fit 2D")
+        ax6a.errorbar(cube.lbda, alpha_vec,error_mat[:,6], fmt='b.', ecolor='blue', label="Fit 2D")
         ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
         ax6a.plot(cube.lbda, fit_disp, 'g', label="Fit 3D")
 ##         ax6a.plot(cube.lbda, tryA, 'r', label="Fit on meta slices  (deg 3)")
