@@ -1,5 +1,7 @@
 2007-11-12  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
+	* lib/pySNIFS_fit.py (model.check_grad): new keyword param.
+
 	* apps/extract_star/extract_star.py: force alpha to >0.
 
 2007-11-09  Clement Buton  <cbuton@lyopc387.in2p3.fr>

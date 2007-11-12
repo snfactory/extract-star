@@ -213,14 +213,14 @@ def get_start(cube,poly_deg,verbosity,psfFn):
     error_mat = S.zeros((nslice,npar_psf+2), dtype='d') # PSF+Intens.+Bkgnd
     alpha_vec = S.zeros(nslice, dtype='d')
     
-    for i in xrange(cube.nslice):
+    for i in xrange(nslice):
         cube_sky.var   = copy.deepcopy(cube.var[i,  S.newaxis])
         cube_sky.data  = copy.deepcopy(cube.data[i, S.newaxis])
         cube_star.var  = copy.deepcopy(cube.var[i,  S.newaxis])
         cube_star.data = copy.deepcopy(cube.data[i, S.newaxis])
         cube_star.lbda = S.array([cube.lbda[i]])
         if opts.verbosity >= 1:
-            sys.stdout.write('\rSlice %2d/%d' % (i+1, cube.nslice))
+            sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
             sys.stdout.flush()
         print_msg("", opts.verbosity, 2)
 
@@ -235,20 +235,19 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         yc = S.average(cube_star.y, weights=star_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 1., 0., 2.4, imax]                   # psf function;SpaxelSize
+        p1 = [0., 0., xc, yc, 1., 0., 2.4, imax] # psf function;SpaxelSize
         
-        b1 = [None]*(npar_psf+cube_star.nslice) # Empty list of length +cube2.nslice
-        b1[0:7] = [[None, None],        # delta
-                   [None, None],        # theta
-                   [None, None],        # xc
-                   [None, None],        # yc
-                   [0., None],          # ellipticity 
-                   [None, None],        # PA
-                   [0., None]]          # alpha > 0
-        b1[npar_psf:npar_psf+cube_star.nslice] = [[0, None]]*cube_star.nslice 
+        b1 = [[None, None],             # delta
+              [None, None],             # theta
+              [None, None],             # xc
+              [None, None],             # yc
+              [0., None],               # ellipticity 
+              [None, None],             # PA
+              [0., None]]               # alpha > 0
+        b1 += [[0, None]]               # Intensity > 0
 
-        p2 = [p0]+[0.]*(npar_poly-1)    # Gess: Background=constant (>0)
-        b2 = [[0,None]]+[[None,None]]*(npar_poly-1)
+        p2 = [p0] + [0.]*(npar_poly-1)  # Guess: Background=constant (>0)
+        b2 = [[0,None]] + [[None,None]]*(npar_poly-1)
 
         print_msg("    Initial guess [PSF]: %s" % [p1], opts.verbosity, 2)
 
@@ -270,8 +269,16 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         # Error computation
         hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                         model_star.fitpar,order=2)
-        hess = hess[2:,2:]              # Discard delta,theta lines (unfitted)
-        cov = S.linalg.inv(hess)
+        try:
+            cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+        except:
+            print "Flatparam:", model_star.flatparam
+            print "Fitparam:", model_star.fitpar
+            print model_star.check_grad(param=model_star.flatparam)
+            print model_star.check_grad(param=model_star.fitpar)
+            print "DEBUG DEBUG DEBUG", model_star.fitpar
+            print "DEBUG DEBUG DEBUG", hess
+            raise
         errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
 
         # Storing the result of the current slice parameters
@@ -819,19 +826,18 @@ if __name__ == "__main__":
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(npar_psf+nslice)
-    b1 = [None]*(npar_psf+nslice)
     p1[0:6] = [delta, theta, xc, yc, ell, PA]
     p1[6:npar_psf] = alpha[::-1]
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
-    b1[0:6] = [[None, None],            # delta 
-               [None, None],            # theta 
-               [None, None],            # x0 
-               [None, None],            # y0 
-               [0., None],              # ellipticity 
-               [None, None]]            # PA
-    b1[6:npar_psf] = [[0,None]] + [[None, None]] * alphaDeg # a0 > 0
-    b1[npar_psf:npar_psf+nslice] = [[0, None]] * nslice # Intensities
+    b1 = [[None, None],                 # delta 
+          [None, None],                 # theta 
+          [None, None],                 # x0 
+          [None, None],                 # y0 
+          [0., None],                   # ellipticity 
+          [None, None]]                 # PA
+    b1 += [[0,None]] + [[None, None]]*alphaDeg # a0 > 0
+    b1 += [[0, None]]*nslice            # Intensities
 
     p2 = sky_vec.squeeze()
     b2 = ([[0.,None]]+[[None,None]]*(npar_poly-1))*nslice 

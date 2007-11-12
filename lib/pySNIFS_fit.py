@@ -718,13 +718,15 @@ class model:
         return val2
    
 
-    def check_grad(self,eps=1e-3):
+    def check_grad(self, eps=1e-3, param=None):
         """ Check the gradient of the objective function at the current
         parameters stored in the field flatparam."""
+        if param is None:
+            param = self.flatparam
         print "%20s %20s %20s" % ("Finite difference","Objgrad","Rel. diff.")
-        approx_grad = S.optimize.approx_fprime(self.flatparam, self.objfun, eps)
-        comp_grad = self.objgrad()
-        for n in range(S.size(self.flatparam)):
+        approx_grad = S.optimize.approx_fprime(param, self.objfun, eps)
+        comp_grad = self.objgrad(param)
+        for n in range(S.size(param)):
             print "%20.6f %20.6f %20.6f" % (approx_grad[n],comp_grad[n],
                                             abs(approx_grad[n]-comp_grad[n]) / \
                                             max([abs(comp_grad[n]),1e-10]))
