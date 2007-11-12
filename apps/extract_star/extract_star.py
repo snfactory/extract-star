@@ -30,7 +30,7 @@ from scipy import linalg as L
 from scipy import interpolate as I 
 from scipy.ndimage import filters as F
 
-SpaxelSize = 0.43                                                  # Spaxel size in arcsec
+SpaxelSize = 0.43                       # Spaxel size in arcsec
 
 # Definitions ================================================================
 
@@ -54,11 +54,11 @@ def atmosphericIndex(lbda, P=616, T=2):
     """
 
     # Sea-level (P=760 mmHg, T=15C)
-    iml2 = 1/(lbda*1e-4)**2                                        # lambda in microns
+    iml2 = 1/(lbda*1e-4)**2             # lambda in microns
     n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
 
     # (P,T) correction
-    P *= 0.75006168                                                # Convert P to mmHg: *= 760./1013.25
+    P *= 0.75006168                     # Convert P to mmHg: *= 760./1013.25
     n = 1 + (n-1) * P * \
         ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / \
         ( 720.883*(1 + 0.003661*T) )
@@ -210,7 +210,7 @@ def get_start(cube,poly_deg,verbosity,psfFn):
     int_vec   = S.zeros(nslice, dtype='d')
     khi2_vec  = S.zeros(nslice, dtype='d')
     sky_vec   = S.zeros((nslice,npar_poly), dtype='d')
-    error_mat = S.zeros((nslice,npar_psf+1), dtype='d')
+    error_mat = S.zeros((nslice,npar_psf+2), dtype='d') # PSF+Intens.+Bkgnd
     alpha_vec = S.zeros(nslice, dtype='d')
     
     for i in xrange(cube.nslice):
@@ -239,18 +239,18 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         
         b1 = [None]*(npar_psf+cube_star.nslice) # Empty list of length +cube2.nslice
         b1[0:7] = [[None, None],        # delta
-                   [-S.pi, S.pi],       # theta
+                   [None, None],        # theta
                    [None, None],        # xc
                    [None, None],        # yc
                    [0., None],          # ellipticity 
                    [None, None],        # PA
-                   [0., None]]          # alpha
-        b1[npar_psf:npar_psf+cube_star.nslice] = [[0, None]] * cube_star.nslice 
+                   [0., None]]          # alpha > 0
+        b1[npar_psf:npar_psf+cube_star.nslice] = [[0, None]]*cube_star.nslice 
 
-        p2 = [p0]+[0.]*(npar_poly-1)
+        p2 = [p0]+[0.]*(npar_poly-1)    # Gess: Background=constant (>0)
         b2 = [[0,None]]+[[None,None]]*(npar_poly-1)
 
-        print_msg("    Initial guess: %s" % [p1], opts.verbosity, 2)
+        print_msg("    Initial guess [PSF]: %s" % [p1], opts.verbosity, 2)
 
         # Instanciating of a model class
         lbda_ref = cube_star.lbda[0]
@@ -265,28 +265,16 @@ def get_start(cube,poly_deg,verbosity,psfFn):
                                        myfunc={psfFn.__name__:psfFn})
 
         # Fit of the current slice
-        if opts.verbosity >= 3:
-            model_star.fit(maxfun=400, msge=1)
-        else:
-            model_star.fit(maxfun=400 )
+        model_star.fit(maxfun=400, msge=int(opts.verbosity >= 3))
 
         # Error computation
-        param = S.array(model_star.fitpar,'d')
-        hess = pySNIFS_fit.approx_deriv(model_star.objgrad,param,order=2)
-        hess = S.reshape([hess[x][y]
-                          for x in [2,3,4,5,6,-1]
-                          for y in [2,3,4,5,6,-1]],(6,6))
+        hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
+                                        model_star.fitpar,order=2)
+        hess = hess[2:,2:]              # Discard delta,theta lines (unfitted)
         cov = S.linalg.inv(hess)
-        errorpar = S.sqrt(cov.diagonal())
-        tmp = S.zeros(npar_psf+1,'d')
-        tmp[2:7] = errorpar[:5]
-        tmp[-1] = errorpar[-1]
-        errorpar = tmp
+        errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
 
         # Storing the result of the current slice parameters
-        tmp = []
-        for j in S.arange(alphaDeg + 1):
-            tmp.append(model_star.fitpar[6+j])
         delta_vec[i]   = model_star.fitpar[0]
         theta_vec[i]   = model_star.fitpar[1]
         xc_vec[i]      = model_star.fitpar[2]
@@ -294,12 +282,13 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         ell_vec[i]     = model_star.fitpar[4]
         PA_vec[i]      = model_star.fitpar[5]
         alpha_vec[i]   = model_star.fitpar[6]
-        int_vec[i]     = model_star.fitpar[npar_psf]
-        sky_vec[i]     = model_star.fitpar[npar_psf+1]
+        int_vec[i]     = model_star.fitpar[7]
+        sky_vec[i]     = model_star.fitpar[8]
         khi2_vec[i]    = model_star.khi2
         error_mat[i]   = errorpar
 
-        print_msg("    Fit result: %s" % model_star.fitpar, opts.verbosity, 2)
+        print_msg("    Fit result [PSF+bkgnd]: %s" % \
+                  model_star.fitpar, opts.verbosity, 2)
 
     return delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,int_vec,sky_vec,khi2_vec,error_mat
 
