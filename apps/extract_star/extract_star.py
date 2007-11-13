@@ -270,12 +270,11 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                         model_star.fitpar,order=2)
 
-        if model_star.fitpar[4]!=0 and model_star.fitpar[6]!=0 and model_star.fitpar[7]!=0: 
+        if model_star.fitpar[4]>0 and model_star.fitpar[6]>0 and model_star.fitpar[7]>0: 
             cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+            errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
         else:
-            cov = S.zeros((7,7)) # Set error to 0 if alpha, intens. or ellipticity is 0.
-
-        errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
+            errorpar = S.zeros(9) # Set error to 0 if alpha, intens. or ellipticity is 0. 
 
         # Storing the result of the current slice parameters
         delta_vec[i]   = model_star.fitpar[0]
