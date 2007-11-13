@@ -1,3 +1,7 @@
+2007-11-13  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: Correct minor bug. 
+
 2007-11-12  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (model.check_grad): new keyword param.

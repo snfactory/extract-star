@@ -58,7 +58,7 @@ def atmosphericIndex(lbda, P=616, T=2):
     n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
 
     # (P,T) correction
-    P *= 0.75006168                     # Convert P to mmHg: *= 760./1013.25
+    P *= 0.75006168               # Convert P to mmHg: *= 760./1013.25
     n = 1 + (n-1) * P * \
         ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / \
         ( 720.883*(1 + 0.003661*T) )
@@ -110,11 +110,11 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
 
 def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
 
-    npar_poly = int((poly_deg+1)*(poly_deg+2)/2)                   # Number of parameters of the polynomial background
+    npar_poly = int((poly_deg+1)*(poly_deg+2)/2) # Number of parameters of the polynomial background
 
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
-    cube.x /= intpar[0]                                            # x in spaxel
-    cube.y /= intpar[0]                                            # y in spaxel
+    cube.x /= intpar[0]                 # x in spaxel
+    cube.y /= intpar[0]                 # y in spaxel
     cube.var[cube.var>1e20] = 0
     # YC: why is there some <0 variance???
     if (cube.var<0).any():
@@ -122,10 +122,10 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
         cube.var[cube.var<0] = 0
     if efftime > 5:
         model = long_exposure_psf(intpar, cube)
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]     # long exposures
+        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
     else:
         model = short_exposure_psf(intpar, cube)
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6]        # short exposures
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
 
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
@@ -180,9 +180,9 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
     return cube.lbda,Spec,Var
 
 def get_start(cube,poly_deg,verbosity,psfFn):
-    npar_poly = int((poly_deg+1)*(poly_deg+2)/2)                   # Number of parameters of the polynomial background
-    npar_psf  = 7                       # Number of parameters of the psf
-    n = 2                               # Nb of edge spx used for sky estimate
+    npar_poly = int((poly_deg+1)*(poly_deg+2)/2) # Number of parameters of the polynomial background
+    npar_psf  = 7                    # Number of parameters of the psf
+    n = 2                       # Nb of edge spx used for sky estimate
     if n>7:
         raise ValueError('The number of edge pixels should be less than 7')
     cube_sky = pySNIFS.SNIFS_cube()
@@ -230,8 +230,8 @@ def get_start(cube,poly_deg,verbosity,psfFn):
 
         # Guess parameters for the current slice
         star_int = F.median_filter(cube_star.data[0], 3)
-        imax = star_int.max()                                      # Intensity
-        xc = S.average(cube_star.x, weights=star_int)              # Centroid
+        imax = star_int.max()           # Intensity
+        xc = S.average(cube_star.x, weights=star_int) # Centroid
         yc = S.average(cube_star.y, weights=star_int)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
@@ -244,7 +244,7 @@ def get_start(cube,poly_deg,verbosity,psfFn):
               [0., None],               # ellipticity 
               [None, None],             # PA
               [0., None]]               # alpha > 0
-        b1 += [[0, None]]               # Intensity > 0
+        b1 += [[0., None]]              # Intensity > 0
 
         p2 = [p0] + [0.]*(npar_poly-1)  # Guess: Background=constant (>0)
         b2 = [[0,None]] + [[None,None]]*(npar_poly-1)
@@ -269,16 +269,12 @@ def get_start(cube,poly_deg,verbosity,psfFn):
         # Error computation
         hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                         model_star.fitpar,order=2)
-        try:
+
+        if model_star.fitpar[4]!=0 and model_star.fitpar[6]!=0 and model_star.fitpar[7]!=0: 
             cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
-        except:
-            print "Flatparam:", model_star.flatparam
-            print "Fitparam:", model_star.fitpar
-            print model_star.check_grad(param=model_star.flatparam)
-            print model_star.check_grad(param=model_star.fitpar)
-            print "DEBUG DEBUG DEBUG", model_star.fitpar
-            print "DEBUG DEBUG DEBUG", hess
-            raise
+        else:
+            cov = S.zeros((7,7)) # Set error to 0 if alpha, intens. or ellipticity is 0.
+
         errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
 
         # Storing the result of the current slice parameters
@@ -439,7 +435,7 @@ class long_exposure_psf:
         for i in S.arange(self.alphaDeg + 1):
             alpha += a[i]*lbda_rel**i
 
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]     # Long exposures
+        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
@@ -486,7 +482,7 @@ class long_exposure_psf:
         for i in S.arange(self.alphaDeg + 1):
             alpha += a[i]*lbda_rel**i
 
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04]     # Long exposures
+        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
@@ -524,8 +520,9 @@ class short_exposure_psf:
     def __init__(self,intpar=[None,None,None],cube=None):
         """
         Initiating the class.
-        @param intpar: Internal parameters (pixel size in cube spatial unit, reference wavelength and polynomial degree of alpha). A
-            list of three numbers.
+        @param intpar: Internal parameters (pixel size in cube spatial unit,
+            reference wavelength and polynomial degree of alpha). A list of
+            three numbers.
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         """
         self.pix = intpar[0]
@@ -586,7 +583,7 @@ class short_exposure_psf:
         for i in S.arange(self.alphaDeg + 1):
             alpha += a[i]*lbda_rel**i
             
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6]        # Short exposures
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
@@ -633,7 +630,7 @@ class short_exposure_psf:
         for i in S.arange(self.alphaDeg + 1):
             alpha += a[i]*lbda_rel**i
             
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6]        # Short exposures
+        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
         beta  = b1*alpha+b0
         sigma = s1*alpha+s0
         eta   = e1*alpha+e0
@@ -710,7 +707,7 @@ if __name__ == "__main__":
     # Input datacube =========================================================
 
     print_msg("Opening datacube %s" % opts.input, opts.verbosity, 0)
-    inhdr = pyfits.getheader(opts.input, 1)                        # 1st extension
+    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr.get('EFFTIME')
     airmass = inhdr.get('AIRMASS', 0.0)
@@ -727,9 +724,9 @@ if __name__ == "__main__":
                      (opts.input, channel))
 
     # Select the PSF (short or long)
-    if efftime > 5.:                                               # Long exposure
+    if efftime > 5.:                    # Long exposure
         psfFn = long_exposure_psf
-    else:                                                          # Short exposure
+    else:                               # Short exposure
         psfFn = short_exposure_psf
 
     print_msg("  Object: %s, Airmass: %.2f; Efftime: %.1fs [%s]" % \
@@ -760,11 +757,11 @@ if __name__ == "__main__":
 
     # YC: not clear this selection is needed anymore...
     print_msg("Rejection of slices with bad values...", opts.verbosity, 0)
-    max_spec = cube.data.max(axis=1)                               # Max per slice
+    max_spec = cube.data.max(axis=1)    # Max per slice
     med = S.median(F.median_filter(max_spec, 5) - max_spec)
     tmp2 = (max_spec - med)**2
     indice = tmp2 < 25*S.median(tmp2)
-    if (-indice).any():                                            # Some discarded slices
+    if (-indice).any():                 # Some discarded slices
         print_msg("   %d slices discarded: %s" % \
                   (len(cube.lbda[-indice]), cube.lbda[-indice]),
                   opts.verbosity, 0)
@@ -796,7 +793,7 @@ if __name__ == "__main__":
     # filtered vectors. Finally, the parameters theta and delta are
     # determined from the xc, yc vectors.
     ind = ( S.absolute(xc_vec)<7 ) & ( S.absolute(yc_vec)<7 )
-    if not ind.all():                                              # Some centroids outside FoV
+    if not ind.all():                   # Some centroids outside FoV
         print "%d/%d centroid positions discarded from ADR initial guess" % \
               (len(xc_vec[-ind]),nslice)
         if (len(xc_vec[ind])<=1):
@@ -805,7 +802,7 @@ if __name__ == "__main__":
     xc_vec2 = xc_vec[ind]
     yc_vec2 = yc_vec[ind]
     ADR_coef = 206265*(atmosphericIndex(cube.lbda) -
-                       atmosphericIndex(lbda_ref)) / SpaxelSize    # In spaxels
+                       atmosphericIndex(lbda_ref)) / SpaxelSize # In spaxels
 
     polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)    
     xc = xc_vec2[S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
@@ -903,7 +900,7 @@ if __name__ == "__main__":
     # Save sky spectrum ======================================================
 
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg,khi2)
-    spec[:,1:] /= SpaxelSize**2                                    # Per arcsec^2
+    spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
 
     prefix = [''] + [ 'a%d_' % n for n in range(1,npar_poly) ]
@@ -984,7 +981,7 @@ if __name__ == "__main__":
         fig2 = pylab.figure()
 
         fig2.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):                              # Loop over meta-slices
+        for i in xrange(cube.nslice):   # Loop over meta-slices
             ax = fig2.add_subplot(nrow, ncol, i+1)
             data = data_model.data.data[i,:]
             fit = data_model.evalfit()[i,:]
@@ -1008,8 +1005,8 @@ if __name__ == "__main__":
 
         # Creating a standard SNIFS cube with the adjusted data
         cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
-        cube_fit.x /= SpaxelSize                                   # x in spaxel 
-        cube_fit.y /= SpaxelSize                                   # y in spaxel
+        cube_fit.x /= SpaxelSize        # x in spaxel 
+        cube_fit.y /= SpaxelSize        # y in spaxel
 
         func1 = psfFn(intpar=[data_model.func[0].pix,
                               data_model.func[0].lbda_ref, alphaDeg],
@@ -1022,15 +1019,15 @@ if __name__ == "__main__":
         fig3 = pylab.figure()
 
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):                              # Loop over slices
+        for i in xrange(cube.nslice):   # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
             # YC - Why is there some NaN's in data slices?
             # (eg e3d_TC07_153_099_003_17_B.fits)
             sigSlice = S.nan_to_num(cube.slice2d(i, coord='p'))
             varSlice = S.nan_to_num(cube.slice2d(i, coord='p', var=True))
             modSlice = cube_fit.slice2d(i, coord='p')
-            prof_I = sigSlice.sum(axis=0)                          # Sum along rows
-            prof_J = sigSlice.sum(axis=1)                          # Sum along columns
+            prof_I = sigSlice.sum(axis=0) # Sum along rows
+            prof_J = sigSlice.sum(axis=1) # Sum along columns
             err_I = S.sqrt(varSlice.sum(axis=0))
             err_J = S.sqrt(varSlice.sum(axis=1))
             mod_I = modSlice.sum(axis=0)
@@ -1175,7 +1172,7 @@ if __name__ == "__main__":
         fig7 = pylab.figure()
 
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):                              # Loop over slices
+        for i in xrange(cube.nslice):   # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
             ax.plot(S.hypot(cube.x-xfit[i],cube.y-yfit[i]),
                     cube.data[i], 'b.')
@@ -1209,11 +1206,11 @@ if __name__ == "__main__":
         fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
                   cube.y.min()-0.5,cube.y.max()+0.5)
-        for i in xrange(cube.nslice):                              # Loop over meta-slices
+        for i in xrange(cube.nslice):   # Loop over meta-slices
             ax = fig8.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
             fit = cube_fit.slice2d(i, coord='p')
-            vmin,vmax = pylab.prctile(fit, (5.,95.))               # Percentiles
+            vmin,vmax = pylab.prctile(fit, (5.,95.)) # Percentiles
             lev = S.logspace(S.log10(vmin),S.log10(vmax),5)
             ax.contour(data, lev, origin='lower', extent=extent)
             cnt = ax.contour(fit, lev, ls='--', origin='lower', extent=extent)
@@ -1237,13 +1234,13 @@ if __name__ == "__main__":
         fig5 = pylab.figure()
 
         fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
-        for i in xrange(cube.nslice):                              # Loop over meta-slices
+        for i in xrange(cube.nslice):   # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
             var  = cube.slice2d(i, coord='p', var=True)
             fit  = cube_fit.slice2d(i, coord='p')
             res  = S.nan_to_num((data - fit)/S.sqrt(var))
-            vmin,vmax = pylab.prctile(res, (3.,97.))               # Percentiles
+            vmin,vmax = pylab.prctile(res, (3.,97.)) # Percentiles
             ax.imshow(res, origin='lower', extent=extent, vmin=vmin, vmax=vmax)
             ax.plot((xfit[i],),(yfit[i],), 'k+')
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
