@@ -1,3 +1,7 @@
+2007-11-15  yannick.copin  <yannick.copin@laposte.net>
+
+	* apps/extract_star/extract_star.py: debug of graphical options.
+
 2007-11-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: make both short_ and
