@@ -19,7 +19,6 @@ __version__ = '$Id$'
 import os
 import sys
 import optparse
-import copy
 
 import pyfits
 import pySNIFS
@@ -95,86 +94,68 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par, erro
 def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
     
     hdr.update('ES_VERS' ,__version__)
-    hdr.update('ES_CUBE' ,cube,              'extract_star input cube')
-    hdr.update('ES_LREF' ,lbda_ref,          'extract_star lambda')
-    hdr.update('ES_SDEG' ,sky_deg,           'extract_star polynomial bkgnd degree')
-    hdr.update('ES_KHI2' ,khi2,              'extract_star khi square')    
-    hdr.update('ES_DELTA',param[0],          'extract_star ADR power')
-    hdr.update('ES_THETA',param[1],          'extract_star ADR angle')
-    hdr.update('ES_XC'   ,param[2],          'extract_star xc')
-    hdr.update('ES_YC'   ,param[3],          'extract_star yc')
-    hdr.update('ES_ELL'  ,param[4],          'extract_star ellipticity')
-    hdr.update('ES_PA'   ,param[5],          'extract_star pos. angle')    
-    for i in S.arange(alphaDeg + 1):
-        hdr.update('ES_A%i'%i   ,param[6+i], 'extract_star a%i'%i)
+    hdr.update('ES_CUBE' ,cube,    'extract_star input cube')
+    hdr.update('ES_LREF' ,lbda_ref,'extract_star lambda ref.')
+    hdr.update('ES_SDEG' ,sky_deg, 'extract_star polynomial bkgnd degree')
+    hdr.update('ES_KHI2' ,khi2,    'extract_star khi square')    
+    hdr.update('ES_DELTA',param[0],'extract_star ADR power')
+    hdr.update('ES_THETA',param[1],'extract_star ADR angle')
+    hdr.update('ES_XC'   ,param[2],'extract_star xc')
+    hdr.update('ES_YC'   ,param[3],'extract_star yc')
+    hdr.update('ES_ELL'  ,param[4],'extract_star ellipticity')
+    hdr.update('ES_PA'   ,param[5],'extract_star pos. angle')    
+    for i in xrange(alphaDeg + 1):
+        hdr.update('ES_A%i'%i   ,param[6+i], 'extract_star alpha a%i'%i)
 
-def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], skyDeg=0):
+def comp_spec(cube, psf_fn, psf_param, intpar, skyDeg=0):
 
     npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Number of parameters of the polynomial background
 
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     cube.x /= intpar[0]                 # x in spaxel
     cube.y /= intpar[0]                 # y in spaxel
-    cube.var[cube.var>1e20] = 0
-
-    if (cube.var<0).any():
+    if (cube.var>1e20).any(): 
+        print "WARNING: discarding infinite variances in comp_spec"
+        cube.var[cube.var>1e20] = 0
+    if (cube.var<0).any():              # There should be none anymore
         print "WARNING: discarding negative variances in comp_spec"
         cube.var[cube.var<0] = 0
-    if efftime > 5:
-        model = long_exposure_psf(intpar, cube)
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
-    else:
-        model = short_exposure_psf(intpar, cube)
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
 
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
-    param = psf_param.tolist() + [1.]*cube.nslice 
+    param = S.concatenate((psf_param,[1.]*cube.nslice))
 
-    # Rejection of bad points
+    # Rejection of bad points (YC: need some clarifications...)
     lapl = F.laplace(cube.data/cube.data.mean())
     fdata = F.median_filter(cube.data, size=[1, 3])
     hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
                              Max=100, cumul=True)
     threshold = hist.x[S.argmax(S.where(hist.data<0.9999, 0, 1))]
+    if (S.absolute(lapl) <= threshold).any():
+        print "WARNING: discarding bad px (threshold=%f) in comp_spec" % \
+              threshold
     cube.var *= (S.absolute(lapl) <= threshold)
+
     weight = S.sqrt(S.where(cube.var!=0, 1./cube.var, 0))
 
     # Fit on masked data
-    psf = S.array(model.comp(param), dtype='d')
+    model = psf_fn(intpar, cube)
+    psf = model.comp(param, normed=True)
     X = S.zeros((cube.nslice,cube.nlens,npar_poly+1),'d')
     X[:,:,0] = psf*weight
     X[:,:,1] = weight
     n = 2
-    for d in S.arange(skyDeg)+1:
-        for j in S.arange(d+1):
+    for d in xrange(1,skyDeg+1):
+        for j in xrange(d+1):
             X[:,:,n] = weight * cube.x**(d-j) * cube.y**j
             n=n+1
 
     A = S.array([S.dot(x.T, x) for x in X])
     b = weight*cube.data
-    B = S.array([S.dot(X[i].T,b[i]) for i in S.arange(cube.nslice)])
+    B = S.array([S.dot(x.T,bb) for x,bb in zip(X,b)])
     C = S.array([L.inv(a) for a in A])
-
-    Spec = S.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in S.arange(cube.nslice)])
-    Var  = S.array([S.diag(c) for c in C])
-
-    # The 3D psf model is not normalized to 1 in integral. The result must be
-    # renormalized by (eps), eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) +
-    # S.pi*alpha**2 / ((beta-1)*(S.sqrt(ell)))
-    lbda_rel = model.l[:,0] / model.lbda_ref - 1 
-    alpha = 0
-    for i in S.arange(intpar[2] + 1):
-        alpha += psf_param[6+i]*lbda_rel**i
-    beta     = b1*alpha+b0
-    sigma    = s1*alpha+s0
-    eta      = e1*alpha+e0
-    ell      = psf_param[4]
-
-    eps = S.pi*(2*eta*sigma**2 + alpha**2/(beta-1) )/S.sqrt(ell)
-
-    Spec[:,0] *= eps
-    Var[:,0] *= eps**2
+    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)])
+    Var = S.array([S.diag(c) for c in C])
 
     return cube.lbda,Spec,Var
 
@@ -213,18 +194,19 @@ def get_start(cube,skyDeg,verbosity,psfFn):
     alpha_vec = S.zeros(nslice, dtype='d')
     
     for i in xrange(nslice):
-        cube_sky.var   = copy.deepcopy(cube.var[i,  S.newaxis])
-        cube_sky.data  = copy.deepcopy(cube.data[i, S.newaxis])
-        cube_star.var  = copy.deepcopy(cube.var[i,  S.newaxis])
-        cube_star.data = copy.deepcopy(cube.data[i, S.newaxis])
         cube_star.lbda = S.array([cube.lbda[i]])
+        cube_star.data = cube.data[i, S.newaxis].copy()
+        cube_star.var  = cube.var[i,  S.newaxis].copy()
+        cube_sky.data  = cube.data[i, S.newaxis].copy()
+        cube_sky.var   = cube.var[i,  S.newaxis].copy()
         if opts.verbosity >= 1:
             sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
             sys.stdout.flush()
         print_msg("", opts.verbosity, 2)
 
-        # Sky estimation.
-        ind = S.where((cube_sky.i<n)|(cube_sky.i>=15-n)|(cube_sky.j<n)|(cube_sky.j>=15-n))
+        # Sky estimate
+        ind = S.where((cube_sky.i<n) | (cube_sky.i>=15-n) | \
+                      (cube_sky.j<n) | (cube_sky.j>=15-n))
         p0 = S.median(S.transpose(cube_sky.data)[ind])[0]
 
         # Guess parameters for the current slice
@@ -269,24 +251,26 @@ def get_start(cube,skyDeg,verbosity,psfFn):
         hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                         model_star.fitpar,order=2)
 
-        if model_star.fitpar[4]>0 and model_star.fitpar[6]>0 and model_star.fitpar[7]>0: 
+        if model_star.fitpar[4]>0 and \
+               model_star.fitpar[6]>0 and model_star.fitpar[7]>0: 
             cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
             errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
         else:
-            errorpar = S.zeros(9) # Set error to 0 if alpha, intens. or ellipticity is 0. 
+            # Set error to 0 if alpha, intens. or ellipticity is 0. 
+            errorpar = S.zeros(9)
 
         # Storing the result of the current slice parameters
-        delta_vec[i]   = model_star.fitpar[0]
-        theta_vec[i]   = model_star.fitpar[1]
-        xc_vec[i]      = model_star.fitpar[2]
-        yc_vec[i]      = model_star.fitpar[3]
-        ell_vec[i]     = model_star.fitpar[4]
-        PA_vec[i]      = model_star.fitpar[5]
-        alpha_vec[i]   = model_star.fitpar[6]
-        int_vec[i]     = model_star.fitpar[7]
-        sky_vec[i]     = model_star.fitpar[8]
-        khi2_vec[i]    = model_star.khi2
-        error_mat[i]   = errorpar
+        delta_vec[i] = model_star.fitpar[0]
+        theta_vec[i] = model_star.fitpar[1]
+        xc_vec[i]    = model_star.fitpar[2]
+        yc_vec[i]    = model_star.fitpar[3]
+        ell_vec[i]   = model_star.fitpar[4]
+        PA_vec[i]    = model_star.fitpar[5]
+        alpha_vec[i] = model_star.fitpar[6]
+        int_vec[i]   = model_star.fitpar[7]
+        sky_vec[i]   = model_star.fitpar[8]
+        khi2_vec[i]  = model_star.khi2
+        error_mat[i] = errorpar
 
         print_msg("    Fit result [PSF+bkgnd]: %s" % \
                   model_star.fitpar, opts.verbosity, 2)
@@ -305,7 +289,7 @@ def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,khi3D,model,nsl
             else:
                 return '  '+str(param[i])[:j]+' '
 
-    A = ''.join(['  a%d    ' %i for i in S.arange(alphaDeg+1)])
+    A = ''.join([' a%d ' %i for i in xrange(len(alpha[0]))])
 
     logfile = open(filename,'w')
     logfile.write('extract_star.py : results file for '+os.path.basename(opts.input)+'\n\n'\
@@ -361,36 +345,32 @@ def build_sky_cube(cube,sky,sky_var,deg):
 
 # PSF classes ================================================================
 
-class long_exposure_psf:
+class ExposurePSF:
     """
     Empirical PSF 3D function used by the L{model} class.
     """
-    def __init__(self,intpar=[None,None,None],cube=None):
+    
+    def __init__(self, intpar, cube):
         """
         Initiating the class.
         @param intpar: Internal parameters (pixel size in cube spatial unit, reference wavelength and polynomial degree of alpha). A
             list of three numbers.
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         """
-        self.pix = intpar[0]
+        self.pix      = intpar[0]
         self.lbda_ref = intpar[1]
-        self.alphaDeg = intpar[2]
-        self.npar_ind = 1
-        self.npar_cor = 6+self.alphaDeg+1
+        self.alphaDeg = int(intpar[2])
+        self.npar_ind = 1               # Intensity
+        self.npar_cor = 7 + self.alphaDeg # PSF parameters
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
-        self.name = 'long_exposure_psf'
-        self.x = S.zeros((cube.nslice,cube.nlens),'d')
-        self.y = S.zeros((cube.nslice,cube.nlens),'d')
-        self.l = S.zeros(cube.data.T.shape,'d')
-        self.x[:][:] = cube.x
-        self.y[:][:] = cube.y
-        self.l[:][:] = cube.lbda
-        self.l = S.transpose(self.l)
+        self.x = S.resize(cube.x, (cube.nslice,cube.nlens)) # nslice x nlens
+        self.y = S.resize(cube.y, (cube.nslice,cube.nlens))
+        self.l = S.resize(cube.lbda, (cube.nlens,cube.nslice)).T # nlens x nslice
         self.n_ref = atmosphericIndex(self.lbda_ref)
         # ADR in spaxels
         self.ADR_coef = 206265*(atmosphericIndex(self.l) - self.n_ref) / SpaxelSize
 
-    def comp(self,param):
+    def comp(self, param, normed=False):
         """
         Compute the function.
         @param param: Input parameters of the polynomial. A list of numbers:
@@ -412,29 +392,24 @@ class long_exposure_psf:
         theta = self.param[1]
         xc    = self.param[2]
         yc    = self.param[3]
-        costheta = S.cos(theta)
-        sintheta = S.sin(theta)        
-        x0 = delta*self.ADR_coef*costheta + xc
-        y0 = delta*self.ADR_coef*sintheta + yc
+        x0 = xc + delta*self.ADR_coef*S.cos(theta)
+        y0 = yc + delta*self.ADR_coef*S.sin(theta)
 
         # other params
         ell = self.param[4]
         PA = self.param[5]
-        tmp = []
-        for j in S.arange(self.alphaDeg + 1):
-            tmp.append(self.param[6+j])
-        a = S.array(tmp, dtype='d')    
+        alphaCoeffs = self.param[6:7+self.alphaDeg]
 
         # aliases + correlations params (fixed)
         lbda_rel = self.l / self.lbda_ref - 1  
         alpha = 0
-        for i in S.arange(self.alphaDeg + 1):
-            alpha += a[i]*lbda_rel**i
+        for i in xrange(self.alphaDeg + 1):
+            alpha += alphaCoeffs[i]*lbda_rel**i
 
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
-        beta  = b1*alpha+b0
-        sigma = s1*alpha+s0
-        eta   = e1*alpha+e0
+        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        beta  = b0 + b1*alpha
+        sigma = s0 + s1*alpha
+        eta   = e0 + e1*alpha
 
         dx  = self.x - x0
         dy  = self.y - y0
@@ -444,15 +419,24 @@ class long_exposure_psf:
         moffat = ea**(-beta)
 
         # function
-        return self.param[self.npar_cor:,S.newaxis] * ( eta*gaussian + moffat )
+        val = self.param[self.npar_cor:,S.newaxis] * ( eta*gaussian + moffat )
 
-    def deriv(self,param):
+        # The 3D psf model is not normalized to 1 in integral. The result must
+        # be renormalized by eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) +
+        # S.pi*alpha**2 / ((beta-1)*(S.sqrt(ell)))
+        if normed:
+            eps = S.pi*(2*eta*sigma**2 + alpha**2/(beta-1) )/S.sqrt(ell)
+            val /= eps
+
+        return val
+
+    def deriv(self, param):
         """
         Compute the derivative of the function with respect to its parameters.
         @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
         """
         self.param = S.asarray(param)
-        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
+        grad = S.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
 
         # ADR params
         delta = self.param[0]
@@ -461,27 +445,27 @@ class long_exposure_psf:
         yc    = self.param[3]
         costheta = S.cos(theta)
         sintheta = S.sin(theta)
-        x0 = delta*self.ADR_coef*costheta + xc
-        y0 = delta*self.ADR_coef*sintheta + yc
+        x0 = xc + delta*self.ADR_coef*costheta
+        y0 = yc + delta*self.ADR_coef*sintheta
         
         # other params
         ell = self.param[4]
         PA = self.param[5]
         tmp = []
-        for j in S.arange(self.alphaDeg + 1):
+        for j in xrange(self.alphaDeg + 1):
             tmp.append(self.param[6+j])
         a = S.array(tmp, dtype='d')    
 
         # aliases + correlations params (fixed)
         lbda_rel = self.l / self.lbda_ref - 1
         alpha = 0
-        for i in S.arange(self.alphaDeg + 1):
+        for i in xrange(self.alphaDeg + 1):
             alpha += a[i]*lbda_rel**i
 
-        s1,s0,b1,b0,e1,e0 = [0.215,0.545,0.345,1.685,0.0,1.04] # Long exposures
-        beta  = b1*alpha+b0
-        sigma = s1*alpha+s0
-        eta   = e1*alpha+e0
+        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        beta  = b0 + b1*alpha
+        sigma = s0 + s1*alpha
+        eta   = e0 + e1*alpha
 
         dx = self.x - x0
         dy = self.y - y0
@@ -501,7 +485,7 @@ class long_exposure_psf:
         grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
         grad[4] = -tmp/2 * dy**2
         grad[5] = -tmp   * dx*dy
-        for i in S.arange(self.alphaDeg + 1):
+        for i in xrange(self.alphaDeg + 1):
             grad[6+i] = da0 * lbda_rel**i
         grad[self.npar_cor] = eta*gaussian + moffat
 
@@ -509,153 +493,15 @@ class long_exposure_psf:
 
         return grad
 
-class short_exposure_psf:
-    """
-    Empirical PSF 3D function used by the L{model} class.
-    """
-    def __init__(self,intpar=[None,None,None],cube=None):
-        """
-        Initiating the class.
-        @param intpar: Internal parameters (pixel size in cube spatial unit,
-            reference wavelength and polynomial degree of alpha). A list of
-            three numbers.
-        @param cube: Input cube. This is a L{SNIFS_cube} object.
-        """
-        self.pix = intpar[0]
-        self.lbda_ref = intpar[1]
-        self.alphaDeg = intpar[2]
-        self.npar_ind = 1
-        self.npar_cor = 6+intpar[2]+1
-        self.npar = self.npar_ind*cube.nslice + self.npar_cor
-        self.name = 'short_exposure_psf'
-        self.x = S.zeros((cube.nslice,cube.nlens),'d')
-        self.y = S.zeros((cube.nslice,cube.nlens),'d')
-        self.l = S.zeros(cube.data.T.shape,'d')
-        self.x[:][:] = cube.x
-        self.y[:][:] = cube.y
-        self.l[:][:] = cube.lbda
-        self.l = S.transpose(self.l)
-        self.n_ref = atmosphericIndex(self.lbda_ref)
-        # ADR in spaxels
-        self.ADR_coef = 206265*(atmosphericIndex(self.l) - self.n_ref) / SpaxelSize
+class long_exposure_psf(ExposurePSF): 
 
-    def comp(self,param):
-        """
-        Compute the function.
-        @param param: Input parameters of the polynomial. A list of numbers:
-                - C{param[0:6+m]} : The n parameters of the PSF shape
-                     - C{param[0]}: Atmospheric dispersion power
-                     - C{param[1]}: Atmospheric dispersion position angle
-                     - C{param[2]}: X center at the reference wavelength
-                     - C{param[3]}: Y center at the reference wavelength
-                     - C{param[4]}: Ellipticity
-                     - C{param[5]}: Position angle
-                     - C{param[m]}: Moffat radius (m coefficients corresponding to the polynomial degree of alpha + 1)
-                - C{param[6+m:]}  : The Intensity parameters (one for each slice in the cube).
-        """
-        self.param = S.asarray(param)
+    name = 'long_exposure_psf'
+    corrCoeffs = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
 
-        # ADR params
-        delta = self.param[0]
-        theta = self.param[1]
-        xc    = self.param[2]
-        yc    = self.param[3]
-        costheta = S.cos(theta)
-        sintheta = S.sin(theta)        
-        x0 = delta*self.ADR_coef*costheta + xc
-        y0 = delta*self.ADR_coef*sintheta + yc
+class short_exposure_psf(ExposurePSF):
 
-        # other params
-        ell = self.param[4]
-        PA = self.param[5]
-        tmp = []
-        for j in S.arange(self.alphaDeg + 1):
-            tmp.append(self.param[6+j])
-        a = S.array(tmp, dtype='d')    
-
-        # aliases + correlations params (fixed)
-        lbda_rel = self.l / self.lbda_ref - 1
-        alpha = 0
-        for i in S.arange(self.alphaDeg + 1):
-            alpha += a[i]*lbda_rel**i
-            
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
-        beta  = b1*alpha+b0
-        sigma = s1*alpha+s0
-        eta   = e1*alpha+e0
-
-        dx  = self.x - x0
-        dy  = self.y - y0
-        r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
-        gaussian = S.exp(-r2/2/sigma**2)
-        ea = 1 + r2/alpha**2
-        moffat = ea**(-beta)
-
-        # function
-        return self.param[self.npar_cor:,S.newaxis] * ( eta*gaussian + moffat )
-
-    def deriv(self,param):
-        """
-        Compute the derivative of the function with respect to its parameters.
-        @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
-        """
-        self.param = S.asarray(param)
-        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
-
-        # ADR params
-        delta = self.param[0]
-        theta = self.param[1]
-        xc    = self.param[2]
-        yc    = self.param[3]
-        costheta = S.cos(theta)
-        sintheta = S.sin(theta)
-        x0 = delta*self.ADR_coef*costheta + xc
-        y0 = delta*self.ADR_coef*sintheta + yc
-
-        # other params
-        ell = self.param[4]
-        PA = self.param[5]
-        tmp = []
-        for j in S.arange(self.alphaDeg + 1):
-            tmp.append(self.param[6+j])
-        a = S.array(tmp, dtype='d')    
-
-        # aliases + correlations params (fixed)
-        lbda_rel = self.l / self.lbda_ref - 1  
-        alpha = 0
-        for i in S.arange(self.alphaDeg + 1):
-            alpha += a[i]*lbda_rel**i
-            
-        s1,s0,b1,b0,e1,e0 = [0.2,0.56,0.415,1.395,0.16,0.6] # Short exposures
-        beta  = b1*alpha+b0
-        sigma = s1*alpha+s0
-        eta   = e1*alpha+e0
-
-        dx = self.x - x0
-        dy = self.y - y0
-        r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
-        gaussian = S.exp(-r2/2/sigma**2)
-        ea = 1 + r2/alpha**2
-        moffat = ea**(-beta)
-        logea = S.log(ea)
-        da0 = e1*gaussian + eta*r2*s1*gaussian/sigma**3 + \
-              moffat*( -b1*logea + 2*beta*r2/(ea*alpha**3) )
-
-        # derivatives
-        tmp = eta*gaussian/sigma**2 + 2*beta*moffat/ea/alpha**2
-        grad[2] = tmp*(    dx + PA*dy)
-        grad[3] = tmp*(ell*dy + PA*dx)
-        grad[0] =       self.ADR_coef*(costheta*grad[2] + sintheta*grad[3])
-        grad[1] = delta*self.ADR_coef*(costheta*grad[3] - sintheta*grad[2])
-        grad[4] = -tmp/2 * dy**2
-        grad[5] = -tmp   * dx*dy
-        for i in S.arange(self.alphaDeg + 1):
-            grad[6+i] = da0 * lbda_rel**i
-        grad[self.npar_cor] = eta*gaussian + moffat        
-
-        grad[0:self.npar_cor] *= self.param[S.newaxis,self.npar_cor:,S.newaxis]
-
-        return grad
+    name = 'short_exposure_psf'
+    corrCoeffs = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
 
 # ########## MAIN ##############################
 
@@ -804,9 +650,8 @@ if __name__ == "__main__":
     xc = xc_vec2[S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
     yc = polADR(xc)
     
-    delta = S.tan(S.arccos(1./airmass))
-
-    if (xc_vec2[-1]-xc_vec2[0])>0:
+    delta = S.tan(S.arccos(1./airmass)) # ADR power
+    if (xc_vec2[-1]-xc_vec2[0]) > 0:    # ADR angle
         theta = S.pi + S.arctan(polADR(1))
     else:
         theta = S.arctan(polADR(1))
@@ -864,14 +709,15 @@ if __name__ == "__main__":
     confidence_PA    = confidence_interval(lbda_rel, cov, index=[5])
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
-    print_msg("  Seeing estimate: %.2f arcsec FWHM" % (fitpar[6]*2.355), opts.verbosity, 0)
+    ## print_msg("  Seeing estimate: %.2f arcsec FWHM" % \
+    ##           (fitpar[6]*2.355), opts.verbosity, 0)
 
     # Computing final spectra for object and background ======================
 
     print_msg("Extracting the spectrum...", opts.verbosity, 0)
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
-    lbda,spec,var = comp_spec(full_cube, fitpar[0:npar_psf], efftime,
+    lbda,spec,var = comp_spec(full_cube, psfFn, fitpar[0:npar_psf],
                               intpar=[SpaxelSize, lbda_ref, alphaDeg],
                               skyDeg=opts.sky_deg)
 
@@ -894,9 +740,7 @@ if __name__ == "__main__":
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
 
-    print S.shape(spec)
-
-    prefix = [''] + [ 'a%d_' % n for n in range(1,npar_poly) ]
+    prefix = [''] + [ 'a%d_' % n for n in xrange(1,npar_poly) ]
 
     # Loop in reverse order to finish with 0th-order (for later plot)
     for i,pre in enumerate(prefix[::-1]):
@@ -1102,7 +946,7 @@ if __name__ == "__main__":
 
         guess_disp = 0
         fit_disp = 0
-        for i in S.arange(len(alpha)):
+        for i in xrange(len(alpha)):
             guess_disp += alpha[::-1][i] * lbda_rel**i
             fit_disp   += fitpar[6+i] * lbda_rel**i
 

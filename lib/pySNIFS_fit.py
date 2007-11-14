@@ -253,7 +253,7 @@ class poly2D:
             L{image_array} object by the L{model} class.
         """
         self.nslice = cube.nslice
-        self.deg = deg
+        self.deg = int(deg)
         self.npar_ind = int((deg+1)*(deg+2)/2)
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor

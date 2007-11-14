@@ -1,8 +1,14 @@
+2007-11-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: make both short_ and
+	long_exposure_psf inherit from a ExposurePSF class. Normalize PSF
+	from within psf.comp (new keyword normed).
+
 2007-11-14  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (fnnls): replace any(x) by x.any().
 
-	* apps/extract_star/extract_star.py: Correct a bug relating to the
+	* apps/extract_star/extract_star.py: Correct a bug related to the
 	polynomial of the sky. Make the code robust.
 
 2007-11-13  Clement Buton  <cbuton@lyopc387.in2p3.fr>
@@ -24,7 +30,6 @@
 
 	* apps/extract_star/extract_star.py: Change relative lambda in
 	lambda/lambda_ref - 1.
-	* apps/extract_star/extract_star.py: Minor bug corrected. 
 
 2007-11-07  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
