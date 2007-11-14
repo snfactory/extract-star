@@ -65,11 +65,11 @@ def atmosphericIndex(lbda, P=616, T=2):
     
     return n
 
-def confidence_interval(lbda_rel, cov, coeff):
+def confidence_interval(lbda_rel, cov, index):
 
     ci = 0
-    for i,c in enumerate(coeff):
-        ci += cov[c][c]*lbda_rel**i
+    for i,j in enumerate(index):
+        ci += cov[j][j]*lbda_rel**i
 
     return S.sqrt(ci)
 
@@ -108,15 +108,15 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
     for i in S.arange(alphaDeg + 1):
         hdr.update('ES_A%i'%i   ,param[6+i], 'extract_star a%i'%i)
 
-def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
+def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], skyDeg=0):
 
-    npar_poly = int((poly_deg+1)*(poly_deg+2)/2) # Number of parameters of the polynomial background
+    npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Number of parameters of the polynomial background
 
     # DIRTY PATCH TO REMOVE BAD SPECTRA FROM THEIR VARIANCE
     cube.x /= intpar[0]                 # x in spaxel
     cube.y /= intpar[0]                 # y in spaxel
     cube.var[cube.var>1e20] = 0
-    # YC: why is there some <0 variance???
+
     if (cube.var<0).any():
         print "WARNING: discarding negative variances in comp_spec"
         cube.var[cube.var<0] = 0
@@ -146,7 +146,7 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
     X[:,:,0] = psf*weight
     X[:,:,1] = weight
     n = 2
-    for d in S.arange(poly_deg)+1:
+    for d in S.arange(skyDeg)+1:
         for j in S.arange(d+1):
             X[:,:,n] = weight * cube.x**(d-j) * cube.y**j
             n=n+1
@@ -155,10 +155,9 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
     b = weight*cube.data
     B = S.array([S.dot(X[i].T,b[i]) for i in S.arange(cube.nslice)])
     C = S.array([L.inv(a) for a in A])
-    Spec = S.array([L.solve(A[i],B[i]) for i in S.arange(cube.nslice)])
 
-##     Spec = S.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in S.arange(cube.nslice)])
-    Var = S.array([S.diag(c) for c in C])
+    Spec = S.array([pySNIFS_fit.fnnls(A[i],B[i])[0] for i in S.arange(cube.nslice)])
+    Var  = S.array([S.diag(c) for c in C])
 
     # The 3D psf model is not normalized to 1 in integral. The result must be
     # renormalized by (eps), eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) +
@@ -179,8 +178,8 @@ def comp_spec(cube, psf_param, efftime, intpar=[None, None, None], poly_deg=0):
 
     return cube.lbda,Spec,Var
 
-def get_start(cube,poly_deg,verbosity,psfFn):
-    npar_poly = int((poly_deg+1)*(poly_deg+2)/2) # Number of parameters of the polynomial background
+def get_start(cube,skyDeg,verbosity,psfFn):
+    npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb. of params. of the polynomial bkgnd
     npar_psf  = 7                    # Number of parameters of the psf
     n = 2                       # Nb of edge spx used for sky estimate
     if n>7:
@@ -210,7 +209,7 @@ def get_start(cube,poly_deg,verbosity,psfFn):
     int_vec   = S.zeros(nslice, dtype='d')
     khi2_vec  = S.zeros(nslice, dtype='d')
     sky_vec   = S.zeros((nslice,npar_poly), dtype='d')
-    error_mat = S.zeros((nslice,npar_psf+2), dtype='d') # PSF+Intens.+Bkgnd
+    error_mat = S.zeros((nslice,npar_psf+npar_poly+1), dtype='d') # PSF+Intens.+Bkgnd
     alpha_vec = S.zeros(nslice, dtype='d')
     
     for i in xrange(nslice):
@@ -258,7 +257,7 @@ def get_start(cube,poly_deg,verbosity,psfFn):
                                        func=['%s;%f,%f,%f' % \
                                              (psfFn.__name__,
                                               SpaxelSize,lbda_ref,0), # a0=cte
-                                             'poly2D;%d' % poly_deg],
+                                             'poly2D;%d' % skyDeg],
                                        param=[p1,p2],
                                        bounds=[b1,b2],
                                        myfunc={psfFn.__name__:psfFn})
@@ -294,73 +293,71 @@ def get_start(cube,poly_deg,verbosity,psfFn):
 
     return delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,int_vec,sky_vec,khi2_vec,error_mat
 
-def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,model,nslice):
+def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,khi3D,model,nslice):
 
-    def strParam(i,param,j=0,k=5):
+    def strParam(i,param,j=5):
 
         if len(S.shape(param))==1:
             if param[i]>0:
-                return ' '+str(param[i])[:k]
+                return '  '+str(param[i])[:j]+' '
+            elif param[i]==0:
+                return '  '+'0.000'+' '
             else:
-                return ' '+str(param[i])[:k+1]
+                return '  '+str(param[i])[:j]+' '
 
-        elif len(S.shape(param))==2:
-            if param[i][j]>0:
-                return ' '+str(param[i][j])[:k]
-            else:
-                return ' '+str(param[i][j])[:k+1]
-
-    A = ''.join([' a%d ' %i for i in S.arange(len(alpha[0]))])
+    A = ''.join(['  a%d    ' %i for i in S.arange(alphaDeg+1)])
 
     logfile = open(filename,'w')
-    logfile.write('extract_star.py : results file for '+opts.input+'\n\n'\
-                  +'slice '+' delta '+' theta '+' xc '+' yc '+' ell '+' PA '+'%s'%A+' khi2'+'\n')
+    logfile.write('extract_star.py : results file for '+os.path.basename(opts.input)+'\n\n'\
+                  +'slice '+'   delta '+'  theta '+'   xc '+'      yc '+'    ell '+'    PA '+'   %s '%A+'   khi2'+'\n')
 
-    for i,khi in enumerate(khi2):
-        logfile.write('%2s/%2s'%(i+1,nslice)+' :'\
-                      +strParam(i,delta)\
-                      +strParam(i,theta)\
-                      +strParam(i,xc)\
-                      +strParam(i,yc)\
-                      +strParam(i,ell)\
-                      +strParam(i,PA,k=3)\
-                      +''.join([strParam(i,alpha,j) for j in S.arange(len(alpha[i]))])
-                      +' '+str(khi)\
+    for n,khi in enumerate(khi2):
+        logfile.write('%2s/%2s'%(n+1,nslice)+' :'\
+                      +strParam(n,delta)\
+                      +strParam(n,theta)\
+                      +strParam(n,xc)\
+                      +strParam(n,yc)\
+                      +strParam(n,ell)\
+                      +strParam(n,PA,)\
+                      +strParam(n,alpha)\
+                      +('  '+'0.000'+' ')*alphaDeg
+                      +'  '+str(khi)[:9]\
                       +'\n')
 
-##     logfile.write('\n\n'+'3Dfit : '+str(khi2)[:6]\
-##                   +' '+str(model.fitpar[2])[:6]\
-##                   +' '+str(model.fitpar[3])[:6]\
-##                   +' '+str(model.fitpar[4])[:6]\
-##                   +' '+str(model.fitpar[5])[:6]\
-##                   +' '+str(model.fitpar[6])[:6]\
-##                   +' '+str(model.fitpar[7])[:6]\
-##                   +' '+str(model.fitpar[8])[:6]\
-##                   +' '+str(model.fitpar[0])[:6]\
-##                   +' '+str(model.fitpar[1])[:6])
+    logfile.write('\n\n'+'3Dfit :'\
+                  +strParam(0,model.fitpar)\
+                  +strParam(1,model.fitpar)\
+                  +strParam(2,model.fitpar)\
+                  +strParam(3,model.fitpar)\
+                  +strParam(4,model.fitpar)\
+                  +strParam(5,model.fitpar)\
+                  +''.join([strParam(6+m,model.fitpar) for m in S.arange(alphaDeg+1)])\
+                  +'  '+str(khi3D)[:9]\
+                  +'\n')
+
     logfile.close()
 
-## def build_sky_cube(cube,sky,sky_var,deg):
+def build_sky_cube(cube,sky,sky_var,deg):
 
-##     npar_poly = len(sky)
-##     poly = pySNIFS_fit.poly2D(deg,cube)
-##     cube2 = pySNIFS.zerolike(cube)
-##     cube2.x = (cube2.x)**2
-##     cube2.y = (cube2.y)**2
-##     poly2 = pySNIFS_fit.poly2D(deg,cube2)
-##     param = S.zeros((npar_poly,cube.nslice),'d')
-##     vparam = S.zeros((npar_poly,cube.nslice),'d')
-##     for i in S.arange(npar_poly):
-##         param[i,:] = sky[i].data
-##         vparam[i,:] = sky_var[i].data
-##     data = poly.comp(S.ravel(param))
-##     var = poly2.comp(S.ravel(vparam))
-##     bkg_cube = pySNIFS.zerolike(cube)
-##     bkg_cube.data = data
-##     bkg_cube.var = var
-##     bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
+    npar_poly = len(sky)
+    poly = pySNIFS_fit.poly2D(deg,cube)
+    cube2 = pySNIFS.zerolike(cube)
+    cube2.x = (cube2.x)**2
+    cube2.y = (cube2.y)**2
+    poly2 = pySNIFS_fit.poly2D(deg,cube2)
+    param = S.zeros((npar_poly,cube.nslice),'d')
+    vparam = S.zeros((npar_poly,cube.nslice),'d')
+    for i in S.arange(npar_poly):
+        param[i,:] = sky[i].data
+        vparam[i,:] = sky_var[i].data
+    data = poly.comp(S.ravel(param))
+    var = poly2.comp(S.ravel(vparam))
+    bkg_cube = pySNIFS.zerolike(cube)
+    bkg_cube.data = data
+    bkg_cube.var = var
+    bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
 
-##     return bkg_cube,bkg_spec
+    return bkg_cube,bkg_spec
 
 # PSF classes ================================================================
 
@@ -835,7 +832,7 @@ if __name__ == "__main__":
     b1 += [[0,None]] + [[None, None]]*alphaDeg # a0 > 0
     b1 += [[0, None]]*nslice            # Intensities
 
-    p2 = sky_vec.squeeze()
+    p2 = S.ravel(sky_vec.T)
     b2 = ([[0.,None]]+[[None,None]]*(npar_poly-1))*nslice 
 
     print_msg("  Initial guess: %s" % p1[:12], opts.verbosity, 2)
@@ -856,25 +853,18 @@ if __name__ == "__main__":
     else:
         data_model.fit(maxfun=2000, save=True)
 
-##     # Fit each param alone (test) 
-##     polAlpha         = pySNIFS.fit_poly(alpha_vec,3,3,lbda_rel)
-##     polEllipticity   = pySNIFS.fit_poly(ell_vec       ,3,3,lbda_rel)
-##     polPositionAngle = pySNIFS.fit_poly(PA_vec        ,3,3,lbda_rel)
-##     Ellipticity      = polEllipticity.coeffs
-##     PositionAngle    = polPositionAngle.coeffs
-##     Alpha            = polAlpha.coeffs
-    
     # Storing result and guess parameters
     fitpar           = data_model.fitpar
     khi2             = data_model.khi2
     cov              = data_model.param_error(fitpar)
     cov              = S.where(cov<0,0.,cov)
     errorpar         = S.sqrt(cov.diagonal())
-    confidence_alpha = confidence_interval(lbda_rel, cov, coeff=(S.arange(6,npar_psf,1)).tolist())
-    confidence_ell   = confidence_interval(lbda_rel, cov, coeff=[4])
-    confidence_PA    = confidence_interval(lbda_rel, cov, coeff=[5])
+    confidence_alpha = confidence_interval(lbda_rel, cov, index=(S.arange(6,npar_psf,1)).tolist())
+    confidence_ell   = confidence_interval(lbda_rel, cov, index=[4])
+    confidence_PA    = confidence_interval(lbda_rel, cov, index=[5])
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
+    print_msg("  Seeing estimate: %.2f arcsec FWHM" % (fitpar[6]*2.355), opts.verbosity, 0)
 
     # Computing final spectra for object and background ======================
 
@@ -883,7 +873,9 @@ if __name__ == "__main__":
     full_cube = pySNIFS.SNIFS_cube(opts.input)
     lbda,spec,var = comp_spec(full_cube, fitpar[0:npar_psf], efftime,
                               intpar=[SpaxelSize, lbda_ref, alphaDeg],
-                              poly_deg=opts.sky_deg)
+                              skyDeg=opts.sky_deg)
+
+    print S.shape(spec)
     
     npar_poly = int((opts.sky_deg+1)*(opts.sky_deg+2)/2)
 
@@ -902,6 +894,8 @@ if __name__ == "__main__":
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
 
+    print S.shape(spec)
+
     prefix = [''] + [ 'a%d_' % n for n in range(1,npar_poly) ]
 
     # Loop in reverse order to finish with 0th-order (for later plot)
@@ -916,7 +910,7 @@ if __name__ == "__main__":
     # Save file with fitted parameters 
     if opts.file:
 
-        create_log_file(opts.file,delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,khi2_vec,data_model,nslice)
+        create_log_file(opts.file,delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec,alpha_vec,khi2_vec,khi2,data_model,nslice)
         
     # Create output graphics =================================================
 
@@ -985,8 +979,8 @@ if __name__ == "__main__":
             data = data_model.data.data[i,:]
             fit = data_model.evalfit()[i,:]
             fmin = min(data.min(), fit.min()) - 2e-2
-            ax.plot(data-fmin)                                     # Signal
-            ax.plot(fit-fmin)                                      # Fit
+            ax.plot(data-fmin)          # Signal
+            ax.plot(fit-fmin)           # Fit
             ax.semilogy()
             ax.set_xlim(0,len(data))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
@@ -1020,8 +1014,6 @@ if __name__ == "__main__":
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):   # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
-            # YC - Why is there some NaN's in data slices?
-            # (eg e3d_TC07_153_099_003_17_B.fits)
             sigSlice = S.nan_to_num(cube.slice2d(i, coord='p'))
             varSlice = S.nan_to_num(cube.slice2d(i, coord='p', var=True))
             modSlice = cube_fit.slice2d(i, coord='p')
@@ -1114,21 +1106,12 @@ if __name__ == "__main__":
             guess_disp += alpha[::-1][i] * lbda_rel**i
             fit_disp   += fitpar[6+i] * lbda_rel**i
 
-##         tryA = 0
-##         tryE = 0
-##         tryP = 0
-##         for i in S.arange(4):
-##             tryA += Alpha[::-1][i] * lbda_rel**i
-##             tryE += Ellipticity[::-1][i] * lbda_rel**i
-##             tryP += PositionAngle[::-1][i] * lbda_rel**i
-            
         fig6 = pylab.figure()
 
         ax6a = fig6.add_subplot(2, 1, 1)
         ax6a.errorbar(cube.lbda, alpha_vec,error_mat[:,6], fmt='b.', ecolor='blue', label="Fit 2D")
         ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
         ax6a.plot(cube.lbda, fit_disp, 'g', label="Fit 3D")
-##         ax6a.plot(cube.lbda, tryA, 'r', label="Fit on meta slices  (deg 3)")
         ax6a.plot(cube.lbda, fit_disp + confidence_alpha, 'g:',label='_nolegend_')
         ax6a.plot(cube.lbda, fit_disp - confidence_alpha, 'g:',label='_nolegend_')
 
@@ -1151,7 +1134,6 @@ if __name__ == "__main__":
         plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[4],'1/q',
                                  error_vec=error_mat[:,4],
                                  confidence=confidence_ell)
-##         ax6c.plot(cube.lbda, tryE, 'r', label="Fit on meta slices (deg 3)")
         
         ax6c.set_xticklabels([])
         ax6d = fig6.add_subplot(4, 1, 4)
@@ -1159,7 +1141,6 @@ if __name__ == "__main__":
                                  PA/S.pi*180, fitpar[5]/S.pi*180, 'PA',
                                  error_vec=error_mat[:,5]/S.pi*180,
                                  confidence=confidence_PA)
-##         ax6d.plot(cube.lbda, tryP/S.pi*180, 'r', label="Fit on meta slices (deg 3)")
 
         fig6.savefig(plot6)
 
