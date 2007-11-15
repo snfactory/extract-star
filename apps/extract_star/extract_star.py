@@ -286,7 +286,7 @@ def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,khi3D,model,nsl
     logfile = open(filename,'w')
     logfile.write('extract_star.py: result file for %s\n\n' % os.path.basename(opts.input))
     logfile.write('slice    delta   theta    xc       yc     ell     PA    %s    khi2\n' % \
-                  ''.join([' a%d ' % i for i in xrange(len(alpha[0]))]))
+                  ''.join(['  a%d    ' % i for i in S.arange(alphaDeg+1)]))
 
     for n,khi in enumerate(khi2):
         logfile.write('%2s/%2s'%(n+1,nslice)+' :'\
@@ -362,7 +362,7 @@ class ExposurePSF:
         # ADR in spaxels
         self.ADR_coef = 206265*(atmosphericIndex(self.l) - self.n_ref) / SpaxelSize
 
-    def comp(self, param, normed=False):
+    def comp(self, param, normed=False, fwhm=False):
         """
         Compute the function.
         @param param: Input parameters of the polynomial. A list of numbers:
@@ -486,6 +486,37 @@ class ExposurePSF:
         grad[0:self.npar_cor] *= self.param[S.newaxis,self.npar_cor:,S.newaxis]
 
         return grad
+    
+    def FWHM(self, r, param):
+        """
+        Compute the function value at middle height.
+        """
+
+        self.param = S.asarray(param)
+
+        # ADR params
+        delta = self.param[0]
+        theta = self.param[1]
+
+        # other params
+        alphaCoeffs = self.param[6:7+self.alphaDeg]
+
+        # aliases + correlations params (fixed)
+        lbda_rel = (self.l / self.lbda_ref - 1).mean()  
+        alpha = 0
+        for i in xrange(self.alphaDeg + 1):
+            alpha += alphaCoeffs[i]*lbda_rel**i
+
+        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        beta  = b0 + b1*alpha
+        sigma = s0 + s1*alpha
+        eta   = e0 + e1*alpha
+
+        gaussian = S.exp(-r**2/2/sigma**2)
+        ea = 1 + r**2/alpha**2
+        moffat = ea**(-beta)
+
+        return eta*gaussian + moffat - ( eta + 1 ) / 2
 
 class long_exposure_psf(ExposurePSF): 
 
@@ -713,8 +744,11 @@ if __name__ == "__main__":
     confidence_PA    = confidence_interval(lbda_rel, cov, index=[5])
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
-    ## print_msg("  Seeing estimate: %.2f arcsec FWHM" % \
-    ##           (fitpar[6]*2.355), opts.verbosity, 0)
+
+    # Compute FWHM.
+    fwhm = S.optimize.fsolve(func=data_model.func[0].FWHM, x0=1., args=fitpar) 
+    
+    print_msg("  Seeing estimate: %.2f arcsec FWHM" %(fwhm), opts.verbosity, 0)
 
     # Computing final spectra for object and background ======================
 
@@ -727,7 +761,7 @@ if __name__ == "__main__":
 
     npar_poly = int((opts.sky_deg+1)*(opts.sky_deg+2)/2)
 
-    # Save star spectrum, update headers ==============================
+    # Save star spectrum, update headers =====================================
 
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg,khi2)
     step = inhdr.get('CDELTS')
@@ -737,7 +771,7 @@ if __name__ == "__main__":
     star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
     star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
 
-    # Save sky spectrum/spectra ==============================
+    # Save sky spectrum/spectra ==============================================
 
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
@@ -752,11 +786,11 @@ if __name__ == "__main__":
                                    start=lbda[0],step=step)
         sky_var.WR_fits_file('var_'+pre+opts.sky,header_list=inhdr.items())
 
-    # Save adjusted parameter file ==============================
+    # Save adjusted parameter file ===========================================
     
     if opts.file:
-        create_log_file(opts.file, delta_vec,theta_vec,xc_vec,yc_vec,
-                        ell_vec,PA_vec,alpha_vec,khi2_vec,khi2,
+        create_log_file(opts.file, delta_vec,theta_vec,xc_vec,yc_vec,\
+                        ell_vec,PA_vec,alpha_vec,khi2_vec,khi2,\
                         data_model, nslice)
 
     # Create output graphics =================================================
