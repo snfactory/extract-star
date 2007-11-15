@@ -100,13 +100,20 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
     for i in xrange(alphaDeg + 1):
         hdr.update('ES_A%i'%i   ,param[6+i], 'extract_star alpha a%i'%i)
 
-def comp_spec(cube, psf_fn, psf_param, intpar, skyDeg=0):
+def laplace_filtering(cube, cut=0.9999):
 
-    # Number of parameters of the polynomial background
-    npar_poly = int((skyDeg+1)*(skyDeg+2)/2)
+    lapl = F.laplace(cube.data/cube.data.mean())
+    fdata = F.median_filter(cube.data, size=[1, 3])
+    hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
+                             Max=100, cumul=True)
+    threshold = hist.x[S.argmax(S.where(hist.data<cut, 0, 1))]
+    print_msg("Laplace filter threshold: %f" % threshold, opts.verbosity, 2)
 
-    cube.x /= intpar[0]                 # x in spaxel
-    cube.y /= intpar[0]                 # y in spaxel
+    return (S.absolute(lapl) <= threshold)
+
+def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
+              method='PSF', radius=0.):
+
     if (cube.var>1e20).any(): 
         print "WARNING: discarding infinite variances in comp_spec"
         cube.var[cube.var>1e20] = 0
@@ -119,46 +126,55 @@ def comp_spec(cube, psf_fn, psf_param, intpar, skyDeg=0):
     param = S.concatenate((psf_param,[1.]*cube.nslice))
 
     # Rejection of bad points (YC: need some clarifications...)
-    lapl = F.laplace(cube.data/cube.data.mean())
-    fdata = F.median_filter(cube.data, size=[1, 3])
-    hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
-                             Max=100, cumul=True)
-    threshold = hist.x[S.argmax(S.where(hist.data<0.9999, 0, 1))]
-    if (S.absolute(lapl) <= threshold).any():
-        print "WARNING: discarding bad px (threshold=%f) in comp_spec" % \
-              threshold
-    cube.var *= (S.absolute(lapl) <= threshold)
+    filter = laplace_filtering(cube)
+    if (~filter).any():
+        print "WARNING: discarding %d bad px in comp_spec" % \
+              len((~filter).nonzero()[0])
+    cube.var *= filter                  # Discard non-selected px
 
-    weight = S.sqrt(S.where(cube.var!=0, 1./cube.var, 0))
+    # Linear fit: I*PSF + sky [ + a*x + b*y + ...]
+    cube.x /= psf_ctes[0]               # x in spaxel
+    cube.y /= psf_ctes[0]               # y in spaxel
+    psf = psf_fn(psf_ctes, cube).comp(param, normed=True)
 
-    # Fit on masked data
-    model = psf_fn(intpar, cube)
-    psf = model.comp(param, normed=True)
+    npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb param. in polynomial bkgnd
     X = S.zeros((cube.nslice,cube.nlens,npar_poly+1),'d')
-    X[:,:,0] = psf*weight
-    X[:,:,1] = weight
+    X[:,:,0] = psf                      # Intensity
+    X[:,:,1] = 1                        # Constant background
     n = 2
     for d in xrange(1,skyDeg+1):
         for j in xrange(d+1):
-            X[:,:,n] = weight * cube.x**(d-j) * cube.y**j
+            X[:,:,n] = cube.x**(d-j) * cube.y**j # Structured background
             n=n+1
 
-    A = S.array([S.dot(x.T, x) for x in X])
+    # Weighting
+    weight = S.sqrt(S.where(cube.var!=0, 1./cube.var, 0))
+    X = (X.T * weight.T).T
     b = weight*cube.data
+
+    A = S.array([S.dot(x.T, x) for x in X])
     B = S.array([S.dot(x.T,bb) for x,bb in zip(X,b)])
-    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)])
+    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)]) # Star,Sky,[slope_x...]
 
     C = S.array([L.inv(a) for a in A])
     Var = S.array([S.diag(c) for c in C])
 
+    if method=='PSF':
+        pass                            # Nothing else to be done
+    elif method=='aperture':
+        raise NotImplementedError("Aperture photometry not yet implemented")
+    elif method=='optimal':
+        raise NotImplementedError("Optimal photometry not yet implemented")
+    else:
+        raise ValueError("Extraction method '%s' unrecognized" % method)
+
     return cube.lbda,Spec,Var
 
-def get_start(cube,skyDeg,verbosity,psfFn):
-    npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb. of params. of the polynomial bkgnd
-    npar_psf  = 7                    # Number of parameters of the psf
-    n = 2                       # Nb of edge spx used for sky estimate
-    if n>7:
-        raise ValueError('The number of edge pixels should be less than 7')
+def get_start(cube, psf_fn, skyDeg=0):
+    
+    npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
+    npar_psf  = 7                       # Number of parameters of the psf
+
     cube_sky = pySNIFS.SNIFS_cube()
     cube_sky.x = cube.x 
     cube_sky.y = cube.y 
@@ -166,6 +182,7 @@ def get_start(cube,skyDeg,verbosity,psfFn):
     cube_sky.j = cube.j 
     cube_sky.nslice = 1 
     cube_sky.nlens = cube.nlens 
+
     cube_star = pySNIFS.SNIFS_cube()
     cube_star.x = cube.x
     cube_star.y = cube.y
@@ -173,6 +190,7 @@ def get_start(cube,skyDeg,verbosity,psfFn):
     cube_star.j = cube.j
     cube_star.nslice = 1
     cube_star.nlens = cube.nlens
+
     nslice = cube.nslice
 
     delta_vec = S.zeros(nslice, dtype='d')
@@ -181,62 +199,65 @@ def get_start(cube,skyDeg,verbosity,psfFn):
     yc_vec    = S.zeros(nslice, dtype='d')
     ell_vec   = S.zeros(nslice, dtype='d')
     PA_vec    = S.zeros(nslice, dtype='d')
+    alpha_vec = S.zeros(nslice, dtype='d')
     int_vec   = S.zeros(nslice, dtype='d')
     khi2_vec  = S.zeros(nslice, dtype='d')
     sky_vec   = S.zeros((nslice,npar_poly), dtype='d')
     error_mat = S.zeros((nslice,npar_psf+npar_poly+1), dtype='d') # PSF+Intens.+Bkgnd
-    alpha_vec = S.zeros(nslice, dtype='d')
     
+    n = 2                               # Nb of edge spx used for sky estimate
+    if n>7:
+        raise ValueError('The number of edge pixels should be less than 7')
+
     for i in xrange(nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
-        cube_star.data = cube.data[i, S.newaxis].copy()
-        cube_star.var  = cube.var[i,  S.newaxis].copy()
-        cube_sky.data  = cube.data[i, S.newaxis].copy()
-        cube_sky.var   = cube.var[i,  S.newaxis].copy()
+        cube_star.data = cube.data[i, S.newaxis]
+        cube_star.var  = cube.var[i,  S.newaxis]
+        cube_sky.data  = cube.data[i, S.newaxis]
+        cube_sky.var   = cube.var[i,  S.newaxis]
         if opts.verbosity >= 1:
             sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
             sys.stdout.flush()
         print_msg("", opts.verbosity, 2)
 
-        # Sky estimate
+        # Sky estimate (from FoV edge spx)
         ind = S.where((cube_sky.i<n) | (cube_sky.i>=15-n) | \
                       (cube_sky.j<n) | (cube_sky.j>=15-n))
-        p0 = S.median(S.transpose(cube_sky.data)[ind])[0]
+        bkgnd = S.median(cube_sky.data.T[ind].squeeze())
 
         # Guess parameters for the current slice
-        star_int = F.median_filter(cube_star.data[0], 3)
+        star_int = F.median_filter(cube_star.data[0] - bkgnd, 3)
         imax = star_int.max()           # Intensity
         xc = S.average(cube_star.x, weights=star_int) # Centroid
         yc = S.average(cube_star.y, weights=star_int)
+        xc = S.clip(xc, -3.5,3.5)       # Put initial guess ~ in FoV
+        yc = S.clip(yc, -3.5,3.5)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 1., 0., 2.4, imax] # psf function;SpaxelSize
-        
+        p1 = [0., 0., xc, yc, 1., 0., 2.4, imax] # psf parameters
         b1 = [[None, None],             # delta
               [None, None],             # theta
               [None, None],             # xc
               [None, None],             # yc
               [0., None],               # ellipticity 
               [None, None],             # PA
-              [0., None]]               # alpha > 0
-        b1 += [[0., None]]              # Intensity > 0
-
-        p2 = [p0] + [0.]*(npar_poly-1)  # Guess: Background=constant (>0)
+              [0., None],               # alpha > 0
+              [0., None]]               # Intensity > 0
+        p2 = [bkgnd] + [0.]*(npar_poly-1) # Guess: Background=constant (>0)
         b2 = [[0,None]] + [[None,None]]*(npar_poly-1)
-
-        print_msg("    Initial guess [PSF]: %s" % [p1], opts.verbosity, 2)
+        print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]),
+                  opts.verbosity, 2)
 
         # Instanciating of a model class
         lbda_ref = cube_star.lbda[0]
-
         model_star = pySNIFS_fit.model(data=cube_star,
                                        func=['%s;%f,%f,%f' % \
-                                             (psfFn.__name__,
+                                             (psf_fn.__name__,
                                               SpaxelSize,lbda_ref,0), # a0=cte
                                              'poly2D;%d' % skyDeg],
                                        param=[p1,p2],
                                        bounds=[b1,b2],
-                                       myfunc={psfFn.__name__:psfFn})
+                                       myfunc={psf_fn.__name__:psf_fn})
 
         # Fit of the current slice
         model_star.fit(maxfun=400, msge=int(opts.verbosity >= 3))
@@ -265,7 +286,6 @@ def get_start(cube,skyDeg,verbosity,psfFn):
         sky_vec[i]   = model_star.fitpar[8]
         khi2_vec[i]  = model_star.khi2
         error_mat[i] = errorpar
-
         print_msg("    Fit result [PSF+bkgnd]: %s" % \
                   model_star.fitpar, opts.verbosity, 2)
 
@@ -341,17 +361,17 @@ class ExposurePSF:
     Empirical PSF 3D function used by the L{model} class.
     """
     
-    def __init__(self, intpar, cube):
+    def __init__(self, psf_ctes, cube):
         """
         Initiating the class.
-        @param intpar: Internal parameters (pixel size in cube spatial unit,
+        @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
                        reference wavelength and polynomial degree of alpha). A
                        list of three numbers.
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         """
-        self.pix      = intpar[0]
-        self.lbda_ref = intpar[1]
-        self.alphaDeg = int(intpar[2])
+        self.pix      = psf_ctes[0]
+        self.lbda_ref = psf_ctes[1]
+        self.alphaDeg = int(psf_ctes[2])
         self.npar_ind = 1               # Intensity
         self.npar_cor = 7 + self.alphaDeg # PSF parameters
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
@@ -362,7 +382,7 @@ class ExposurePSF:
         # ADR in spaxels
         self.ADR_coef = 206265*(atmosphericIndex(self.l) - self.n_ref) / SpaxelSize
 
-    def comp(self, param, normed=False, fwhm=False):
+    def comp(self, param, normed=False):
         """
         Compute the function.
         @param param: Input parameters of the polynomial. A list of numbers:
@@ -415,11 +435,10 @@ class ExposurePSF:
         val = self.param[self.npar_cor:,S.newaxis] * ( eta*gaussian + moffat )
 
         # The 3D psf model is not normalized to 1 in integral. The result must
-        # be renormalized by eps = eta*2*S.pi*sigma**2 / (S.sqrt(ell)) +
-        # S.pi*alpha**2 / ((beta-1)*(S.sqrt(ell)))
+        # be renormalized by (2*eta*sigma**2 + alpha**2/(beta-1)) *
+        # S.pi/sqrt(ell)
         if normed:
-            eps = S.pi*(2*eta*sigma**2 + alpha**2/(beta-1) )/S.sqrt(ell)
-            val /= eps
+            val /= S.pi*( 2*eta*sigma**2 + alpha**2/(beta-1) )/S.sqrt(ell)
 
         return val
 
@@ -643,9 +662,9 @@ if __name__ == "__main__":
 
     print_msg("Slice-by-slice 2D-fitting...", opts.verbosity, 0)
 
+    tmp = get_start(cube, psfFn, skyDeg=opts.sky_deg)
     (delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec, \
-     alpha_vec,int_vec,sky_vec,khi2_vec,error_mat) = get_start(cube,opts.sky_deg,0,psfFn)
-
+     alpha_vec,int_vec,sky_vec,khi2_vec,error_mat) = tmp
     print_msg("", opts.verbosity, 1)
 
     # 3D model fitting =======================================================
@@ -739,7 +758,7 @@ if __name__ == "__main__":
             ci += cov[j][j]*lbda_rel**i
         return S.sqrt(ci)
 
-    confidence_alpha = confidence_interval(lbda_rel, cov, index=S.arange(6,npar_psf))
+    confidence_alpha = confidence_interval(lbda_rel, cov, index=range(6,npar_psf))
     confidence_ell   = confidence_interval(lbda_rel, cov, index=[4])
     confidence_PA    = confidence_interval(lbda_rel, cov, index=[5])
 
@@ -755,17 +774,14 @@ if __name__ == "__main__":
     print_msg("Extracting the spectrum...", opts.verbosity, 0)
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
-    lbda,spec,var = comp_spec(full_cube, psfFn, fitpar[0:npar_psf],
-                              intpar=[SpaxelSize, lbda_ref, alphaDeg],
+    lbda,spec,var = comp_spec(full_cube, psfFn, [SpaxelSize,lbda_ref,alphaDeg],
+                              fitpar[0:npar_psf],
                               skyDeg=opts.sky_deg)
 
-    npar_poly = int((opts.sky_deg+1)*(opts.sky_deg+2)/2)
-
-    # Save star spectrum, update headers =====================================
+    # Save star spectrum, update headers ==============================
 
     fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg,khi2)
     step = inhdr.get('CDELTS')
-
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
@@ -886,8 +902,8 @@ if __name__ == "__main__":
         cube_fit.x /= SpaxelSize        # x in spaxel 
         cube_fit.y /= SpaxelSize        # y in spaxel
 
-        func1 = psfFn(intpar=[data_model.func[0].pix,
-                              data_model.func[0].lbda_ref, alphaDeg],
+        func1 = psfFn([data_model.func[0].pix,
+                       data_model.func[0].lbda_ref, alphaDeg],
                       cube=cube_fit)
         func2 = pySNIFS_fit.poly2D(0, cube_fit)
 
