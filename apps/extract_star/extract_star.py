@@ -506,36 +506,34 @@ class ExposurePSF:
 
         return grad
     
-    def FWHM(self, r, param):
+    def FWHM(self, alphaCoeffs):
         """
-        Compute the function value at middle height.
+        Find root of the half maximum function.
         """
 
-        self.param = S.asarray(param)
+        def comp_half_maximum_function(r, alphaCoeffs):
+            """
+            Compute the half maximum function value.
+            """
 
-        # ADR params
-        delta = self.param[0]
-        theta = self.param[1]
+            # aliases + correlations params (fixed)
+            lbda_rel = (self.l / self.lbda_ref - 1).mean()  
+            alpha = 0
+            for i in xrange(self.alphaDeg + 1):
+                alpha += alphaCoeffs[i]*lbda_rel**i
 
-        # other params
-        alphaCoeffs = self.param[6:7+self.alphaDeg]
+                s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+                beta  = b0 + b1*alpha
+                sigma = s0 + s1*alpha
+                eta   = e0 + e1*alpha
 
-        # aliases + correlations params (fixed)
-        lbda_rel = (self.l / self.lbda_ref - 1).mean()  
-        alpha = 0
-        for i in xrange(self.alphaDeg + 1):
-            alpha += alphaCoeffs[i]*lbda_rel**i
+            gaussian = S.exp(-r**2/2/sigma**2)
+            ea = 1 + r**2/alpha**2
+            moffat = ea**(-beta)
 
-        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
-        beta  = b0 + b1*alpha
-        sigma = s0 + s1*alpha
-        eta   = e0 + e1*alpha
+            return eta*gaussian + moffat - ( eta + 1 ) / 2
 
-        gaussian = S.exp(-r**2/2/sigma**2)
-        ea = 1 + r**2/alpha**2
-        moffat = ea**(-beta)
-
-        return eta*gaussian + moffat - ( eta + 1 ) / 2
+        return S.optimize.fsolve(func=comp_half_maximum_function, x0=1., args=alphaCoeffs) 
 
 class long_exposure_psf(ExposurePSF): 
 
@@ -765,7 +763,7 @@ if __name__ == "__main__":
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
 
     # Compute FWHM.
-    fwhm = S.optimize.fsolve(func=data_model.func[0].FWHM, x0=1., args=fitpar) 
+    fwhm = data_model.func[0].FWHM(fitpar[6:7+alphaDeg])
     
     print_msg("  Seeing estimate: %.2f arcsec FWHM" %(fwhm), opts.verbosity, 0)
 
