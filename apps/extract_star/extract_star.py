@@ -159,16 +159,13 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     C = S.array([L.inv(a) for a in A])
     Var = S.array([S.diag(c) for c in C])
 
-    if method=='PSF':
-        pass                            # Nothing else to be done
-    elif method=='aperture':
-        raise NotImplementedError("Aperture photometry not yet implemented")
-    elif method=='optimal':
-        raise NotImplementedError("Optimal photometry not yet implemented")
-    else:
-        raise ValueError("Extraction method '%s' unrecognized" % method)
+    if method not in ('PSF','aperture','optimal'):
+        raise ValueError("Extraction method '%s' unrecognized" % method)        
 
-    return cube.lbda,Spec,Var
+    if method=='PSF':
+        return cube.lbda,Spec,Var       # Nothing else to be done
+    else:
+        raise NotImplementedError("Non-PSF photometry not yet implemented")
 
 def get_start(cube, psf_fn, skyDeg=0):
     
@@ -506,34 +503,38 @@ class ExposurePSF:
 
         return grad
     
-    def FWHM(self, alphaCoeffs):
+    def FWHM(self, alphaCoeffs, lbda):
         """
         Find root of the half maximum function.
         """
 
-        def comp_half_maximum_function(r, alphaCoeffs):
+        def comp_half_maximum_function(r, alphaCoeffs, lbda):
             """
             Compute the half maximum function value.
             """
 
             # aliases + correlations params (fixed)
-            lbda_rel = (self.l / self.lbda_ref - 1).mean()  
+            lbda_rel = lbda/self.lbda_ref - 1
             alpha = 0
             for i in xrange(self.alphaDeg + 1):
                 alpha += alphaCoeffs[i]*lbda_rel**i
 
-                s1,s0,b1,b0,e1,e0 = self.corrCoeffs
-                beta  = b0 + b1*alpha
-                sigma = s0 + s1*alpha
-                eta   = e0 + e1*alpha
+            s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+            beta  = b0 + b1*alpha
+            sigma = s0 + s1*alpha
+            eta   = e0 + e1*alpha
 
             gaussian = S.exp(-r**2/2/sigma**2)
-            ea = 1 + r**2/alpha**2
-            moffat = ea**(-beta)
+            moffat = (1 + r**2/alpha**2)**(-beta)
 
-            return eta*gaussian + moffat - ( eta + 1 ) / 2
+            # PSF maximum is (eta+1)/2
+            return eta*gaussian + moffat - (eta + 1)/2
 
-        return S.optimize.fsolve(func=comp_half_maximum_function, x0=1., args=alphaCoeffs) 
+        # Compute FWHM from radial profile [arcsec]
+        fwhm = S.optimize.fsolve(func=comp_half_maximum_function,
+                                 x0=1., args=(alphaCoeffs,lbda))
+
+        return fwhm
 
 class long_exposure_psf(ExposurePSF): 
 
@@ -696,10 +697,9 @@ if __name__ == "__main__":
     yc = polADR(xc)
     
     delta = S.tan(S.arccos(1./airmass)) # ADR power
-    if (xc_vec2[-1]-xc_vec2[0]) > 0:    # ADR angle
-        theta = S.pi + S.arctan(polADR(1))
-    else:
-        theta = S.arctan(polADR(1))
+    theta = S.arctan(polADR(1))         # ADR angle
+    if (xc_vec2[-1]-xc_vec2[0]) > 0:
+        theta += S.pi
 
     # 2) Other parameters:
     polAlpha = pySNIFS.fit_poly(alpha_vec,3,alphaDeg,lbda_rel)
@@ -750,20 +750,10 @@ if __name__ == "__main__":
     cov      = S.where(cov<0,0.,cov)    # YC: ???
     errorpar = S.sqrt(cov.diagonal())
 
-    def confidence_interval(lbda_rel, cov, index):
-        ci = 0
-        for i,j in enumerate(index):
-            ci += cov[j][j]*lbda_rel**i
-        return S.sqrt(ci)
-
-    confidence_alpha = confidence_interval(lbda_rel, cov, index=range(6,npar_psf))
-    confidence_ell   = confidence_interval(lbda_rel, cov, index=[4])
-    confidence_PA    = confidence_interval(lbda_rel, cov, index=[5])
-
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
 
-    # Compute FWHM.
-    fwhm = data_model.func[0].FWHM(fitpar[6:7+alphaDeg])
+    # Compute FWHM
+    fwhm = data_model.func[0].FWHM(fitpar[6:7+alphaDeg], lbda_ref)
     
     print_msg("  Seeing estimate: %.2f arcsec FWHM" %(fwhm), opts.verbosity, 0)
 
@@ -949,7 +939,8 @@ if __name__ == "__main__":
         fig4 = pylab.figure()
 
         ax4a = fig4.add_subplot(2, 2, 1)
-        ax4a.errorbar(cube.lbda, xc_vec,yerr=error_mat[:,2],fmt='b.',ecolor='b',label="Fit 2D")
+        ax4a.errorbar(cube.lbda, xc_vec,yerr=error_mat[:,2],
+                      fmt='b.',ecolor='b',label="Fit 2D")
         ax4a.plot(cube.lbda, xguess, 'k--', label="Guess 3D")
         ax4a.plot(cube.lbda, xfit, 'g', label="Fit 3D")
         ax4a.set_xlabel("Wavelength [A]")
@@ -966,24 +957,24 @@ if __name__ == "__main__":
         ax4b.set_ylabel("Y center [spaxels]")
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
 
-        ax4c = fig4.add_subplot(2, 1, 2)
+        ax4c = fig4.add_subplot(2, 1, 2, aspect='equal', adjustable='datalim')
         ax4c.errorbar(xc_vec, yc_vec,xerr=error_mat[:,2],yerr=error_mat[:,3],
-                      fmt=None, ecolor='g', zorder=0)
+                      fmt=None, ecolor='g')
         ax4c.scatter(xc_vec, yc_vec,c=cube.lbda[::-1],
-                     cmap=matplotlib.cm.Spectral)
+                     cmap=matplotlib.cm.Spectral, zorder=3)
         ax4c.plot(xguess, yguess, 'k--')
         ax4c.plot(xfit, yfit, 'g')
         ax4c.text(0.03, 0.85,
                   r'$\rm{Guess:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
                   r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
                   r'\theta=%6.2f^\circ$' % \
-                  (xc, yc, delta, theta*180/2*S.pi),
+                  (xc, yc, delta, theta/S.pi*180),
                   transform=ax4c.transAxes)
         ax4c.text(0.03, 0.75,
                   r'$\rm{Fit:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
                   r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
                   r'\theta=%6.2f^\circ$' % \
-                  (fitpar[2], fitpar[3], fitpar[0], fitpar[1]*180/2*S.pi),
+                  (fitpar[2], fitpar[3], fitpar[0], fitpar[1]/S.pi*180),
                   transform=ax4c.transAxes)
         ax4c.set_xlabel("X center [spaxels]")
         ax4c.set_ylabel("Y center [spaxels]")
@@ -1000,6 +991,16 @@ if __name__ == "__main__":
         for i in xrange(len(alpha)):
             guess_disp += alpha[::-1][i] * lbda_rel**i
             fit_disp   += fitpar[6+i] * lbda_rel**i
+
+        def confidence_interval(lbda_rel, cov, index):
+            ci = 0
+            for i,j in enumerate(index):
+                ci += cov[j][j]*lbda_rel**i
+            return S.sqrt(ci)
+
+        confidence_alpha = confidence_interval(lbda_rel, cov, range(6,npar_psf))
+        confidence_ell   = confidence_interval(lbda_rel, cov, [4])
+        confidence_PA    = confidence_interval(lbda_rel, cov, [5])
 
         fig6 = pylab.figure()
 
@@ -1023,7 +1024,7 @@ if __name__ == "__main__":
         pylab.setp(leg.get_texts(), fontsize='smaller')
         ax6a.set_ylabel(r'$\alpha$')
         ax6a.set_xticklabels([])
-        ax6a.set_title("Model parameters [%s]" % obj)
+        ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % (obj,fwhm))
 
         ax6c = fig6.add_subplot(4, 1, 3)
         plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[4],'1/q',
@@ -1036,6 +1037,7 @@ if __name__ == "__main__":
                                  PA/S.pi*180, fitpar[5]/S.pi*180, 'PA',
                                  error_vec=error_mat[:,5]/S.pi*180,
                                  confidence=confidence_PA)
+        ax6d.set_xlabel("Wavelength [A]")
 
         # Plot of the radial profile -----------------------------------------
 

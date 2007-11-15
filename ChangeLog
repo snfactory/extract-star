@@ -1,10 +1,12 @@
 2007-11-15  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
-	* apps/extract_star/extract_star.py: Add fwhm estimation.
+	* apps/extract_star/extract_star.py: Add fwhm estimate.
 
 2007-11-15  yannick.copin  <yannick.copin@laposte.net>
 
-	* apps/extract_star/extract_star.py: debug of graphical options.
+	* apps/extract_star/extract_star.py: debug of graphical
+	options. Modifications (mainly in comp_spec) in preparation to
+	aperture and optimal photometry.
 
 2007-11-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
