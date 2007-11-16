@@ -84,12 +84,12 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par,
             transform=ax.transAxes, fontsize=11)
     pylab.setp(ax.get_yticklabels(), fontsize=8)
 
-def fit_param_hdr(hdr,param,lbda_ref,cube, sky_deg, khi2, alphaDeg=3):
+def fit_param_hdr(hdr,param,lbda_ref,cube, skyDeg, khi2, alphaDeg=3):
     
     hdr.update('ES_VERS' ,__version__)
     hdr.update('ES_CUBE' ,cube,    'extract_star input cube')
     hdr.update('ES_LREF' ,lbda_ref,'extract_star lambda ref.')
-    hdr.update('ES_SDEG' ,sky_deg, 'extract_star polynomial bkgnd degree')
+    hdr.update('ES_SDEG' ,skyDeg, 'extract_star polynomial bkgnd degree')
     hdr.update('ES_KHI2' ,khi2,    'extract_star khi square')    
     hdr.update('ES_DELTA',param[0],'extract_star ADR power')
     hdr.update('ES_THETA',param[1],'extract_star ADR angle')
@@ -329,21 +329,22 @@ def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,khi3D,model,nsl
                   +'\n')
     logfile.close()
 
-def build_sky_cube(cube,sky,sky_var,deg):
+def build_sky_cube(cube,sky,sky_var,skyDeg):
 
-    npar_poly = len(sky)
-    poly = pySNIFS_fit.poly2D(deg,cube)
-    cube2 = pySNIFS.zerolike(cube)
-    cube2.x = (cube2.x)**2
-    cube2.y = (cube2.y)**2
-    poly2 = pySNIFS_fit.poly2D(deg,cube2)
-    param = S.zeros((npar_poly,cube.nslice),'d')
-    vparam = S.zeros((npar_poly,cube.nslice),'d')
-    for i in xrange(npar_poly):
+    nslices   = len(sky)
+    npar_poly = int((skyDeg+1)*(skyDeg+2)/2)
+    poly      = pySNIFS_fit.poly2D(skyDeg,cube)
+    cube2     = pySNIFS.zerolike(cube)
+    cube2.x   = (cube2.x)**2
+    cube2.y   = (cube2.y)**2
+    poly2     = pySNIFS_fit.poly2D(skyDeg,cube2)
+    param     = S.zeros((nslices,npar_poly),'d')
+    vparam    = S.zeros((nslices,npar_poly),'d')
+    for i in xrange(nslices):
         param[i,:] = sky[i].data
         vparam[i,:] = sky_var[i].data
-    data = poly.comp(S.ravel(param))
-    var = poly2.comp(S.ravel(vparam))
+    data = poly.comp(param)
+    var = poly2.comp(vparam)
     bkg_cube = pySNIFS.zerolike(cube)
     bkg_cube.data = data
     bkg_cube.var = var
@@ -558,7 +559,7 @@ if __name__ == "__main__":
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-i", "--in", type="string", dest="input",
                       help="Input datacube (euro3d format)")
-    parser.add_option("-d", "--skyDeg", type="int", dest="sky_deg",
+    parser.add_option("-d", "--skyDeg", type="int", dest="skyDeg",
                       help="Sky polynomial background degree [%default]",
                       default=0 )
     parser.add_option("-a", "--alphaDeg", type="int",
@@ -589,7 +590,7 @@ if __name__ == "__main__":
         opts.graph = 'png'
 
     # Nb of param. in polynomial background
-    npar_poly = int((opts.sky_deg+1)*(opts.sky_deg+2)/2) 
+    npar_poly = int((opts.skyDeg+1)*(opts.skyDeg+2)/2) 
 
     # Input datacube =========================================================
 
@@ -661,7 +662,7 @@ if __name__ == "__main__":
 
     print_msg("Slice-by-slice 2D-fitting...", opts.verbosity, 0)
 
-    tmp = get_start(cube, psfFn, skyDeg=opts.sky_deg)
+    tmp = get_start(cube, psfFn, skyDeg=opts.skyDeg)
     (delta_vec,theta_vec,xc_vec,yc_vec,ell_vec,PA_vec, \
      alpha_vec,int_vec,sky_vec,khi2_vec,error_mat) = tmp
     print_msg("", opts.verbosity, 1)
@@ -731,7 +732,7 @@ if __name__ == "__main__":
     data_model = pySNIFS_fit.model(data=cube,
                                    func=['%s;%f,%f,%f' % \
                                          (psfFn.__name__,SpaxelSize,lbda_ref,alphaDeg),
-                                         'poly2D;%d' % opts.sky_deg],
+                                         'poly2D;%d' % opts.skyDeg],
                                    param=[p1,p2],
                                    bounds=[b1,b2],
                                    myfunc={psfFn.__name__:psfFn})
@@ -764,11 +765,11 @@ if __name__ == "__main__":
     full_cube = pySNIFS.SNIFS_cube(opts.input)
     lbda,spec,var = comp_spec(full_cube, psfFn, [SpaxelSize,lbda_ref,alphaDeg],
                               fitpar[0:npar_psf],
-                              skyDeg=opts.sky_deg)
+                              skyDeg=opts.skyDeg)
 
     # Save star spectrum, update headers ==============================
 
-    fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.sky_deg,khi2)
+    fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.skyDeg,khi2)
     step = inhdr.get('CDELTS')
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
@@ -779,16 +780,19 @@ if __name__ == "__main__":
 
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
-    prefix = [''] + [ 'a%d_' % n for n in xrange(1,npar_poly) ]
 
-    # Loop in reverse order to finish with 0th-order (for later plot)
-    for i,pre in enumerate(prefix[::-1]):
-        sky_spec = pySNIFS.spectrum(data=spec[:,npar_poly-i],
-                                    start=lbda[0], step=step)
-        sky_spec.WR_fits_file(pre+opts.sky,header_list=inhdr.items())
-        sky_var = pySNIFS.spectrum(data=var[:,npar_poly-i],
-                                   start=lbda[0],step=step)
-        sky_var.WR_fits_file('var_'+pre+opts.sky,header_list=inhdr.items())
+    sky_spec_list = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in spec[:,1:]])
+    sky_var_list = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in var[:,1:]])
+
+    bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec_list.list,sky_var_list.list,opts.skyDeg)
+
+    bkg_spec.data /= cube.nlens         # Per spaxels
+    bkg_spec.var  /= cube.nlens
+    
+    sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
+    sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+    sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
+    sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
     # Save adjusted parameter file ===========================================
     
@@ -840,16 +844,13 @@ if __name__ == "__main__":
         axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
 
-##         axB.plot(bkg_spec.x, bkg_spec.data, 'g')
-##         axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
-        axB.plot(sky_spec.x, sky_spec.data, 'g')
-        axB.set_xlim(sky_spec.x[0],sky_spec.x[-1])
+        axB.plot(bkg_spec.x, bkg_spec.data, 'g')
+        axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
         axB.set_title("Background spectrum (per spx)")
         axB.set_xticklabels([])
 
         axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
-##         axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
-        axN.plot(sky_spec.x, S.sqrt(sky_var.data), 'g')
+        axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
         axN.set_title("Error spectra")
         axN.semilogy()
         axN.set_xlim(star_spec.x[0],star_spec.x[-1])
