@@ -84,10 +84,11 @@ def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar, str_par,
             transform=ax.transAxes, fontsize=11)
     pylab.setp(ax.get_yticklabels(), fontsize=8)
 
-def fit_param_hdr(hdr,param,lbda_ref,cube, skyDeg, khi2, alphaDeg=3):
+def fit_param_hdr(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
+                  method, radius):
     
     hdr.update('ES_VERS' ,__version__)
-    hdr.update('ES_CUBE' ,cube,    'extract_star input cube')
+    hdr.update('ES_CUBE' ,cubename,'extract_star input cube')
     hdr.update('ES_LREF' ,lbda_ref,'extract_star lambda ref.')
     hdr.update('ES_SDEG' ,skyDeg, 'extract_star polynomial bkgnd degree')
     hdr.update('ES_KHI2' ,khi2,    'extract_star khi square')    
@@ -96,9 +97,12 @@ def fit_param_hdr(hdr,param,lbda_ref,cube, skyDeg, khi2, alphaDeg=3):
     hdr.update('ES_XC'   ,param[2],'extract_star xc')
     hdr.update('ES_YC'   ,param[3],'extract_star yc')
     hdr.update('ES_ELL'  ,param[4],'extract_star ellipticity')
-    hdr.update('ES_PA'   ,param[5],'extract_star pos. angle')    
+    hdr.update('ES_PA'   ,param[5],'extract_star pos. angle')
     for i in xrange(alphaDeg + 1):
-        hdr.update('ES_A%i'%i   ,param[6+i], 'extract_star alpha a%i'%i)
+        hdr.update('ES_A%i' % i, param[6+i], 'extract_star alpha a%i' % i)
+    hdr.update('ES_METH' ,method,'extract_star method')
+    if method != 'PSF':
+        hdr.update('ES_APRAD' ,radius,'extract_star aperture radius')
 
 def laplace_filtering(cube, cut=0.9999):
 
@@ -112,7 +116,8 @@ def laplace_filtering(cube, cut=0.9999):
     return (S.absolute(lapl) <= threshold)
 
 def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
-              method='PSF', radius=0.):
+              method='PSF', radius=5.):
+    """Extract object and sky spectra from cube according to PSF."""
 
     if (cube.var>1e20).any(): 
         print "WARNING: discarding infinite variances in comp_spec"
@@ -135,37 +140,74 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # Linear fit: I*PSF + sky [ + a*x + b*y + ...]
     cube.x /= psf_ctes[0]               # x in spaxel
     cube.y /= psf_ctes[0]               # y in spaxel
-    psf = psf_fn(psf_ctes, cube).comp(param, normed=True)
+    model = psf_fn(psf_ctes, cube)
+    psf = model.comp(param, normed=True)
 
     npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb param. in polynomial bkgnd
-    X = S.zeros((cube.nslice,cube.nlens,npar_poly+1),'d')
-    X[:,:,0] = psf                      # Intensity
-    X[:,:,1] = 1                        # Constant background
+    Z = S.zeros((cube.nslice,cube.nlens,npar_poly+1),'d')
+    Z[:,:,0] = psf                      # Intensity
+    Z[:,:,1] = 1                        # Constant background
     n = 2
     for d in xrange(1,skyDeg+1):
         for j in xrange(d+1):
-            X[:,:,n] = cube.x**(d-j) * cube.y**j # Structured background
+            Z[:,:,n] = cube.x**(d-j) * cube.y**j # Structured background
             n=n+1
 
     # Weighting
     weight = S.sqrt(S.where(cube.var!=0, 1./cube.var, 0))
-    X = (X.T * weight.T).T
+    X = (Z.T * weight.T).T
     b = weight*cube.data
 
     A = S.array([S.dot(x.T, x) for x in X])
     B = S.array([S.dot(x.T,bb) for x,bb in zip(X,b)])
-    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)]) # Star,Sky,[slope_x...]
+    # Spec = nslice x Star,Sky,[slope_x...]
+    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)])
 
     C = S.array([L.inv(a) for a in A])
+    # Var = nslice x Star,Sky,[slope_x...]
     Var = S.array([S.diag(c) for c in C])
 
     if method not in ('PSF','aperture','optimal'):
-        raise ValueError("Extraction method '%s' unrecognized" % method)        
+        raise ValueError("Extraction method '%s' unrecognized" % method)
 
     if method=='PSF':
         return cube.lbda,Spec,Var       # Nothing else to be done
-    else:
-        raise NotImplementedError("Non-PSF photometry not yet implemented")
+
+    # Reconstruct background and subtract it from cube
+    bkgnd = 0
+    var_bkgnd = 0
+    for d in xrange(1,skyDeg+2):
+        bkgnd += (Z[:,:,d].T*Spec[:,d]).T
+        var_bkgnd += (Z[:,:,d].T*Var[:,d]).T
+    cube.data -= bkgnd                  # Bkgnd subtraction (nslice x nlens)
+    good = cube.var>0
+    cube.var[good] += var_bkgnd[good]   # Variance update
+
+    radius = radius / SpaxelSize        # Aperture radius in spaxels
+    # Centroids [spx] (nslice)
+    xc = psf_param[2] + \
+         psf_param[0] * model.ADR_coef[:,0] * S.cos(psf_param[1])
+    yc = psf_param[3] + \
+         psf_param[0] * model.ADR_coef[:,0] * S.sin(psf_param[1])
+    # Aperture (nslice x nlens)
+    r = S.hypot((model.x.T - xc).T,(model.y.T - yc).T)
+    inside = r < radius  # r<radius[:,S.newaxis] if radius is a (nslice,) vec.
+        
+    # Plain summation over aperture
+    
+    # For the moment, a spaxel is either 100% or 0% within the aperture (same
+    # limitation as quick_extract). Potential development:
+    # 1. compute spaxel fraction inside the aperture
+    # 2. extrapolate missing flux if aperture is partially outside FoV
+    #    from PSF fit
+
+    Spec[:,0] = (cube.data*inside).sum(axis=1)
+    Var[:,0] = (cube.var*inside).sum(axis=1)
+
+    if method=='optimal':
+        raise NotImplementedError
+
+    return cube.lbda,Spec,Var       # Nothing else to be done
 
 def get_start(cube, psf_fn, skyDeg=0):
     
@@ -329,7 +371,7 @@ def create_log_file(filename,delta,theta,xc,yc,ell,PA,alpha,khi2,khi3D,model,nsl
                   +'\n')
     logfile.close()
 
-def build_sky_cube(cube,sky,sky_var,skyDeg):
+def build_sky_cube(cube, sky, sky_var, skyDeg):
 
     nslices   = len(sky)
     npar_poly = int((skyDeg+1)*(skyDeg+2)/2)
@@ -504,38 +546,32 @@ class ExposurePSF:
 
         return grad
     
-    def FWHM(self, alphaCoeffs, lbda):
-        """
-        Find root of the half maximum function.
-        """
+    def _FWHM_fn(self, r, alphaCoeffs, lbda):
+            """Compute the half maximum function value."""
 
-        def comp_half_maximum_function(r, alphaCoeffs, lbda):
-            """
-            Compute the half maximum function value.
-            """
-
-            # aliases + correlations params (fixed)
             lbda_rel = lbda/self.lbda_ref - 1
             alpha = 0
             for i in xrange(self.alphaDeg + 1):
                 alpha += alphaCoeffs[i]*lbda_rel**i
-
             s1,s0,b1,b0,e1,e0 = self.corrCoeffs
             beta  = b0 + b1*alpha
             sigma = s0 + s1*alpha
             eta   = e0 + e1*alpha
-
             gaussian = S.exp(-r**2/2/sigma**2)
             moffat = (1 + r**2/alpha**2)**(-beta)
-
             # PSF maximum is (eta+1)/2
+
             return eta*gaussian + moffat - (eta + 1)/2
 
-        # Compute FWHM from radial profile [arcsec]
-        fwhm = S.optimize.fsolve(func=comp_half_maximum_function,
-                                 x0=1., args=(alphaCoeffs,lbda))
+    def FWHM(self, param, lbda):
+        """Estimate FWHM of PSF at wavelength lbda."""
 
-        return fwhm
+        alphaCoeffs = param[6:7+self.alphaDeg]
+        # Compute FWHM from radial profile [arcsec]
+        fwhm = 2*S.optimize.fsolve(func=self._FWHM_fn, x0=1.,
+                                   args=(alphaCoeffs,lbda))
+
+        return fwhm                     # In spaxels
 
 class long_exposure_psf(ExposurePSF): 
 
@@ -578,6 +614,12 @@ if __name__ == "__main__":
                       default=0)
     parser.add_option("-f", "--file", type="string",
                       help="Save file with the different parameters fitted.")
+    parser.add_option("-m", "--method", type="string",
+                      help="Extraction method ['%default'].",
+                      default="PSF")
+    parser.add_option("-r", "--radius", type="float",
+                      help="Aperture radius for non-PSF extraction " \
+                      "[%default sigma]", default=5.)
 
     opts,pars = parser.parse_args()
     if not opts.input or not opts.out or not opts.sky:
@@ -588,6 +630,10 @@ if __name__ == "__main__":
         opts.plot = True
     elif opts.plot:
         opts.graph = 'png'
+
+    if opts.method not in ('PSF','aperture','optimal'):
+        parser.error("Extraction method '%s' unrecognized "
+                     "(PSF|aperture|optimal)." % method)
 
     # Nb of param. in polynomial background
     npar_poly = int((opts.skyDeg+1)*(opts.skyDeg+2)/2) 
@@ -601,7 +647,7 @@ if __name__ == "__main__":
     airmass = inhdr.get('AIRMASS', 0.0)
     channel = inhdr.get('CHANNEL', 'Unknown').upper()
     alphaDeg = opts.alphaDeg
-    npar_psf  = 6 + alphaDeg +1
+    npar_psf  = 7 + alphaDeg
 
     if channel.startswith('B'):
         slices=[10, 900, 65]
@@ -753,23 +799,32 @@ if __name__ == "__main__":
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
 
-    # Compute FWHM
-    fwhm = data_model.func[0].FWHM(fitpar[6:7+alphaDeg], lbda_ref)
-    
-    print_msg("  Seeing estimate: %.2f arcsec FWHM" %(fwhm), opts.verbosity, 0)
+    # Compute seeing (FWHM in arcsec)
+    fwhm = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
+    print_msg("  Seeing estimate: %.2f'' FWHM" % fwhm, opts.verbosity, 0)
 
     # Computing final spectra for object and background ======================
 
-    print_msg("Extracting the spectrum...", opts.verbosity, 0)
+    # Compute aperture radius
+    if opts.method == 'PSF':
+        radius = None
+        method = 'PSF'
+    else:
+        radius = opts.radius*fwhm/2.355 # Aperture radius [arcsec]
+        method = "%s r = %.1f sigma = %.2f''" % \
+                 (opts.method, opts.radius, radius)
+    print_msg("Extracting the spectrum [method=%s]..." % method,
+              opts.verbosity, 0)
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
     lbda,spec,var = comp_spec(full_cube, psfFn, [SpaxelSize,lbda_ref,alphaDeg],
-                              fitpar[0:npar_psf],
-                              skyDeg=opts.skyDeg)
+                              fitpar[:npar_psf], skyDeg=opts.skyDeg,
+                              method=opts.method, radius=radius)
 
     # Save star spectrum, update headers ==============================
 
-    fit_param_hdr(inhdr,data_model.fitpar,lbda_ref,opts.input,opts.skyDeg,khi2)
+    fit_param_hdr(inhdr,fitpar[:npar_psf],lbda_ref,opts.input,opts.skyDeg,khi2,
+                  alphaDeg, opts.method, radius)
     step = inhdr.get('CDELTS')
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
@@ -781,12 +836,16 @@ if __name__ == "__main__":
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
 
-    sky_spec_list = pySNIFS.spec_list([pySNIFS.spectrum(data=s,start=lbda[0],step=step) for s in spec[:,1:]])
-    sky_var_list = pySNIFS.spec_list([pySNIFS.spectrum(data=v,start=lbda[0],step=step) for v in var[:,1:]])
-
-    bkg_cube,bkg_spec = build_sky_cube(full_cube,sky_spec_list.list,sky_var_list.list,opts.skyDeg)
-
-    bkg_spec.data /= cube.nlens         # Per spaxels
+    sky_spec_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=s,start=lbda[0],
+                                                         step=step)
+                                        for s in spec[:,1:] ])
+    sky_var_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=v,start=lbda[0],
+                                                        step=step)
+                                       for v in var[:,1:] ])
+    bkg_cube,bkg_spec = build_sky_cube(full_cube,
+                                       sky_spec_list.list,sky_var_list.list,
+                                       opts.skyDeg)
+    bkg_spec.data /= cube.nlens
     bkg_spec.var  /= cube.nlens
     
     sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
@@ -840,13 +899,13 @@ if __name__ == "__main__":
         axN = fig1.add_subplot(3, 1, 3)
 
         axS.plot(star_spec.x, star_spec.data, 'b')
-        axS.set_title("Star spectrum [%s]" % obj)
+        axS.set_title("Star spectrum [%s, %s]" % (obj,method))
         axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
 
         axB.plot(bkg_spec.x, bkg_spec.data, 'g')
         axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])
-        axB.set_title("Background spectrum (per spx)")
+        axB.set_title("Background spectrum (per sq. arcsec)")
         axB.set_xticklabels([])
 
         axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
@@ -876,7 +935,7 @@ if __name__ == "__main__":
             ax.semilogy()
             ax.set_xlim(0,len(data))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
-            ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
+            ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Spaxel ID", fontsize=8)
@@ -928,14 +987,14 @@ if __name__ == "__main__":
 
         print_msg("Producing ADR plot %s..." % plot4, opts.verbosity, 1)
 
-        xfit = fitpar[0] * data_model.func[0].ADR_coef[:,0] * \
-               S.cos(fitpar[1]) + fitpar[2]
-        yfit = fitpar[0] * data_model.func[0].ADR_coef[:,0] * \
-               S.sin(fitpar[1]) + fitpar[3]
-        xguess = guesspar[0] * data_model.func[0].ADR_coef[:,0] * \
-                 S.cos(guesspar[1]) + guesspar[2]
-        yguess = guesspar[0] * data_model.func[0].ADR_coef[:,0] * \
-                 S.sin(guesspar[1]) + guesspar[3]
+        xfit = fitpar[2] + \
+               fitpar[0] * data_model.func[0].ADR_coef[:,0] * S.cos(fitpar[1])
+        yfit = fitpar[3] + \
+               fitpar[0] * data_model.func[0].ADR_coef[:,0] * S.sin(fitpar[1])
+        xguess = guesspar[2] + \
+                 guesspar[0]*data_model.func[0].ADR_coef[:,0]*S.cos(guesspar[1])
+        yguess = guesspar[3] + \
+                 guesspar[0]*data_model.func[0].ADR_coef[:,0]*S.sin(guesspar[1])
 
         fig4 = pylab.figure()
 
@@ -999,36 +1058,42 @@ if __name__ == "__main__":
                 ci += cov[j][j]*lbda_rel**i
             return S.sqrt(ci)
 
-        confidence_alpha = confidence_interval(lbda_rel, cov, range(6,npar_psf))
-        confidence_ell   = confidence_interval(lbda_rel, cov, [4])
-        confidence_PA    = confidence_interval(lbda_rel, cov, [5])
+        confidence_alpha = confidence_interval(lbda_rel,cov,range(6,npar_psf))
+        confidence_ell   = confidence_interval(lbda_rel,cov,[4])
+        confidence_PA    = confidence_interval(lbda_rel,cov,[5])
 
         fig6 = pylab.figure()
 
         ax6a = fig6.add_subplot(2, 1, 1)
-        ax6a.errorbar(cube.lbda, alpha_vec,error_mat[:,6], fmt='b.', ecolor='blue', label="Fit 2D")
+        ax6a.errorbar(cube.lbda, alpha_vec,error_mat[:,6],
+                      fmt='b.', ecolor='blue', label="Fit 2D")
         ax6a.plot(cube.lbda, guess_disp, 'k--', label="Guess 3D")
         ax6a.plot(cube.lbda, fit_disp, 'g', label="Fit 3D")
-        ax6a.plot(cube.lbda, fit_disp + confidence_alpha, 'g:',label='_nolegend_')
-        ax6a.plot(cube.lbda, fit_disp - confidence_alpha, 'g:',label='_nolegend_')
+        ax6a.plot(cube.lbda, fit_disp + confidence_alpha, 'g:',
+                  label='_nolegend_')
+        ax6a.plot(cube.lbda, fit_disp - confidence_alpha, 'g:',
+                  label='_nolegend_')
 
         ax6a.text(0.03, 0.8,
                   r'$\rm{Guess coeffs:}\hspace{0.5} %s$' % \
-                  (','.join([ 'a_%d=%.2f' % (i,a) for i,a in enumerate(alpha[::-1]) ]) ),
+                  (','.join([ 'a_%d=%.2f' % (i,a)
+                              for i,a in enumerate(alpha[::-1]) ]) ),
                   transform=ax6a.transAxes, fontsize=11)
         ax6a.text(0.03, 0.7,
                   r'$\rm{Fit coeffs:}\hspace{0.5} %s$' % \
-                  (','.join([ 'a_%d=%.2f' % (i,a) for i,a in enumerate(fitpar[6:6+alphaDeg+1]) ]) ),
+                  (','.join([ 'a_%d=%.2f' % (i,a)
+                              for i,a in enumerate(fitpar[6:6+alphaDeg+1]) ])),
                   transform=ax6a.transAxes, fontsize=11)
 
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
         ax6a.set_ylabel(r'$\alpha$')
         ax6a.set_xticklabels([])
-        ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % (obj,fwhm))
+        ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % \
+                       (obj,fwhm))
 
         ax6c = fig6.add_subplot(4, 1, 3)
-        plot_non_chromatic_param(ax6c, ell_vec, cube.lbda, ell, fitpar[4],'1/q',
+        plot_non_chromatic_param(ax6c, ell_vec,cube.lbda,ell,fitpar[4],'1/q',
                                  error_vec=error_mat[:,4],
                                  confidence=confidence_ell)
         
@@ -1050,25 +1115,23 @@ if __name__ == "__main__":
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):   # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
-            ax.plot(S.hypot(cube.x-xfit[i],cube.y-yfit[i]),
-                    cube.data[i], 'b.')
-            ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
-                    cube_fit.data[i], 'r,')
-            ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
-                    func1.comp(fitpar[0:func1.npar])[i], 'g,')
-            ax.plot(S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i]),
-                    func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i], 'c,')
+            r = S.hypot(cube.x-xfit[i],cube.y-yfit[i])
+            ax.plot(r, cube.data[i], 'b.')
+            rfit = S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
+            ax.plot(rfit, cube_fit.data[i], 'r,')
+            ax.plot(rfit, func1.comp(fitpar[0:func1.npar])[i], 'g,')
+            ax.plot(rfit, func2.comp(fitpar[func1.npar:func1.npar+func2.npar])[i],'c,')
             ax.semilogy()
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
-            ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
-                    horizontalalignment='left', transform=ax.transAxes)
+            ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
+                    horizontalalignment='right', transform=ax.transAxes)
+            if method!='PSF':
+                ax.axvline(radius, color='y')
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Radius [spaxels]", fontsize=8)
                 ax.set_ylabel("Flux", fontsize=8)
-            ax.axis([S.hypot(cube.x-xfit[i],cube.y-yfit[i]).min(),\
-                     S.hypot(cube.x-xfit[i],cube.y-yfit[i]).max(),\
-                     cube.data[i][cube.data[i]>0].min(),\
-                     cube.data[i].max()])
+            ax.axis([r.min(), r.max(), \
+                     cube.data[i][cube.data[i]>0].min(), cube.data[i].max()])
 
         # Contour plot of each slice -----------------------------------------
 
@@ -1089,7 +1152,13 @@ if __name__ == "__main__":
             ax.contour(data, lev, origin='lower', extent=extent)
             cnt = ax.contour(fit, lev, ls='--', origin='lower', extent=extent)
             pylab.setp(cnt.collections, linestyle='dotted')
-            ax.plot((xfit[i],),(yfit[i],), 'k+')
+            ax.errorbar((xc_vec[i],),(yc_vec[i],),
+                        xerr=(error_mat[i,2],),yerr=(error_mat[i,3],),
+                        fmt=None, ecolor='k')
+            ax.plot((xfit[i],),(yfit[i],), 'g+')
+            if opts.method != 'PSF':
+                ax.add_patch(matplotlib.patches.Circle((xfit[i],yfit[i]),
+                                                       radius, fc=None, ec='g'))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)

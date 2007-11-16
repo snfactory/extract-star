@@ -1,3 +1,9 @@
+2007-11-16  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: implement plain aperture
+	photometry (new option '-m/--method PSF|aperture'). Debug seeing
+	estimate.
+
 2007-11-16  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: build_sky_cube is now working
