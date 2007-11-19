@@ -1,3 +1,8 @@
+2007-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (comp_spec): on the way to
+	optimal extraction.
+
 2007-11-16  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: implement plain aperture

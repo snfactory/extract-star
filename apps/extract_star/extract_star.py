@@ -99,6 +99,9 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
               method='PSF', radius=5.):
     """Extract object and sky spectra from cube according to PSF."""
 
+    if method not in ('PSF','aperture','optimal'):
+        raise ValueError("Extraction method '%s' unrecognized" % method)
+
     if (cube.var>1e20).any(): 
         print "WARNING: discarding infinite variances in comp_spec"
         cube.var[cube.var>1e20] = 0
@@ -111,17 +114,17 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     param = S.concatenate((psf_param,[1.]*cube.nslice))
 
     # Rejection of bad points (YC: need some clarifications...)
-    filter = laplace_filtering(cube)
-    if (~filter).any():
+    filt = laplace_filtering(cube)
+    if (~filt).any():
         print "WARNING: discarding %d bad px in comp_spec" % \
-              len((~filter).nonzero()[0])
-    cube.var *= filter                  # Discard non-selected px
+              len((~filt).nonzero()[0])
+    cube.var *= filt                    # Discard non-selected px
 
     # Linear fit: I*PSF + sky [ + a*x + b*y + ...]
     cube.x /= psf_ctes[0]               # x in spaxel
     cube.y /= psf_ctes[0]               # y in spaxel
     model = psf_fn(psf_ctes, cube)
-    psf = model.comp(param, normed=True)
+    psf = model.comp(param, normed=True) # nslice x nlens
 
     npar_poly = int((skyDeg+1)*(skyDeg+2)/2) # Nb param. in polynomial bkgnd
     Z = S.zeros((cube.nslice,cube.nlens,npar_poly+1),'d')
@@ -134,7 +137,7 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
             n=n+1
 
     # Weighting
-    weight = S.sqrt(S.where(cube.var!=0, 1./cube.var, 0))
+    weight = S.sqrt(S.where(cube.var!=0, 1/cube.var, 0))
     X = (Z.T * weight.T).T
     b = weight*cube.data
 
@@ -147,9 +150,6 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # Var = nslice x Star,Sky,[slope_x...]
     Var = S.array([S.diag(c) for c in C])
 
-    if method not in ('PSF','aperture','optimal'):
-        raise ValueError("Extraction method '%s' unrecognized" % method)
-
     if method=='PSF':
         return cube.lbda,Spec,Var       # Nothing else to be done
 
@@ -159,9 +159,10 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     for d in xrange(1,skyDeg+2):
         bkgnd += (Z[:,:,d].T*Spec[:,d]).T
         var_bkgnd += (Z[:,:,d].T*Var[:,d]).T
-    cube.data -= bkgnd                  # Bkgnd subtraction (nslice x nlens)
+    subData = cube.data - bkgnd         # Bkgnd subtraction (nslice x nlens)
+    subVar = cube.var.copy()
     good = cube.var>0
-    cube.var[good] += var_bkgnd[good]   # Variance update
+    subVar[good] += var_bkgnd[good]     # Variance of bkgnd-sub. signal
 
     radius = radius / SpaxelSize        # Aperture radius in spaxels
     # Centroids [spx] (nslice)
@@ -169,10 +170,10 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
          psf_param[0] * model.ADR_coef[:,0] * S.cos(psf_param[1])
     yc = psf_param[3] + \
          psf_param[0] * model.ADR_coef[:,0] * S.sin(psf_param[1])
-    # Aperture (nslice x nlens)
+    # Circular aperture (nslice x nlens)
     r = S.hypot((model.x.T - xc).T,(model.y.T - yc).T)
     inside = r < radius  # r<radius[:,S.newaxis] if radius is a (nslice,) vec.
-        
+    
     # Plain summation over aperture
     
     # For the moment, a spaxel is either 100% or 0% within the aperture (same
@@ -181,16 +182,45 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # 2. extrapolate missing flux if aperture is partially outside FoV
     #    from PSF fit
 
-    Spec[:,0] = (cube.data*inside).sum(axis=1)
-    Var[:,0] = (cube.var*inside).sum(axis=1)
+    if method == 'aperture':
+        # Replace signal and variance estimates from plain sum
+        Spec[:,0] = (subData*inside).sum(axis=1) 
+        Var[:,0] = (subVar*inside).sum(axis=1)
+        return cube.lbda,Spec,Var
 
     if method=='optimal':
-        spx = 0
-        print "DEBUG:",cube.var[spx].shape, cube.var[spx][inside[spx]].shape
+        # One has to have a model of the variance. This can be estimated from
+        # a simple 'photon noise + RoN' model on each slice: signal ~ alpha*N
+        # (alpha = 1/flat-field coeff and N = photon counts) and variance ~ (N
+        # + RoN**2) * alpha**2 = (signal/alpha + RoN**2) * alpha**2 =
+        # alpha*signal + beta. This model disregards spatial component of
+        # flat-field, which is supposed to be constant of FoV.
+        coeffs = S.array([ S.polyfit(cube.data[s], cube.var[s], 1)
+                           for s in xrange(cube.nslice) ])
+        alpha = F.median_filter(coeffs[:,0], 10) # A bit of smoothing...
+        beta = coeffs[:,1]
+        # Model signal = Intensity*PSF + bkgnd
+        # Model variance = alpha*signal + beta
+        modsig = (Spec[:,0]*psf.T).T + bkgnd # nslice x nlens
+        modvar = (alpha*modsig.T + beta).T
+
+        s = 300                         # Slice under investigation
         import pylab
-        pylab.plot(cube.var[spx][inside[spx]], psf[spx][inside[spx]], 'b+')
+        pylab.plot(cube.lbda, 1/coeffs[:,0], 'b-')
+        pylab.plot(cube.lbda, 1/alpha, 'g-')
+
+        dx = (model.x.T - xc).T         # nslice x nlens
+        dy = (model.y.T - yc).T
+        rell = S.sqrt(dx**2 + psf_param[4]*dy**2 + 2*psf_param[5]*dx*dy)
+        pylab.figure()
+        pylab.plot(rell[s], cube.data[s], 'b+') # Data
+        pylab.plot(rell[s], modsig[s], 'r+')  # Model
+        pylab.plot(rell[s], bkgnd[s], 'c+')
+        pylab.plot(rell[s], cube.var[s], 'g+')
+        pylab.plot(rell[s], modvar[s], 'y+')
+        pylab.semilogy()
+        pylab.title("Slice %d" % s)
         pylab.show()
-        
         raise NotImplementedError
 
     return cube.lbda,Spec,Var       # Nothing else to be done
@@ -647,9 +677,8 @@ if __name__ == "__main__":
         psfFn = short_exposure_psf
 
     print_msg("  Object: %s, Airmass: %.2f; Efftime: %.1fs [%s]" % \
-              (obj, airmass, efftime, psfFn.name),
-              opts.verbosity, 0)
-    print_msg("  Channel: %s, extracting slices: %s" % (channel,slices),
+              (obj, airmass, efftime, psfFn.name), opts.verbosity, 0)
+    print_msg("  Channel: '%s', extracting slices: %s" % (channel,slices),
               opts.verbosity, 0)
 
     cube    = pySNIFS.SNIFS_cube(opts.input, slices=slices)
@@ -719,7 +748,7 @@ if __name__ == "__main__":
     ADR_coef = 206265*(atmosphericIndex(cube.lbda) -
                        atmosphericIndex(lbda_ref)) / SpaxelSize # In spaxels
 
-    polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)    
+    polADR = pySNIFS.fit_poly(yc_vec2, 3, 1, xc_vec2)
     xc = xc_vec2[S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
     yc = polADR(xc)
     
@@ -797,6 +826,10 @@ if __name__ == "__main__":
               opts.verbosity, 0)
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
+    print_msg("Cube %s: %d slices, %d spaxels" % \
+              (os.path.split(opts.input)[1], full_cube.nslice, full_cube.nlens),
+              opts.verbosity, 0)
+
     lbda,spec,var = comp_spec(full_cube, psfFn, [SpaxelSize,lbda_ref,alphaDeg],
                               fitpar[:npar_psf], skyDeg=opts.skyDeg,
                               method=opts.method, radius=radius)
@@ -1114,9 +1147,14 @@ if __name__ == "__main__":
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
         for i in xrange(cube.nslice):   # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
-            r = S.hypot(cube.x-xfit[i],cube.y-yfit[i])
+            # Use Elliptical radius instead of plain radius
+            #r = S.hypot(cube.x-xfit[i],cube.y-yfit[i])
+            dx,dy = cube.x-xfit[i],cube.y-yfit[i]
+            r = S.sqrt(dx**2 + fitpar[4]*dy**2 + 2*fitpar[5]*dx*dy)
             ax.plot(r, cube.data[i], 'b.')
-            rfit = S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
+            #rfit = S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
+            dx,dy = cube_fit.x-xfit[i],cube_fit.y-yfit[i]
+            rfit = S.sqrt(dx**2 + fitpar[4]*dy**2 + 2*fitpar[5]*dx*dy)
             ax.plot(rfit, cube_fit.data[i], 'r,')
             ax.plot(rfit, psf[i], 'g,')
             ax.plot(rfit, bkg[i],'c,')
@@ -1127,10 +1165,11 @@ if __name__ == "__main__":
             if method!='PSF':
                 ax.axvline(radius, color='y')
             if ax.is_last_row() and ax.is_first_col():
-                ax.set_xlabel("Radius [spaxels]", fontsize=8)
+                ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
                 ax.set_ylabel("Flux", fontsize=8)
-            ax.axis([r.min(), r.max(), \
-                     cube.data[i][cube.data[i]>0].min(), cube.data[i].max()])
+            ax.axis([0, r.max()*1.1, 
+                     cube.data[i][cube.data[i]>0].min()/1.2,
+                     cube.data[i].max()*1.2])
 
         # Contour plot of each slice -----------------------------------------
 
