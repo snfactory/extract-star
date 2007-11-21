@@ -1,3 +1,8 @@
+2007-11-21  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: add a new option to choose
+	the polynomial degree of the ellipticity.
+
 2007-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (comp_spec): on the way to
