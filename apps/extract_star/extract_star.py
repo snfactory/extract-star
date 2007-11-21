@@ -64,7 +64,7 @@ def atmosphericIndex(lbda, P=616, T=2):
     return n
 
 def fit_param_hdr(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
-                  method, radius, seeing):
+                  ellDeg, method, radius, seeing):
     
     hdr.update('ES_VERS' ,__version__)
     hdr.update('ES_CUBE' ,cubename,'Input cube')
@@ -75,10 +75,11 @@ def fit_param_hdr(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
     hdr.update('ES_THETA',param[1],'ADR angle')
     hdr.update('ES_XC'   ,param[2],'xc @lbdaRef [spx]')
     hdr.update('ES_YC'   ,param[3],'yc @lbdaRef [spx]')
-    hdr.update('ES_ELL'  ,param[4],'Ellipticity')
-    hdr.update('ES_PA'   ,param[5],'Position angle')
+    hdr.update('ES_PA'   ,param[4],'Position angle')
+    for i in xrange(ellDeg + 1):    
+        hdr.update('ES_ELL_%i' % i,param[5+i],'Ellipticity coeff. ell%i' % i)
     for i in xrange(alphaDeg + 1):
-        hdr.update('ES_A%i' % i, param[6+i], 'Alpha coeff. a%i' % i)
+        hdr.update('ES_A%i' % i, param[6+ellDeg+i], 'Alpha coeff. a%i' % i)
     hdr.update('ES_METH', method, 'Extraction method')
     if method != 'PSF':
         hdr.update('ES_APRAD', radius, 'Aperture radius [sigma]')
@@ -854,7 +855,7 @@ if __name__ == "__main__":
     # Save star spectrum, update headers ==============================
 
     fit_param_hdr(inhdr,fitpar[:npar_psf],lbda_ref,opts.input,opts.skyDeg,khi2,
-                  alphaDeg, opts.method, opts.radius, seeing)
+                  alphaDeg, ellDeg, opts.method, opts.radius, seeing)
     step = inhdr.get('CDELTS')
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
