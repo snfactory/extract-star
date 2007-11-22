@@ -77,9 +77,9 @@ def fit_param_hdr(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
     hdr.update('ES_YC'   ,param[3],'yc @lbdaRef [spx]')
     hdr.update('ES_PA'   ,param[4],'Position angle')
     for i in xrange(ellDeg + 1):    
-        hdr.update('ES_ELL_%i' % i,param[5+i],'Ellipticity coeff. ell%i' % i)
+        hdr.update('ES_E%i' % i, param[5+i], 'Ellipticity coeff. e%d' % i)
     for i in xrange(alphaDeg + 1):
-        hdr.update('ES_A%i' % i, param[6+ellDeg+i], 'Alpha coeff. a%i' % i)
+        hdr.update('ES_A%i' % i, param[6+ellDeg+i], 'Alpha coeff. a%d' % i)
     hdr.update('ES_METH', method, 'Extraction method')
     if method != 'PSF':
         hdr.update('ES_APRAD', radius, 'Aperture radius [sigma]')
@@ -672,14 +672,15 @@ if __name__ == "__main__":
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr.get('EFFTIME')
     airmass = inhdr.get('AIRMASS', 0.0)
-    channel = inhdr.get('CHANNEL', 'Unknown').upper()
+    channel = inhdr.get('CHANNEL', 'Unknown')
+    haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
     alphaDeg = opts.alphaDeg
     ellDeg   = opts.ellDeg
     npar_psf  = 7 + ellDeg + alphaDeg
 
-    if channel.startswith('B'):
+    if channel.upper().startswith('B'):
         slices=[10, 900, 65]
-    elif channel.startswith('R'):
+    elif channel.upper().startswith('R'):
         slices=[10, 1500, 130]
     else:
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
@@ -768,9 +769,7 @@ if __name__ == "__main__":
     yc = polADR(xc)
     
     delta = S.tan(S.arccos(1./airmass)) # ADR power
-    theta = S.arctan(polADR(1))         # ADR angle
-    if (xc_vec2[-1]-xc_vec2[0]) > 0:
-        theta += S.pi
+    theta = S.arctan2(polADR(1),haSign) # ADR angle
 
     # 2) Other parameters:
     polAlpha = pySNIFS.fit_poly(alpha_vec,3,alphaDeg,lbda_rel)
@@ -802,10 +801,10 @@ if __name__ == "__main__":
     print_msg("  Initial guess: %s" % p1[:npar_psf], opts.verbosity, 2)
 
     # Instanciating the model class
-    data_model = pySNIFS_fit.model(data=cube,
-                                   func=['%s;%f,%f,%f,%f' % \
-                                         (psfFn.__name__,SpaxelSize,lbda_ref,alphaDeg,ellDeg),
-                                         'poly2D;%d' % opts.skyDeg],
+    func = [ '%s;%f,%f,%f,%f' % \
+             (psfFn.__name__,SpaxelSize,lbda_ref,alphaDeg,ellDeg),
+             'poly2D;%d' % opts.skyDeg ]
+    data_model = pySNIFS_fit.model(data=cube, func=func,
                                    param=[p1,p2],
                                    bounds=[b1,b2],
                                    myfunc={psfFn.__name__:psfFn})
@@ -825,6 +824,8 @@ if __name__ == "__main__":
     errorpar = S.sqrt(cov.diagonal())
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
+
+    print "DEBUG after", fitpar[0],fitpar[1]/S.pi*180
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
@@ -848,7 +849,8 @@ if __name__ == "__main__":
               (os.path.split(opts.input)[1], full_cube.nslice, full_cube.nlens),
               opts.verbosity, 0)
 
-    lbda,spec,var = comp_spec(full_cube, psfFn, [SpaxelSize,lbda_ref,alphaDeg,ellDeg],
+    lbda,spec,var = comp_spec(full_cube, psfFn,
+                              [SpaxelSize,lbda_ref,alphaDeg,ellDeg],
                               fitpar[:npar_psf], skyDeg=opts.skyDeg,
                               method=opts.method, radius=radius)
 
@@ -1095,9 +1097,10 @@ if __name__ == "__main__":
                 ci += cov[j][j]*lbda_rel**i
             return S.sqrt(ci)
 
-        confidence_alpha = confidence_interval(lbda_rel,cov,range(6+ellDeg,7+ellDeg+alphaDeg))
-        confidence_ell   = confidence_interval(lbda_rel,cov,[5,6+ellDeg])
         confidence_PA    = confidence_interval(lbda_rel,cov,[4])
+        confidence_ell   = confidence_interval(lbda_rel,cov,[5,6+ellDeg])
+        confidence_alpha = confidence_interval(lbda_rel,cov,
+                                               range(6+ellDeg,7+ellDeg+alphaDeg))
 
         fig6 = pylab.figure()
 
@@ -1129,7 +1132,6 @@ if __name__ == "__main__":
         ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % \
                        (obj,seeing))
 
-
         ax6c = fig6.add_subplot(4, 1, 3)
         ax6c.errorbar(cube.lbda, ell_vec,error_mat[:,5],
                       fmt='b.', ecolor='blue',label='_nolegend_')
@@ -1151,7 +1153,7 @@ if __name__ == "__main__":
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6c.transAxes, fontsize=11)
         
-        ax6c.set_ylabel(r'1/q')
+        ax6c.set_ylabel(r'$1/q$')
         ax6c.set_xticklabels([])        
 
         def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar,
@@ -1221,7 +1223,8 @@ if __name__ == "__main__":
 
         fig8 = pylab.figure()
 
-        fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
+        fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97,
+                             hspace=0.02, wspace=0.02)
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
                   cube.y.min()-0.5,cube.y.max()+0.5)
         for i in xrange(cube.nslice):   # Loop over meta-slices
@@ -1247,6 +1250,10 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
+            if not ax.is_last_row():
+                ax.set_xticks([])
+            if not ax.is_first_col():
+                ax.set_yticks([])
 
         # Residuals of each slice --------------------------------------------
 
@@ -1255,7 +1262,8 @@ if __name__ == "__main__":
 
         fig5 = pylab.figure()
 
-        fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97, )
+        fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97,
+                             hspace=0.02, wspace=0.02)
         for i in xrange(cube.nslice):   # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
@@ -1272,6 +1280,10 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
+            if not ax.is_last_row():
+                ax.set_xticks([])
+            if not ax.is_first_col():
+                ax.set_yticks([])
 
         if opts.graph=='pylab':
             pylab.show()
