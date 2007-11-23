@@ -121,7 +121,8 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
               len((~filt).nonzero()[0])
     cube.var *= filt                    # Discard non-selected px
 
-    # Linear fit: I*PSF + sky [ + a*x + b*y + ...]
+    # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
+    # See Numerical Recipes (2nd ed.), sect.15.4
     cube.x /= psf_ctes[0]               # x in spaxel
     cube.y /= psf_ctes[0]               # y in spaxel
     model = psf_fn(psf_ctes, cube)
@@ -138,17 +139,29 @@ def comp_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
             n=n+1
 
     # Weighting
-    weight = S.sqrt(S.where(cube.var!=0, 1/cube.var, 0))
-    X = (Z.T * weight.T).T
-    b = weight*cube.data
+    weight = S.sqrt(S.where(cube.var!=0, 1/cube.var, 0)) # nslice x nlens
+    X = (Z.T * weight.T).T              # nslice x nlens x npar+1
+    b = weight*cube.data                # nslice x nlens
 
-    A = S.array([S.dot(x.T, x) for x in X])
-    B = S.array([S.dot(x.T,bb) for x,bb in zip(X,b)])
-    C = S.array([L.inv(a) for a in A])
-
+    # The linear least-squares fit could be done directly using
+    # Spec = S.array([ L.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
+    # but A is needed anyway to compute covariance matrix C=1/A.
+    # Furthermore, linear resolution 
+    # [ L.solve(aa,bb) for aa,bb in zip(A,B) ]
+    # can be replace by faster (~x10) matrix product
+    # [ S.dot(cc,bb) for cc,bb in zip(C,B) ]
+    # since C=1/A is already available.
+    # Now one can also use NNLS:
+    # [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(A,B) ]    
+    # *BUT* 1. it is incompatible w/ non-constant sky (since it will force all
+    # sky coeffs to >0), 2. there is no easy way to estimate covariance matrix.
+    
+    A = S.array([S.dot(xx.T, xx) for xx in X]) # nslice x npar+1 x npar+1
+    B = S.array([S.dot(xx.T, bb) for xx,bb in zip(X,b)]) # nslice x npar+1
+    C = S.array([L.inv(aa) for aa in A])  # nslice x npar+1 x npar+1
     # Spec & Var = nslice x Star,Sky,[slope_x...]
-    Spec = S.array([L.solve(a,b) for a,b in zip(A,B)])
-    Var = S.array([S.diag(c) for c in C])
+    Spec = S.array([S.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice x npar+1
+    Var = S.array([S.diag(cc) for cc in C]) # nslice x npar+1
 
     if method=='PSF':
         return cube.lbda,Spec,Var       # Nothing else to be done

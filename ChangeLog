@@ -1,11 +1,16 @@
+2007-11-23  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (comp_spec): added a
+	discussion about NNLS.
+
 2007-11-22  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new estimate of ADR angle.
 
 2007-11-21  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
-	* apps/extract_star/extract_star.py: add a new option to choose
-	the polynomial degree of the ellipticity.
+	* apps/extract_star/extract_star.py: new option '-e/--ellDeg' to
+	choose polynomial degree of ellipticity.
 
 2007-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
