@@ -1,3 +1,9 @@
+2007-11-28  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: handle negative sky, raise an
+	error when aperture hits FoV edges, new variance modeling for
+	optimal summation (not yet completed).
+
 2007-11-23  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (comp_spec): added a
