@@ -1,3 +1,9 @@
+2007-11-30  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: extrapolate signal outside
+	FoV when aperture hits edge (only in 'aperture' method). Some
+	options renamed ('-d' to '-S', '-a' to '-A', '-e' to '-E').
+
 2007-11-28  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: handle negative sky, raise an
