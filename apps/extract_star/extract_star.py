@@ -31,10 +31,10 @@ SpaxelSize = 0.43                       # Spaxel size in arcsec
 
 # Definitions ================================================================
 
-def print_msg(str, verbosity, limit=0):
-    """Print message 'str' if verbosity level >= verbosity limit."""
+def print_msg(str, limit):
+    """Print message 'str' if verbosity level (opts.verbosity) >= limit."""
 
-    if verbosity >= limit:
+    if opts.verbosity >= limit:
         print str
 
 def atmosphericIndex(lbda, P=616, T=2):
@@ -62,7 +62,8 @@ def atmosphericIndex(lbda, P=616, T=2):
     return n
 
 def eval_poly(coeffs, x):
-    """Evaluate polynom sum_i ci*x**i on x."""
+    """Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention for
+    polynomial coeffs: [c0,c1...,cn] (opposite to S.polyfit).."""
 
     if S.isscalar(x):
         y = 0                           # Faster on scalar
@@ -81,22 +82,29 @@ def laplace_filtering(cube, eps=1e-4):
     hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
                              Max=100, cumul=True)
     threshold = hist.x[S.argmax(S.where(hist.data<(1-eps), 0, 1))]
-    print_msg("Laplace filter threshold: %f" % threshold, opts.verbosity, 2)
+    print_msg("Laplace filter threshold [eps=%.2f]: %f" % (eps,threshold), 2)
 
     return (S.absolute(lapl) <= threshold)
 
-def polyfit_clip(x, y, deg, clip=3):
+def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
     polynomial coeffs w/ same convention as S.polyfit: [cn,...,c1,c0]."""
     
     good = S.ones(y.shape, dtype='bool')
+    niter = 0
     while True:
+        niter += 1
         coeffs = S.polyfit(x[good], y[good], deg)
         old = good
         if clip:
             dy = S.polyval(coeffs, x) - y
             good = S.absolute(dy) < clip*S.std(dy)
-        if (good==old).all(): break
+        if (good==old).all(): break     # No more changes, stop there
+        if niter > nitermax:            # Max. # of iter, stop there
+            print_msg("polyfit_clip reached max. # of iterations: " \
+                      "deg=%d, clip=%.2f x %f, %d px removed" % \
+                      (deg, clip, S.std(dy), len((~old).nonzero()[0])), 2)
+            break
         if y[good].size <= deg+1:
             raise ValueError
 
@@ -189,7 +197,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         if negSky.any():
             print "WARNING: %d slices w/ sky<0 in extract_spec" % \
                   (len(negSky.nonzero()[0]))
-            print_msg(str(cube.lbda[negSky]), opts.verbosity, 2)
+            print_msg(str(cube.lbda[negSky]), 2)
             # For slices w/ sky<0, fit only PSF without background
             A = S.array([ S.dot(xx,xx) for xx in X[negSky,:,0] ])
             B = S.array([ S.dot(xx,bb)
@@ -217,7 +225,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # Replace invalid data (var=0) by model PSF = Intensity*PSF
     if not good.all():
         print_msg("Replacing %d vx with modeled signal" % \
-                  len(subData.nonzero()[0]), opts.verbosity, 1)
+                  len((~good).nonzero()[0]), 1)
         subData[~good] = (Spec[:,0]*psf.T).T[~good]
 
     # Plain summation over aperture
@@ -235,6 +243,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
          psf_param[0]*model.ADR_coeff[:,0]*S.sin(psf_param[1])
     # Aperture radius in spaxels
     aperRad = radius / spxSize
+    print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad), 1)
 
     # Radius [spx] (nslice,nlens)
     r = S.hypot((model.x.T - xc).T, (model.y.T - yc).T)
@@ -263,6 +272,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     if hit.any() and method=='aperture':
 
         # Extrapolate signal from PSF model
+        print_msg("Signal extrapolation outside FoV...", 1)
 
         # Extend usual range by ns spx on each side
         nw = 15 + 2*ns                  # New FoV size in spaxels
@@ -271,7 +281,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         extx,exty = S.meshgrid(extRange[::-1],extRange) # nw,nw
         extnlens = extx.size                 # = nlens' = nw**2
         print_msg("  Extend FoV by %d spx: nlens=%d -> %d" % \
-                  (ns, model.nlens, extnlens), opts.verbosity, 1)
+                  (ns, model.nlens, extnlens), 1)
 
         # Compute PSF on extended range (nslice,extnlens)
         extModel = psf_fn(psf_ctes, cube, coords=(extx,exty)) # Extended model
@@ -330,7 +340,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         return cube.lbda,Spec,Var
 
 
-def get_start(cube, psf_fn, skyDeg=0, nsky=2):
+def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
     npar_psf = 7                        # Number of parameters of the psf
@@ -380,7 +390,7 @@ def get_start(cube, psf_fn, skyDeg=0, nsky=2):
         if opts.verbosity >= 1:
             sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
             sys.stdout.flush()
-        print_msg("", opts.verbosity, 2)
+        print_msg("", 2)
 
         # Sky estimate (from FoV edge spx)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
@@ -405,8 +415,7 @@ def get_start(cube, psf_fn, skyDeg=0, nsky=2):
               [0., None]]               # Intensity > 0
         p2 = [skyLev] + [0.]*(npar_sky-1) # Guess: Background=constant (>0)
         b2 = [[0,None]] + [[None,None]]*(npar_sky-1)
-        print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]),
-                  opts.verbosity, 2)
+        print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]), 2)
 
         # Instanciating of a model class
         func = ['%s;%f,%f,%f,%f' % \
@@ -443,8 +452,7 @@ def get_start(cube, psf_fn, skyDeg=0, nsky=2):
         sky_vec[i]   = model_star.fitpar[8]
         khi2_vec[i]  = model_star.khi2
         error_mat[i] = errorpar
-        print_msg("    Fit result [PSF+bkgnd]: %s" % \
-                  model_star.fitpar, opts.verbosity, 2)
+        print_msg("    Fit result [PSF+bkgnd]: %s" % model_star.fitpar, 2)
 
     return (delta_vec,theta_vec,xc_vec,yc_vec,PA_vec,ell_vec,
             alpha_vec,int_vec,sky_vec,khi2_vec,error_mat)
@@ -579,8 +587,8 @@ class ExposurePSF:
 
         # ADR in spaxels (nslice,nlens)
         self.n_ref = atmosphericIndex(self.lbda_ref)
-        self.ADR_coeff = (atmosphericIndex(self.l) - self.n_ref) * \
-                         206265 / self.spxSize
+        self.ADR_coeff = (self.n_ref - atmosphericIndex(self.l)) * \
+                         206265 / self.spxSize # l > l_ref <=> coeff > 0
 
     def comp(self, param, normed=False):
         """
@@ -800,11 +808,12 @@ if __name__ == "__main__":
 
     # Input datacube =========================================================
 
-    print_msg("Opening datacube %s" % opts.input, opts.verbosity, 0)
+    print "Opening datacube %s" % opts.input
     inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr.get('EFFTIME')
     airmass = inhdr.get('AIRMASS', 0.0)
+    parangle = inhdr.get('PARANG', 0.0)
     channel = inhdr.get('CHANNEL', 'Unknown')
     haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
     ellDeg   = opts.ellDeg
@@ -825,10 +834,9 @@ if __name__ == "__main__":
     else:                               # Short exposure
         psfFn = short_exposure_psf
 
-    print_msg("  Object: %s, Airmass: %.2f; Efftime: %.1fs [%s]" % \
-              (obj, airmass, efftime, psfFn.name), opts.verbosity, 0)
-    print_msg("  Channel: '%s', extracting slices: %s" % (channel,slices),
-              opts.verbosity, 0)
+    print "  Object: %s, Airmass: %.2f [%c]; Efftime: %.1fs [%s]" % \
+          (obj, airmass, haSign>0 and '+' or '-', efftime, psfFn.name)
+    print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
     cube   = pySNIFS.SNIFS_cube(opts.input, slices=slices)
     cube.x = cube.i - 7                 # From arcsec to spx
@@ -836,8 +844,7 @@ if __name__ == "__main__":
 
     print_msg("  Meta-slices before selection: %d " \
               "from %.2f to %.2f by %.2f A" % \
-              (len(cube.lbda), cube.lbda[0], cube.lbda[-1], cube.lstep),
-              opts.verbosity, 1)
+              (len(cube.lbda), cube.lbda[0], cube.lbda[-1], cube.lstep), 1)
 
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
@@ -847,16 +854,16 @@ if __name__ == "__main__":
 
     # Computing guess parameters from slice by slice 2D fit ==================
 
-    print_msg("Slice-by-slice 2D-fitting...", opts.verbosity, 0)
+    print "Slice-by-slice 2D-fitting..."
 
-    tmp = get_start(cube, psfFn, skyDeg=opts.skyDeg)
+    tmp = fit_slices(cube, psfFn, skyDeg=opts.skyDeg)
     (delta_vec,theta_vec,xc_vec,yc_vec,PA_vec,ell_vec, \
      alpha_vec,int_vec,sky_vec,khi2_vec,error_mat) = tmp
-    print_msg("", opts.verbosity, 1)
+    print_msg("", 1)
 
     # 3D model fitting =======================================================
     
-    print_msg("Datacube 3D-fitting...", opts.verbosity, 0)
+    print "Datacube 3D-fitting..."
 
     # Computing the initial guess for the 3D fitting from the results of the
     # slice by slice 2D fit
@@ -877,9 +884,16 @@ if __name__ == "__main__":
 
     polADR = pySNIFS.fit_poly(yc_vec[ind], 3, 1, xc_vec[ind])
     xc = xc_vec[ind][S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
-    yc = polADR(xc)    
-    delta = S.tan(S.arccos(1./airmass)) # ADR power
-    theta = S.arctan2(polADR(1),haSign) # ADR angle
+    yc = polADR(xc)
+    delta = S.tan(S.arccos(1./airmass)) # ADR power (>0)
+    theta = S.arctan2(haSign*polADR.coeffs[0],haSign) # ADR angle
+
+    print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
+              (lbda_ref,xc,yc), 1)
+    print_msg("  ADR guess: delta=%f, theta=%f rad=%.2f deg" % \
+              (delta, theta, theta/S.pi*180), 1)
+    print_msg("  Parallactic angle: keyword=%.2f deg, guess=%.2f deg" % \
+              (parangle, theta/S.pi*180+90), 1)
 
     # 2) Other parameters
     PA = S.median(PA_vec)
@@ -907,7 +921,7 @@ if __name__ == "__main__":
     p2 = S.ravel(sky_vec.T)
     b2 = ([[0.,None]] + [[None,None]]*(npar_sky-1)) * nslice 
 
-    print_msg("  Initial guess: %s" % p1[:npar_psf], opts.verbosity, 2)
+    print_msg("  Initial guess: %s" % p1[:npar_psf], 2)
 
     # Instanciating the model class
     func = [ '%s;%f,%f,%f,%f' % \
@@ -929,11 +943,18 @@ if __name__ == "__main__":
     #cov      = S.where(cov<0,0.,cov)    # YC: ???
     errorpar = S.sqrt(cov.diagonal())
 
-    print_msg("  Fit result: %s" % fitpar[:npar_psf], opts.verbosity, 2)
+    print_msg("  Fit result: %s" % fitpar[:npar_psf], 2)
+
+    print_msg("  Reference position [%.2fA]: %.2f x %.2f spx" % \
+              (lbda_ref,fitpar[2],fitpar[3]), 1)
+    print_msg("  ADR: delta=%f, theta=%f rad=%.2f deg" % \
+              (fitpar[0], fitpar[1], fitpar[1]/S.pi*180), 1)
+    print_msg("  Parallactic angle: keyword=%.2f deg, fit=%.2f deg" % \
+              (parangle, fitpar[1]/S.pi*180+90), 1)
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
-    print_msg("  Seeing estimate: %.2f'' FWHM" % seeing, opts.verbosity, 0)
+    print "  Seeing estimate: %.2f'' FWHM" % seeing
 
     # Computing final spectra for object and background ======================
 
@@ -945,14 +966,12 @@ if __name__ == "__main__":
         radius = opts.radius * seeing/2.355 # Aperture radius [arcsec]
         method = "%s r=%.1f sigma=%.2f''" % \
                  (opts.method, opts.radius, radius)
-    print_msg("Extracting the spectrum [method=%s]..." % method,
-              opts.verbosity, 0)
+    print "Extracting the spectrum [method=%s]..." % method
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
     print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
               (os.path.split(opts.input)[1], full_cube.nslice,
-               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens),
-              opts.verbosity, 0)
+               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
     psfCtes = [SpaxelSize,lbda_ref,alphaDeg,ellDeg]
     lbda,spec,var = extract_spec(full_cube, psfFn, psfCtes,
@@ -1001,8 +1020,7 @@ if __name__ == "__main__":
     # Create output graphics =================================================
 
     if opts.plot:
-        print_msg("Producing output figures [%s]..." % \
-                  opts.graph, opts.verbosity, 0)
+        print "Producing output figures [%s]..." % opts.graph
 
         import matplotlib
         if opts.graph=='png':
@@ -1028,7 +1046,7 @@ if __name__ == "__main__":
 
         # Plot of the star and sky spectra -----------------------------------
 
-        print_msg("Producing spectra plot %s..." % plot1, opts.verbosity, 1)
+        print_msg("Producing spectra plot %s..." % plot1, 1)
 
         fig1 = pylab.figure()
         axS = fig1.add_subplot(3, 1, 1)
@@ -1054,7 +1072,7 @@ if __name__ == "__main__":
 
         # Plot of the fit on each slice --------------------------------------
 
-        print_msg("Producing slice fit plot %s..." % plot2, opts.verbosity, 1)
+        print_msg("Producing slice fit plot %s..." % plot2, 1)
 
         ncol = S.floor(S.sqrt(nslice))
         nrow = S.ceil(nslice/float(ncol))
@@ -1079,7 +1097,7 @@ if __name__ == "__main__":
 
         # Plot of the fit on rows and columns sum ----------------------------
 
-        print_msg("Producing profile plot %s..." % plot3, opts.verbosity, 1)
+        print_msg("Producing profile plot %s..." % plot3, 1)
 
         # Creating a standard SNIFS cube with the adjusted data
         cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
@@ -1120,7 +1138,7 @@ if __name__ == "__main__":
 
         # Plot of the star center of gravity and adjusted center -------------
 
-        print_msg("Producing ADR plot %s..." % plot4, opts.verbosity, 1)
+        print_msg("Producing ADR plot %s..." % plot4, 1)
 
         xguess = xc + \
                  delta*psf_model.ADR_coeff[:,0]*S.cos(theta)
@@ -1178,8 +1196,7 @@ if __name__ == "__main__":
 
         # Plot of the other model parameters ---------------------------------
 
-        print_msg("Producing model parameter plot %s..." % plot6,
-                  opts.verbosity, 1)
+        print_msg("Producing model parameter plot %s..." % plot6, 1)
 
         guess_ell = eval_poly(polEll.coeffs[::-1], lbda_rel)
         fit_ell   = eval_poly(fitpar[5:6+ellDeg], lbda_rel)
@@ -1267,8 +1284,7 @@ if __name__ == "__main__":
 
         # Plot of the radial profile -----------------------------------------
 
-        print_msg("Producing radial profile plot %s..." % plot7,
-                  opts.verbosity, 1)
+        print_msg("Producing radial profile plot %s..." % plot7, 1)
 
         fig7 = pylab.figure()
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
@@ -1303,8 +1319,7 @@ if __name__ == "__main__":
 
         # Contour plot of each slice -----------------------------------------
 
-        print_msg("Producing PSF contour plot %s..." % plot8,
-                  opts.verbosity, 1)
+        print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
         fig8 = pylab.figure()
         fig8.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97,
@@ -1342,8 +1357,7 @@ if __name__ == "__main__":
 
         # Residuals of each slice --------------------------------------------
 
-        print_msg("Producing residuals plot %s..." % plot5,
-                  opts.verbosity, 1)
+        print_msg("Producing residuals plot %s..." % plot5, 1)
 
         fig5 = pylab.figure()
         fig5.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97,

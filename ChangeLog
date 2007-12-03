@@ -1,3 +1,10 @@
+2007-12-03  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (polyfit_clip): add a maximum
+	nb of iterations (could oscillate indefinitely between two
+	configurations). Definite (hopefully) estimate of ADR angle
+	theta (= parallactic angle - 90deg).
+
 2007-11-30  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: extrapolate signal outside
