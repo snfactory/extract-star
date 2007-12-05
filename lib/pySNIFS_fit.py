@@ -707,18 +707,17 @@ class model:
         i = 0
         for f in self.func:
             deriv = -2*val1 * f.deriv(param[i:i+f.npar])
-            if f.npar_cor != 0:
-                temp = S.sum(deriv[0:f.npar_cor],2)
-                val2[i:i+f.npar_cor] = S.sum(temp,1)
+            if f.npar_cor != 0:         # Sum over all axes except 0
+                val2[i:i+f.npar_cor] = S.sum(S.sum(deriv[0:f.npar_cor],axis=2),
+                                             axis=1)
             for n in range(f.npar_ind):
                 val2[i+f.npar_cor+n*self.data.nslice:
                      i+f.npar_cor+(n+1)*self.data.nslice] = \
                      S.sum(deriv[n+f.npar_cor],axis=1)
             i=i+f.npar
         return val2
-   
 
-    def check_grad(self, eps=1e-3, param=None):
+    def check_grad(self, param=None, eps=1e-6):
         """ Check the gradient of the objective function at the current
         parameters stored in the field flatparam."""
         if param is None:
@@ -756,7 +755,7 @@ class model:
         if save:
             self.flatparam = S.array(self.fitpar,'d')
         self.khi2 = self.objfun(param=res) / \
-                    (self.data.nlens*self.data.nslice + S.size(self.flatparam))
+                    (self.data.nlens*self.data.nslice - S.size(self.flatparam))
 
         
     def param_error(self,param=None):
@@ -772,10 +771,6 @@ class model:
         except:
             return numpy.zeros((len(param),len(param)),'d')
  
-    def flat_param(self,param=None):
-        param = S.array(S.cast['f'](param),shape=S.size(param)).tolist()
-        return param
-
     def unflat_param(self,param):
         if S.size(param) != S.size(self.param):
             raise ValueError, "Parameter list does not have the right size."

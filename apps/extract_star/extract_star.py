@@ -531,9 +531,9 @@ def fill_header(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
     hdr.update('ES_CUBE' ,cubename,'Input cube')
     hdr.update('ES_LREF' ,lbda_ref,'Lambda ref. [A]')
     hdr.update('ES_SDEG' ,skyDeg,  'Polynomial bkgnd degree')
-    hdr.update('ES_KHI2' ,khi2,    'khi2')    
+    hdr.update('ES_KHI2' ,khi2,    'Reduced khi2 of meta-fit')    
     hdr.update('ES_DELTA',param[0],'ADR power')
-    hdr.update('ES_THETA',param[1],'ADR angle')
+    hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
     hdr.update('ES_XC'   ,param[2],'xc @lbdaRef [spx]')
     hdr.update('ES_YC'   ,param[3],'yc @lbdaRef [spx]')
     hdr.update('ES_PA'   ,param[4],'Position angle')
@@ -616,8 +616,8 @@ class ExposurePSF:
         theta = self.param[1]
         xc    = self.param[2]
         yc    = self.param[3]
-        x0 = xc + delta*self.ADR_coeff*S.cos(theta) # nslice,nlens
-        y0 = yc + delta*self.ADR_coeff*S.sin(theta)
+        x0 = xc + delta*self.ADR_coeff*S.sin(theta) # nslice,nlens
+        y0 = yc - delta*self.ADR_coeff*S.cos(theta)
 
         # Other params
         PA          = self.param[4]
@@ -668,8 +668,8 @@ class ExposurePSF:
         yc    = self.param[3]
         costheta = S.cos(theta)
         sintheta = S.sin(theta)
-        x0 = xc + delta*self.ADR_coeff*costheta
-        y0 = yc + delta*self.ADR_coeff*sintheta
+        x0 = xc + delta*self.ADR_coeff*sintheta
+        y0 = yc - delta*self.ADR_coeff*costheta
         
         # Other params
         PA  = self.param[4]
@@ -689,23 +689,26 @@ class ExposurePSF:
         # Gaussian + Moffat
         dx = self.x - x0
         dy = self.y - y0
-        r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
+        dy2 = dy**2
+        r2 = dx**2 + ell*dy2 + 2*PA*dx*dy
         gaussian = S.exp(-r2/2/sigma**2)
         ea = 1 + r2/alpha**2
         moffat = ea**(-beta)
-        da0 = gaussian * ( e1 + eta*r2*s1/sigma**3 ) + \
-              moffat * ( -b1*S.log(ea) + 2*beta*r2/ea/alpha**3 )
+        j1 = eta/sigma**2
+        j2 = 2*beta/ea/alpha**2
+        da0 = gaussian * ( e1 + s1*r2*j1/sigma ) + \
+              moffat * ( -b1*S.log(ea) + r2*j2/alpha )
 
         # Derivatives
         grad = S.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
-        tmp = eta*gaussian/sigma**2 + 2*beta*moffat/ea/alpha**2
-        grad[2] = tmp*(    dx + PA*dy)  # dPSF/dxc
-        grad[3] = tmp*(ell*dy + PA*dx)  # dPSF/dyc
-        grad[0] =       self.ADR_coeff*(costheta*grad[2] + sintheta*grad[3])
-        grad[1] = delta*self.ADR_coeff*(costheta*grad[3] - sintheta*grad[2])
-        grad[4] = -tmp   * dx*dy
+        tmp = gaussian*j1 + moffat*j2
+        grad[2] = tmp*(    dx + PA*dy)  # dPSF/dx0
+        grad[3] = tmp*(ell*dy + PA*dx)  # dPSF/dy0
+        grad[0] =       self.ADR_coeff*(sintheta*grad[2] - costheta*grad[3])
+        grad[1] = delta*self.ADR_coeff*(sintheta*grad[3] + costheta*grad[2])
+        grad[4] = -tmp   * dx*dy        # dPSF/dPA
         for i in xrange(self.ellDeg + 1):
-            grad[5+i] = -tmp/2 * dy**2 * lbda_rel**i
+            grad[5+i] = -tmp/2 * dy2 * lbda_rel**i
         for i in xrange(self.alphaDeg + 1):
             grad[6+self.ellDeg+i] = da0 * lbda_rel**i
         grad[:self.npar_cor] *= self.param[S.newaxis,self.npar_cor:,S.newaxis]
@@ -813,7 +816,7 @@ if __name__ == "__main__":
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr.get('EFFTIME')
     airmass = inhdr.get('AIRMASS', 0.0)
-    parangle = inhdr.get('PARANG', 0.0)
+    parangle = inhdr.get('PARANG', S.NaN)
     channel = inhdr.get('CHANNEL', 'Unknown')
     haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
     ellDeg   = opts.ellDeg
@@ -886,14 +889,12 @@ if __name__ == "__main__":
     xc = xc_vec[ind][S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
     yc = polADR(xc)
     delta = S.tan(S.arccos(1./airmass)) # ADR power (>0)
-    theta = S.arctan2(haSign*polADR.coeffs[0],haSign) # ADR angle
+    theta = S.arctan2(haSign,-haSign*polADR.coeffs[0]) # ADR angle ~ parangle
 
     print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,xc,yc), 1)
-    print_msg("  ADR guess: delta=%f, theta=%f rad=%.2f deg" % \
-              (delta, theta, theta/S.pi*180), 1)
-    print_msg("  Parallactic angle: keyword=%.2f deg, guess=%.2f deg" % \
-              (parangle, theta/S.pi*180+90), 1)
+    print_msg("  ADR guess: delta=%f, theta=%.2f deg [parangle=%.2f deg]" % \
+              (delta, theta/S.pi*180, parangle), 1)
 
     # 2) Other parameters
     PA = S.median(PA_vec)
@@ -938,19 +939,16 @@ if __name__ == "__main__":
 
     # Storing result and guess parameters
     fitpar   = data_model.fitpar
-    khi2     = data_model.khi2
+    khi2     = data_model.khi2          # Reduced khi2 of meta-fit
     cov      = data_model.param_error(fitpar)
-    #cov      = S.where(cov<0,0.,cov)    # YC: ???
     errorpar = S.sqrt(cov.diagonal())
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], 2)
 
     print_msg("  Reference position [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,fitpar[2],fitpar[3]), 1)
-    print_msg("  ADR: delta=%f, theta=%f rad=%.2f deg" % \
-              (fitpar[0], fitpar[1], fitpar[1]/S.pi*180), 1)
-    print_msg("  Parallactic angle: keyword=%.2f deg, fit=%.2f deg" % \
-              (parangle, fitpar[1]/S.pi*180+90), 1)
+    print_msg("  ADR: delta=%f, theta=%.2f deg [parangle=%.2f deg]" % \
+              (fitpar[0], fitpar[1]/S.pi*180, parangle), 1)
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
@@ -1141,13 +1139,13 @@ if __name__ == "__main__":
         print_msg("Producing ADR plot %s..." % plot4, 1)
 
         xguess = xc + \
-                 delta*psf_model.ADR_coeff[:,0]*S.cos(theta)
-        yguess = yc + \
                  delta*psf_model.ADR_coeff[:,0]*S.sin(theta)
+        yguess = yc - \
+                 delta*psf_model.ADR_coeff[:,0]*S.cos(theta)
         xfit = fitpar[2] + \
-               fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
-        yfit = fitpar[3] + \
                fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
+        yfit = fitpar[3] - \
+               fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
 
         fig4 = pylab.figure()
         ax4a = fig4.add_subplot(2, 2, 1)

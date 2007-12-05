@@ -1,3 +1,12 @@
+2007-12-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* lib/pySNIFS_fit.py (model.fit): reduced khi2 is khi2/DoF with
+	DoF = N - P, N=nb of points, P=nb of parameters.
+	(model.flat_param()): removed (was not working anyway...).
+
+	* apps/extract_star/extract_star.py: ADR angle theta is now
+	equivalent to parallactic angle.
+
 2007-12-03  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (polyfit_clip): add a maximum
