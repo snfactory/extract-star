@@ -5,7 +5,7 @@
 ## Description:   pySNIFS setup script
 ## Author:        Yannick Copin <ycopin@ipnl.in2p3.fr>
 ## Created at:    Thu Apr 13 13:47:49 2006
-## Modified at:   Tue Oct 17 12:34:53 2006
+## Modified at:   Thu Dec 20 16:35:14 2007
 ## Modified by:   Yannick Copin <ycopin@ipnl.in2p3.fr>
 ######################################################################
 
@@ -14,7 +14,7 @@ from re import search
 import sys, os
 
 __author__ = '$Author$'
-__version__ = '$Name$'
+__version__ = '$Id$'
 
 if not hasattr(sys, 'version_info') or sys.version_info < (2,3,0,'alpha',0):
     raise SystemExit, "Python 2.3 or later required to build pySNIFS."
@@ -52,7 +52,7 @@ def main():
           author = "E. Pecontal",
           author_email = "pecontal@obs.univ-lyon1.fr",
           platforms = ["Linux"],
-          py_modules = ['pySNIFS', 'pySNIFS_fit'],
+          py_modules = ['pySNIFS', 'pySNIFS_fit', 'pySNIFS_plot'],
           package_dir={'':'lib'},
           scripts=[os.path.join('apps','extract_star','extract_star.py'),
                    os.path.join('apps','extract_star','extract_star_2.py')],

@@ -1,3 +1,9 @@
+2007-12-20  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* lib/pySNIFS.py:
+	* lib/pySNIFS_plot.py: pylab-related methods extracted from
+	pySNIFS.py.
+
 2007-12-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (model.fit): reduced khi2 is khi2/DoF with

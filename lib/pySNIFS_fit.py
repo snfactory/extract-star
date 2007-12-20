@@ -708,12 +708,12 @@ class model:
         for f in self.func:
             deriv = -2*val1 * f.deriv(param[i:i+f.npar])
             if f.npar_cor != 0:         # Sum over all axes except 0
-                val2[i:i+f.npar_cor] = S.sum(S.sum(deriv[0:f.npar_cor],axis=2),
-                                             axis=1)
+                val2[i:i+f.npar_cor] = \
+                     deriv[0:f.npar_cor].sum(axis=-1).sum(axis=-1)
             for n in range(f.npar_ind):
                 val2[i+f.npar_cor+n*self.data.nslice:
                      i+f.npar_cor+(n+1)*self.data.nslice] = \
-                     S.sum(deriv[n+f.npar_cor],axis=1)
+                     deriv[n+f.npar_cor].sum(axis=1)
             i=i+f.npar
         return val2
 
