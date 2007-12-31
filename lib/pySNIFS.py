@@ -1133,16 +1133,14 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     hdulist = pyfits.open('tmp_hdu.fits')
     grp_hdu = hdulist[1]
     extra_hdu_list = hdulist[2:]
-
-    nspx,nslice = data_list.shape
     
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
-    spec_len = [nslice] * nspx
-    selected = [0] * nspx
-    group_n = [1] * nspx
-    nspax = [1] * nspx
-    spax_id = [' '] * nspx
+    spec_len = [len(s) for s in data_list]
+    selected = [0 for i in num.arange(len(data_list))]
+    group_n = [1 for i in num.arange(len(data_list))]
+    nspax = [1 for i in num.arange(len(data_list))]
+    spax_id = [' ' for i in num.arange(len(data_list))]
     
     col_list = []
     col_list.append(pyfits.Column(name='SPEC_ID',format='J',array=no_list))
@@ -1155,21 +1153,15 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     col_list.append(pyfits.Column(name='GROUP_N',format='J',array=group_n))
     col_list.append(pyfits.Column(name='SPAX_ID',format='1A1',array=spax_id))
     if nslice==None:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='PE()',
-                                      array=data_list))
-        col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',
-                                      array=num.zeros(data_list.shape,dtype='int')))        
+        col_list.append(pyfits.Column(name='DATA_SPE',format='PE()',array=data_list))
+        col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',array=[[0 for i in d] for d in data_list]))
         if var_list != None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='PE()',
-                                          array=var_list))
+            col_list.append(pyfits.Column(name='STAT_SPE',format='PE()',array=var_list))
     else:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='%dE()'%nslice,
-                                      array=data_list))
-        col_list.append(pyfits.Column(name='QUAL_SPE',format='%dJ' % nslice,
-                                      array=num.zeros(data_list.shape,dtype='int')))
+        col_list.append(pyfits.Column(name='DATA_SPE',format='%dE()'%nslice,array=data_list))
+        col_list.append(pyfits.Column(name='QUAL_SPE',format='%dJ'%nslice,array=[[0 for i in d] for d in data_list]))
         if var_list != None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='%dE()'%nslice,
-                                          array=var_list))
+            col_list.append(pyfits.Column(name='STAT_SPE',format='%dE'%nslice,array=var_list))
         
     tb_hdu = pyfits.new_table(col_list)
     tb_hdu.header.update('CTYPES',' ')
