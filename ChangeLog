@@ -1,3 +1,8 @@
+2008-01-06  yannick.copin  <yannick.copin@laposte.net>
+
+	* apps/extract_star/extract_star.py (extract_spec): catch
+	L.LinAlgError about singular matrix.
+
 2007-12-20  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS.py:

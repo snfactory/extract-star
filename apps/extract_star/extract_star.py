@@ -176,7 +176,10 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     
     A = S.array([S.dot(xx.T, xx) for xx in X]) # nslice,npar+1,npar+1
     B = S.array([S.dot(xx.T, bb) for xx,bb in zip(X,b)]) # nslice,npar+1
-    C = S.array([L.inv(aa) for aa in A])  # nslice,npar+1,npar+1
+    try:
+        C = S.array([L.inv(aa) for aa in A])  # nslice,npar+1,npar+1
+    except L.LinAlgError:
+        raise L.LinAlgError("Singular matrix during spectrum extraction")
     # Spec & Var = nslice x Star,Sky,[slope_x...]
     Spec = S.array([S.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
     Var = S.array([S.diag(cc) for cc in C]) # nslice,npar+1
@@ -446,7 +449,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         xc_vec[i]    = model_star.fitpar[2]
         yc_vec[i]    = model_star.fitpar[3]
         PA_vec[i]    = model_star.fitpar[4]
-        ell_vec[i]   = model_star.fitpar[5]        
+        ell_vec[i]   = model_star.fitpar[5]
         alpha_vec[i] = model_star.fitpar[6]
         int_vec[i]   = model_star.fitpar[7]
         sky_vec[i]   = model_star.fitpar[8]
@@ -1367,7 +1370,8 @@ if __name__ == "__main__":
             fit  = cube_fit.slice2d(i, coord='p')
             res  = S.nan_to_num((data - fit)/S.sqrt(var))
             vmin,vmax = pylab.prctile(res, (3.,97.)) # Percentiles
-            ax.imshow(res, origin='lower', extent=extent, vmin=vmin, vmax=vmax)
+            ax.imshow(res, origin='lower', extent=extent,
+                      vmin=vmin, vmax=vmax, interpolation='nearest')
             ax.plot((xfit[i],),(yfit[i],), 'k+')
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
