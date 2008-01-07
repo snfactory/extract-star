@@ -1,3 +1,9 @@
+2008-01-07  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (fit_slices): Fit a 2D
+	polynomial of degree skyDeg on the edge pixels of a given cube
+	slice as guess of the slice by slice fit.
+
 2008-01-06  yannick.copin  <yannick.copin@laposte.net>
 
 	* apps/extract_star/extract_star.py (extract_spec): catch

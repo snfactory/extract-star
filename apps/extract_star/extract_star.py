@@ -383,13 +383,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         raise ValueError('The number of edge pixels should be less than 7')
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
-
+    centerSpx = ~skySpx
+    
     for i in xrange(nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
         cube_star.data = cube.data[i, S.newaxis]
         cube_star.var  = cube.var[i,  S.newaxis]
-        cube_sky.data  = cube.data[i, S.newaxis]
-        cube_sky.var   = cube.var[i,  S.newaxis]
+        cube_sky.data  = cube.data[i, S.newaxis].copy() # Will be modified latter on
+        cube_sky.var   = cube.var[i,  S.newaxis].copy()
         if opts.verbosity >= 1:
             sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
             sys.stdout.flush()
@@ -397,9 +398,22 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
         # Sky estimate (from FoV edge spx)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
+        if skyDeg!=0: 
+            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a given cube slice.        
+            cube_sky.var.T[centerSpx] = 0
+            model_sky = pySNIFS_fit.model(data=cube_sky,
+                                          func=['poly2D;%d' % skyDeg],
+                                          param=[[skyLev] + [0.]*(npar_sky-1)],
+                                          bounds=[[[0,None]] + [[None,None]]*(npar_sky-1)])
+            model_sky.fit()
+            cube_sky.data = model_sky.evalfit() # 1st background estimate
 
         # Guess parameters for the current slice
-        star_int = F.median_filter(cube_star.data[0] - skyLev, 3)
+        if skyDeg==0:
+            star_int = F.median_filter(cube_star.data[0] - skyLev, 3)
+        else:
+            star_int = F.median_filter(cube_star.data[0], 3)
+            star_int = S.absolute(star_int - cube_sky.data[0])
         imax = star_int.max()           # Intensity
         xc = S.average(cube_star.x, weights=star_int) # Centroid
         yc = S.average(cube_star.y, weights=star_int)
@@ -416,7 +430,10 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
               [0., None],               # ellipticity 
               [0., None],               # alpha > 0
               [0., None]]               # Intensity > 0
-        p2 = [skyLev] + [0.]*(npar_sky-1) # Guess: Background=constant (>0)
+        if skyDeg==0:
+            p2 = [skyLev]               # Guess: Background=constant (>0)
+        else:
+            p2 = model_sky.fitpar       # Use estimate from previous polynomial fit
         b2 = [[0,None]] + [[None,None]]*(npar_sky-1)
         print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]), 2)
 
@@ -440,8 +457,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
             errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
         else:
-            # Set error to 0 if alpha, intens. or ellipticity is 0. 
-            errorpar = S.zeros(9)
+            # Set error to 0 if alpha, intens. or ellipticity is 0.
+            if model_star.fitpar[5]==0:
+                print "WARNING : ellipticity of slice %i is 0.0 !" %i
+            elif model_star.fitpar[6]==0:
+                print "WARNING : alpha of slice %i is 0.0 !" %i
+            elif model_star.fitpar[7]==0:
+                print "WARNING : intensity of slice %i is 0.0 !" %i
+            errorpar = S.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
         delta_vec[i] = model_star.fitpar[0]
