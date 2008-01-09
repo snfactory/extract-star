@@ -1090,19 +1090,23 @@ def fit_poly(y,n,deg,x=None):
     old_l = 0
     l = len(y)
     while l != old_l:
+        
         old_l = len(y)
-        p = num.poly1d(num.polyfit(x,y,deg))
-        sigma = num.sqrt(num.median((p(x) - y)**2))
-        ind = num.abs(y-p(x)) < n*sigma
+        poly = num.poly1d(num.polyfit(x,y,deg))
+        sigma = num.sqrt(num.median((poly(x) - y)**2))
+        ind = num.abs(y-poly(x)) < n*sigma
         x = x[ind]
         y = y[ind]
         l = len(x)
+        if l<deg+1:
+            print "WARNING(pySNIFS.fit_poly) : not enough points to make a fit !"
+            break
         #y1 = compress(y<p(x)+n*sigma,y)
         #x1 = compress(y<p(x)+n*sigma,x)
         #y = compress(y1>p(x1)-n*sigma,y1)
         #x = compress(y1>p(x1)-n*sigma,x1)
         #l = len(y)      
-    return p
+    return poly
 
 def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,fits_file,data_header,grp_hdu,extra_hdu_list,nslice=None):
     """

@@ -1,3 +1,10 @@
+2008-01-09  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: Minor changes.
+
+	* lib/pySNIFS.py (fit_poly): Add a warning in fit_poly when number
+	of point is not sufficient to make a fit.
+
 2008-01-07  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (fit_slices): Fit a 2D

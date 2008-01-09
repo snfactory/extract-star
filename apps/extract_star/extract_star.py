@@ -399,7 +399,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         # Sky estimate (from FoV edge spx)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
         if skyDeg!=0: 
-            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a given cube slice.        
+            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a given cube slice.
             cube_sky.var.T[centerSpx] = 0
             model_sky = pySNIFS_fit.model(data=cube_sky,
                                           func=['poly2D;%d' % skyDeg],
@@ -924,8 +924,12 @@ if __name__ == "__main__":
 
     # 2) Other parameters
     PA = S.median(PA_vec)
-    polEll   = pySNIFS.fit_poly(ell_vec,  3,ellDeg,  lbda_rel)
-    polAlpha = pySNIFS.fit_poly(alpha_vec,3,alphaDeg,lbda_rel)
+    if (len(ell_vec[ind])<=ellDeg):
+        raise ValueError('Not enough points to determine Ellipticity initial guess')
+    polEll = pySNIFS.fit_poly(ell_vec[ind],3,ellDeg,lbda_rel[ind])
+    if (len(alpha_vec[ind])<=alphaDeg):
+        raise ValueError('Not enough points to determine Alpha initial guess')
+    polAlpha = pySNIFS.fit_poly(alpha_vec[ind],3,alphaDeg,lbda_rel[ind])
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(npar_psf+nslice)
