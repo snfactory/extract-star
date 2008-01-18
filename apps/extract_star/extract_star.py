@@ -160,7 +160,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
             n += 1                      # Finally: n = npar_sky + 1
 
     # Weighting
-    weight = S.sqrt(S.where(cube.var!=0, 1/cube.var, 0)) # nslice,nlens
+    weight = S.where(cube.var>0, 1/S.sqrt(cube.var), 0) # nslice,nlens
     X = (Z.T * weight.T).T              # nslice,nlens,npar+1
     b = weight*cube.data                # nslice,nlens
 
@@ -383,13 +383,12 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         raise ValueError('The number of edge pixels should be less than 7')
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
-    centerSpx = ~skySpx
     
     for i in xrange(nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
         cube_star.data = cube.data[i, S.newaxis]
         cube_star.var  = cube.var[i,  S.newaxis]
-        cube_sky.data  = cube.data[i, S.newaxis].copy() # Will be modified latter on
+        cube_sky.data  = cube.data[i, S.newaxis].copy() # To be modified
         cube_sky.var   = cube.var[i,  S.newaxis].copy()
         if opts.verbosity >= 1:
             sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
@@ -397,28 +396,29 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         print_msg("", 2)
 
         # Sky estimate (from FoV edge spx)
+        star_int = F.median_filter(cube_star.data[0], 3)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
-        if skyDeg!=0: 
-            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a given cube slice.
-            cube_sky.var.T[centerSpx] = 0
+        if skyDeg:
+            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
+            # given cube slice.
+            cube_sky.var.T[~skySpx] = 0 # Discard central spaxels
             model_sky = pySNIFS_fit.model(data=cube_sky,
                                           func=['poly2D;%d' % skyDeg],
                                           param=[[skyLev] + [0.]*(npar_sky-1)],
-                                          bounds=[[[0,None]] + [[None,None]]*(npar_sky-1)])
+                                          bounds=[[[0,None]] +
+                                                  [[None,None]]*(npar_sky-1)])
             model_sky.fit()
             cube_sky.data = model_sky.evalfit() # 1st background estimate
+            star_int -= cube_sky.data[0] # Subtract structured background estim.
+        else:
+            star_int -= skyLev          # Subtract sky level estimate
 
         # Guess parameters for the current slice
-        if skyDeg==0:
-            star_int = F.median_filter(cube_star.data[0] - skyLev, 3)
-        else:
-            star_int = F.median_filter(cube_star.data[0], 3)
-            star_int = S.absolute(star_int - cube_sky.data[0])
         imax = star_int.max()           # Intensity
-        xc = S.average(cube_star.x, weights=star_int) # Centroid
+        xc = S.average(cube_star.x, weights=star_int) # Centroid [spx]
         yc = S.average(cube_star.y, weights=star_int)
-        xc = S.clip(xc, -3.5,3.5)       # Put initial guess ~ in FoV
-        yc = S.clip(yc, -3.5,3.5)
+        xc = S.clip(xc, -7.5,7.5)       # Put initial guess ~ in FoV
+        yc = S.clip(yc, -7.5,7.5)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., 2.4, imax] # psf parameters
@@ -430,10 +430,10 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
               [0., None],               # ellipticity 
               [0., None],               # alpha > 0
               [0., None]]               # Intensity > 0
-        if skyDeg==0:
-            p2 = [skyLev]               # Guess: Background=constant (>0)
+        if skyDeg:
+            p2 = model_sky.fitpar       # Use estimate from prev. polynomial fit
         else:
-            p2 = model_sky.fitpar       # Use estimate from previous polynomial fit
+            p2 = [skyLev]               # Guess: Background=constant (>0)
         b2 = [[0,None]] + [[None,None]]*(npar_sky-1)
         print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]), 2)
 
@@ -459,11 +459,11 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         else:
             # Set error to 0 if alpha, intens. or ellipticity is 0.
             if model_star.fitpar[5]==0:
-                print "WARNING : ellipticity of slice %i is 0.0 !" %i
+                print "WARNING: ellipticity of metaslice %d is null" % (i+1)
             elif model_star.fitpar[6]==0:
-                print "WARNING : alpha of slice %i is 0.0 !" %i
+                print "WARNING: alpha of metaslice %d is null" % (i+1)
             elif model_star.fitpar[7]==0:
-                print "WARNING : intensity of slice %i is 0.0 !" %i
+                print "WARNING: intensity of metaslice %d is null" % (i+1)
             errorpar = S.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
@@ -491,7 +491,7 @@ def create_log_file(filename,delta,theta,xc,yc,PA,ell,alpha,
             if param[i]>0:
                 return '  '+str(param[i])[:j]+' '
             elif param[i]==0:
-                return '  '+'0.000'+' '
+                return '  0.000 '
             else:
                 return '  '+str(param[i])[:j]+' '
 
@@ -863,8 +863,14 @@ if __name__ == "__main__":
     else:                               # Short exposure
         psfFn = short_exposure_psf
 
+    full_cube = pySNIFS.SNIFS_cube(opts.input)
+    print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
+              (os.path.split(opts.input)[1], full_cube.nslice,
+               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
+
     print "  Object: %s, Airmass: %.2f [%c]; Efftime: %.1fs [%s]" % \
           (obj, airmass, haSign>0 and '+' or '-', efftime, psfFn.name)
+
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
     cube   = pySNIFS.SNIFS_cube(opts.input, slices=slices)
@@ -909,7 +915,7 @@ if __name__ == "__main__":
         print "%d/%d centroid positions discarded from ADR initial guess" % \
               (len(xc_vec[-ind]),nslice)
         if (len(xc_vec[ind])<=1):
-            raise ValueError('Not enough points to determine ADR initial guess')
+            raise ValueError('Not enough points for ADR initial guess')
 
     polADR = pySNIFS.fit_poly(yc_vec[ind], 3, 1, xc_vec[ind])
     xc = xc_vec[ind][S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
@@ -925,10 +931,10 @@ if __name__ == "__main__":
     # 2) Other parameters
     PA = S.median(PA_vec)
     if (len(ell_vec[ind])<=ellDeg):
-        raise ValueError('Not enough points to determine Ellipticity initial guess')
+        raise ValueError('Not enough points for ellipticity initial guess')
     polEll = pySNIFS.fit_poly(ell_vec[ind],3,ellDeg,lbda_rel[ind])
     if (len(alpha_vec[ind])<=alphaDeg):
-        raise ValueError('Not enough points to determine Alpha initial guess')
+        raise ValueError('Not enough points for alpha initial guess')
     polAlpha = pySNIFS.fit_poly(alpha_vec[ind],3,alphaDeg,lbda_rel[ind])
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
@@ -995,11 +1001,6 @@ if __name__ == "__main__":
         method = "%s r=%.1f sigma=%.2f''" % \
                  (opts.method, opts.radius, radius)
     print "Extracting the spectrum [method=%s]..." % method
-
-    full_cube = pySNIFS.SNIFS_cube(opts.input)
-    print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
-              (os.path.split(opts.input)[1], full_cube.nslice,
-               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
     psfCtes = [SpaxelSize,lbda_ref,alphaDeg,ellDeg]
     lbda,spec,var = extract_spec(full_cube, psfFn, psfCtes,

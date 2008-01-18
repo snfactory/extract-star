@@ -452,6 +452,9 @@ class SNIFS_cube:
     """
     SNIFS datacube class.
     """
+
+    spxSize = 0.43                      # Spx size in arcsec
+    
     def __init__(self,e3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20,nodata=False):
         """
         Initiating the class.
@@ -580,13 +583,22 @@ class SNIFS_cube:
             
             self.x = e3d_cube[1].data.field('XPOS')
             self.y = e3d_cube[1].data.field('YPOS')
-            self.no = e3d_cube[1].data.field('spec_id')
-            # We read in the extension table the I and J index of the lenslets. As the extension table may have
-            # a different number of lenslets than the data table, we first search the index of the common
-            # lenslets.
-            ind = [e3d_cube[3].data.field('NO').tolist().index(i) for i in e3d_cube[1].data.field('spec_id')]
-            self.i = e3d_cube[3].data.field('I')[ind]+7
-            self.j = e3d_cube[3].data.field('J')[ind]+7
+            self.no = e3d_cube[1].data.field('SPEC_ID')
+            # We read in the extension table the I and J index of the
+            # lenslets. As the extension table may have a different number of
+            # lenslets than the data table, we first search the index of the
+            # common lenslets.
+            if len(e3d_cube)>3 and e3d_cube[3].name=='TIGERTBL':
+                nos = e3d_cube[3].data.field('NO').tolist()
+                ind = [ nos.index(i)
+                        for i in e3d_cube[1].data.field('SPEC_ID') ]
+                self.i = e3d_cube[3].data.field('I')[ind] + 7
+                self.j = e3d_cube[3].data.field('J')[ind] + 7
+            else:
+                # There's no native I,J spx coords, compute them from arcsec
+                # coords X,Y
+                self.i = num.round(self.x / self.spxSize).astype('i') + 7
+                self.j = num.round(self.y / self.spxSize).astype('i') + 7
             if not num_array:
                 if not nodata:
                     self.data = num.array(self.data,'f')
@@ -619,8 +631,8 @@ class SNIFS_cube:
             else:
                 self.nslice = len(lbda)
                 data = num.zeros((self.nslice,self.nlens),float64) 
-                x = num.array(((num.arange(15)-7)*0.43).tolist()*15)
-                y = num.repeat((7-num.arange(15))*0.43,15)
+                x = num.array(((num.arange(15)-7)*self.spxSize).tolist()*15)
+                y = num.repeat((7-num.arange(15))*self.spxSize,15)
                 i = num.array((num.arange(15)).tolist()*15)
                 j = num.repeat((14-num.arange(15)),15)
                 no = num.ravel(num.transpose(num.reshape(num.arange(self.nlens)+1,(15,15)))) 
@@ -1157,15 +1169,21 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     col_list.append(pyfits.Column(name='GROUP_N',format='J',array=group_n))
     col_list.append(pyfits.Column(name='SPAX_ID',format='1A1',array=spax_id))
     if nslice==None:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='PE()',array=data_list))
-        col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',array=[[0 for i in d] for d in data_list]))
+        col_list.append(pyfits.Column(name='DATA_SPE',format='PE()',
+                                      array=data_list))
+        col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',
+                                      array=[[0 for i in d] for d in data_list]))
         if var_list != None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='PE()',array=var_list))
+            col_list.append(pyfits.Column(name='STAT_SPE',format='PE()',
+                                          array=var_list))
     else:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='%dE()'%nslice,array=data_list))
-        col_list.append(pyfits.Column(name='QUAL_SPE',format='%dJ'%nslice,array=[[0 for i in d] for d in data_list]))
+        col_list.append(pyfits.Column(name='DATA_SPE',format='%dE()'%nslice,
+                                      array=data_list))
+        col_list.append(pyfits.Column(name='QUAL_SPE',format='%dJ'%nslice,
+                                      array=[[0 for i in d] for d in data_list]))
         if var_list != None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='%dE'%nslice,array=var_list))
+            col_list.append(pyfits.Column(name='STAT_SPE',format='%dE()'%nslice,
+                                          array=var_list))
         
     tb_hdu = pyfits.new_table(col_list)
     tb_hdu.header.update('CTYPES',' ')
