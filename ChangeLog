@@ -1,4 +1,4 @@
-2008-01-18  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+2008-01-23  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS.py (SNIFS_cube.__init__): debug i,j spx coords
 	computed from arcsec coords x,y.

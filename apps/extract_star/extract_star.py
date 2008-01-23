@@ -37,6 +37,7 @@ def print_msg(str, limit):
     if opts.verbosity >= limit:
         print str
 
+
 def atmosphericIndex(lbda, P=616, T=2):
     """Compute atmospheric refractive index: lbda in angstrom, P
     in mbar, T in C, RH in %.
@@ -60,6 +61,7 @@ def atmosphericIndex(lbda, P=616, T=2):
         ( 720.883*(1 + 0.003661*T) )
     
     return n
+
 
 def eval_poly(coeffs, x):
     """Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention for
@@ -86,6 +88,7 @@ def laplace_filtering(cube, eps=1e-4):
 
     return (S.absolute(lapl) <= threshold)
 
+
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
     polynomial coeffs w/ same convention as S.polyfit: [cn,...,c1,c0]."""
@@ -109,6 +112,7 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
             raise ValueError
 
     return coeffs
+
 
 def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
                  method='psf', radius=5.):
@@ -344,6 +348,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
 
 def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
+    """Fit (meta)slices of (meta)cube using PSF psf_fn and a background of
+    polynomial degree skyDeg."""
     
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
     npar_psf = 7                        # Number of parameters of the psf
@@ -483,6 +489,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     return (delta_vec,theta_vec,xc_vec,yc_vec,PA_vec,ell_vec,
             alpha_vec,int_vec,sky_vec,khi2_vec,error_mat)
 
+
 def create_log_file(filename,delta,theta,xc,yc,PA,ell,alpha,
                     khi2,khi3D,model,nslice):
 
@@ -526,6 +533,7 @@ def create_log_file(filename,delta,theta,xc,yc,PA,ell,alpha,
                   +'\n')
     logfile.close()
 
+
 def build_sky_cube(cube, sky, sky_var, skyDeg):
 
     nslices  = len(sky)
@@ -549,6 +557,7 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
 
     return bkg_cube,bkg_spec
 
+
 def fill_header(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
                 ellDeg, method, radius, seeing):
     """Fill header hdr with fit-related keywords."""
@@ -571,6 +580,7 @@ def fill_header(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
     if method != 'psf':
         hdr.update('ES_APRAD', radius, 'Aperture radius [sigma]')
     hdr.update('SEEING', seeing, 'Seeing [arcsec]')
+
 
 # PSF classes ================================================================
 
@@ -767,15 +777,18 @@ class ExposurePSF:
 
         return fwhm                     # In spaxels
 
+
 class long_exposure_psf(ExposurePSF): 
 
     name = 'long'
     corrCoeffs = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
 
+
 class short_exposure_psf(ExposurePSF):
 
     name = 'short'
     corrCoeffs = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
+
 
 # ########## MAIN ##############################
 
@@ -844,7 +857,8 @@ if __name__ == "__main__":
     airmass = inhdr.get('AIRMASS', 0.0)
     parangle = inhdr.get('PARANG', S.NaN)
     channel = inhdr.get('CHANNEL', 'Unknown')
-    haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
+    HA = inhdr.get('HA', 'unknown')
+    haSign = HA[0]=='-' and -1 or +1    # HA sign
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
     npar_psf  = 7 + ellDeg + alphaDeg
@@ -868,8 +882,8 @@ if __name__ == "__main__":
               (os.path.split(opts.input)[1], full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
-    print "  Object: %s, Airmass: %.2f [%c]; Efftime: %.1fs [%s]" % \
-          (obj, airmass, haSign>0 and '+' or '-', efftime, psfFn.name)
+    print "  Object: %s, Airmass: %.2f [%s]; Efftime: %.1fs [%s]" % \
+          (obj, airmass, HA, efftime, psfFn.name)
 
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
@@ -917,12 +931,14 @@ if __name__ == "__main__":
         if (len(xc_vec[ind])<=1):
             raise ValueError('Not enough points for ADR initial guess')
 
-    polADR = pySNIFS.fit_poly(yc_vec[ind], 3, 1, xc_vec[ind])
+    polADR = polyfit_clip(xc_vec[ind], yc_vec[ind], 1, clip=3)
     xc = xc_vec[ind][S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
-    yc = polADR(xc)
+    yc = S.polyval(polADR, xc)
     delta = S.tan(S.arccos(1./airmass)) # ADR power (>0)
-    theta = S.arctan2(haSign,-haSign*polADR.coeffs[0]) # ADR angle ~ parangle
-
+    # May be wrong when HA~0
+    theta = S.arctan2(haSign,-haSign*polADR[0]) # ADR angle ~ parangle
+    if not S.isnan(parangle):           # Use PARANGLE keyword if available
+        theta,parangle = parangle/180.*S.pi,theta/S.pi*180
     print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,xc,yc), 1)
     print_msg("  ADR guess: delta=%f, theta=%.2f deg [parangle=%.2f deg]" % \
@@ -960,18 +976,14 @@ if __name__ == "__main__":
 
     print_msg("  Initial guess: %s" % p1[:npar_psf], 2)
 
-    # Instanciating the model class
+    # Instanciating the model class and perform the fit
     func = [ '%s;%f,%f,%f,%f' % \
              (psfFn.name,SpaxelSize,lbda_ref,alphaDeg,ellDeg),
              'poly2D;%d' % opts.skyDeg ] # PSF + background
     data_model = pySNIFS_fit.model(data=cube, func=func,
                                    param=[p1,p2], bounds=[b1,b2],
                                    myfunc={psfFn.name:psfFn})
-
-    if opts.verbosity >= 3:
-        data_model.fit(maxfun=2000, save=True, msge=1)
-    else:
-        data_model.fit(maxfun=2000, save=True)
+    data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=3))
 
     # Storing result and guess parameters
     fitpar   = data_model.fitpar
