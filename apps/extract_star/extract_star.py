@@ -84,7 +84,7 @@ def laplace_filtering(cube, eps=1e-4):
     hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
                              Max=100, cumul=True)
     threshold = hist.x[S.argmax(S.where(hist.data<(1-eps), 0, 1))]
-    print_msg("Laplace filter threshold [eps=%.2f]: %f" % (eps,threshold), 2)
+    print_msg("Laplace filter threshold [eps=%g]: %.2f" % (eps,threshold), 2)
 
     return (S.absolute(lapl) <= threshold)
 
@@ -109,7 +109,8 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
                       (deg, clip, S.std(dy), len((~old).nonzero()[0])), 2)
             break
         if y[good].size <= deg+1:
-            raise ValueError
+            raise ValueError("polyfit_clip: Not enough points left (%d) " \
+                             "for degree %d" % (y[good].size,deg))
 
     return coeffs
 
@@ -351,8 +352,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     """Fit (meta)slices of (meta)cube using PSF psf_fn and a background of
     polynomial degree skyDeg."""
     
-    npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
     npar_psf = 7                        # Number of parameters of the psf
+    npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
 
     cube_sky = pySNIFS.SNIFS_cube()
     cube_sky.x = cube.x 
@@ -370,34 +371,24 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     cube_star.nslice = 1
     cube_star.nlens = cube.nlens
 
-    nslice = cube.nslice
-
-    delta_vec = S.zeros(nslice, dtype='d')
-    theta_vec = S.zeros(nslice, dtype='d')
-    xc_vec    = S.zeros(nslice, dtype='d')
-    yc_vec    = S.zeros(nslice, dtype='d')
-    PA_vec    = S.zeros(nslice, dtype='d')    
-    ell_vec   = S.zeros(nslice, dtype='d')
-    alpha_vec = S.zeros(nslice, dtype='d')
-    int_vec   = S.zeros(nslice, dtype='d')
-    khi2_vec  = S.zeros(nslice, dtype='d')
-    sky_vec   = S.zeros((nslice,npar_sky), dtype='d')
     # PSF + Intensity + Bkgnd coeffs
-    error_mat = S.zeros((nslice,npar_psf+1+npar_sky), dtype='d')
+    param_arr = S.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
+    khi2_vec  = S.zeros(cube.nslice, dtype='d')
+    error_mat = S.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
     
     if nsky>7:                          # Nb of edge spx used for sky estimate
         raise ValueError('The number of edge pixels should be less than 7')
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
-    for i in xrange(nslice):
+    for i in xrange(cube.nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
         cube_star.data = cube.data[i, S.newaxis]
         cube_star.var  = cube.var[i,  S.newaxis]
         cube_sky.data  = cube.data[i, S.newaxis].copy() # To be modified
         cube_sky.var   = cube.var[i,  S.newaxis].copy()
         if opts.verbosity >= 1:
-            sys.stdout.write('\rSlice %2d/%d' % (i+1, nslice))
+            sys.stdout.write('\rSlice %2d/%d' % (i+1, cube.nslice))
             sys.stdout.flush()
         print_msg("", 2)
 
@@ -441,7 +432,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         else:
             p2 = [skyLev]               # Guess: Background=constant (>0)
         b2 = [[0,None]] + [[None,None]]*(npar_sky-1)
-        print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+[p2[0]]), 2)
+        print_msg("    Initial guess [PSF+bkgnd]: %s" % (p1+list(p2)), 2)
 
         # Instanciating of a model class
         func = ['%s;%f,%f,%f,%f' % \
@@ -470,24 +461,16 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 print "WARNING: alpha of metaslice %d is null" % (i+1)
             elif model_star.fitpar[7]==0:
                 print "WARNING: intensity of metaslice %d is null" % (i+1)
+            model_star.fitpar[2:4] = S.inf # Centroid to be discarded
             errorpar = S.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
-        delta_vec[i] = model_star.fitpar[0]
-        theta_vec[i] = model_star.fitpar[1]
-        xc_vec[i]    = model_star.fitpar[2]
-        yc_vec[i]    = model_star.fitpar[3]
-        PA_vec[i]    = model_star.fitpar[4]
-        ell_vec[i]   = model_star.fitpar[5]
-        alpha_vec[i] = model_star.fitpar[6]
-        int_vec[i]   = model_star.fitpar[7]
-        sky_vec[i]   = model_star.fitpar[8]
+        param_arr[i] = model_star.fitpar
         khi2_vec[i]  = model_star.khi2
         error_mat[i] = errorpar
         print_msg("    Fit result [PSF+bkgnd]: %s" % model_star.fitpar, 2)
 
-    return (delta_vec,theta_vec,xc_vec,yc_vec,PA_vec,ell_vec,
-            alpha_vec,int_vec,sky_vec,khi2_vec,error_mat)
+    return (param_arr,khi2_vec,error_mat)
 
 
 def create_log_file(filename,delta,theta,xc,yc,PA,ell,alpha,
@@ -857,11 +840,11 @@ if __name__ == "__main__":
     airmass = inhdr.get('AIRMASS', 0.0)
     parangle = inhdr.get('PARANG', S.NaN)
     channel = inhdr.get('CHANNEL', 'Unknown')
-    HA = inhdr.get('HA', 'unknown')
-    haSign = HA[0]=='-' and -1 or +1    # HA sign
+    haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
-    npar_psf  = 7 + ellDeg + alphaDeg
+    npar_psf = 7 + ellDeg + alphaDeg
+    npar_sky = int((opts.skyDeg+1)*(opts.skyDeg+2)/2)
 
     if channel.upper().startswith('B'):
         slices=[10, 900, 65]
@@ -882,8 +865,8 @@ if __name__ == "__main__":
               (os.path.split(opts.input)[1], full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
-    print "  Object: %s, Airmass: %.2f [%s]; Efftime: %.1fs [%s]" % \
-          (obj, airmass, HA, efftime, psfFn.name)
+    print "  Object: %s, Airmass: %.2f [%s], Efftime: %.1fs [%s]" % \
+          (obj, airmass, haSign<0 and '-' or '+', efftime, psfFn.name)
 
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
@@ -904,11 +887,15 @@ if __name__ == "__main__":
     # Computing guess parameters from slice by slice 2D fit ==================
 
     print "Slice-by-slice 2D-fitting..."
-
-    tmp = fit_slices(cube, psfFn, skyDeg=opts.skyDeg)
-    (delta_vec,theta_vec,xc_vec,yc_vec,PA_vec,ell_vec, \
-     alpha_vec,int_vec,sky_vec,khi2_vec,error_mat) = tmp
+    param_arr,khi2_vec,error_mat = fit_slices(cube, psfFn, skyDeg=opts.skyDeg)
     print_msg("", 1)
+
+    param_arr = param_arr.T             # (nparam,nslice)
+    delta_vec,theta_vec = param_arr[:2]
+    xc_vec,yc_vec       = param_arr[2:4]
+    PA_vec,ell_vec,alpha_vec = param_arr[4:7]
+    int_vec = param_arr[7]
+    sky_vec = param_arr[8:]
 
     # 3D model fitting =======================================================
     
@@ -916,7 +903,7 @@ if __name__ == "__main__":
 
     # Computing the initial guess for the 3D fitting from the results of the
     # slice by slice 2D fit
-    lbda_ref = cube.lbda.mean()
+    lbda_ref = 5000.               # Use constant lbda_ref for easy comparison
     nslice = cube.nslice
     lbda_rel = cube.lbda / lbda_ref - 1
     
@@ -945,7 +932,7 @@ if __name__ == "__main__":
               (delta, theta/S.pi*180, parangle), 1)
 
     # 2) Other parameters
-    PA = S.median(PA_vec)
+    PA = S.median(PA_vec[ind])
     if (len(ell_vec[ind])<=ellDeg):
         raise ValueError('Not enough points for ellipticity initial guess')
     polEll = pySNIFS.fit_poly(ell_vec[ind],3,ellDeg,lbda_rel[ind])
@@ -970,7 +957,6 @@ if __name__ == "__main__":
     b1 += [[0., None]] + [[None, None]]*alphaDeg # a0 > 0
     b1 += [[0., None]]*nslice            # Intensities
 
-    npar_sky = int((opts.skyDeg+1)*(opts.skyDeg+2)/2)
     p2 = S.ravel(sky_vec.T)
     b2 = ([[0.,None]] + [[None,None]]*(npar_sky-1)) * nslice 
 
