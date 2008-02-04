@@ -1,3 +1,8 @@
+2008-02-04  Clement Buton  <cbuton@lyopc387.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: Add new keywords and change
+	the log file.
+
 2008-01-28  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: debug initial guess for

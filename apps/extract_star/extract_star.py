@@ -23,6 +23,7 @@ import pySNIFS
 import pySNIFS_fit
 
 import scipy as S
+from scipy import stats
 from scipy import linalg as L
 from scipy import interpolate as I 
 from scipy.ndimage import filters as F
@@ -472,50 +473,62 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
     return (param_arr,khi2_vec,error_mat)
 
+def create_2D_log_file(filename,object,airmass,efftime,
+                       cube,param_arr,khi2,error_mat):
 
-def create_log_file(filename,delta,theta,xc,yc,PA,ell,alpha,
-                    khi2,khi3D,model,nslice):
-
-    def strParam(i,param,j=5):
-        if len(S.shape(param))==1:
-            if param[i]>0:
-                return '  '+str(param[i])[:j]+' '
-            elif param[i]==0:
-                return '  0.000 '
-            else:
-                return '  '+str(param[i])[:j]+' '
+    npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
+    
+    delta,theta  = param_arr[:2]
+    xc,yc        = param_arr[2:4]
+    PA,ell,alpha = param_arr[4:7]
+    int          = param_arr[-npar_sky-1]
+    sky          = param_arr[-npar_sky:]
 
     logfile = open(filename,'w')
-    logfile.write('extract_star.py: result file for %s\n\n' % \
-                  os.path.basename(opts.input))
-    logfile.write('slice    delta   theta    xc       yc     ell     PA    %s    khi2\n' % \
-                  ''.join(['  a%d    ' % i for i in S.arange(alphaDeg+1)]))
+    logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
+    logfile.write('# object  : %s   \n' % object)
+    logfile.write('# airmass : %.2f \n' % airmass)
+    logfile.write('# efftime : %.2f \n' % efftime)
+    
+    logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
+           xc +/- dxc              yc +/- dyc              PA +/- dPA\
+       %s%s        I +/- dI      %s      khi2\n' % \
+                  (''.join(['       e%i +/-d e%i       '\
+                            %(i,j) for i,j in zip(xrange(ellDeg+1),
+                                                  xrange(ellDeg+1))]),
+                   ''.join(['   alpha%i +/- dalpha%i   '\
+                            %(i,j) for i,j in zip(xrange(alphaDeg+1),
+                                                  xrange(alphaDeg+1))]),
+                   ''.join(['       sky%i +/- dsky%i   '\
+                            %(i,j) for i,j in zip(xrange(npar_sky),
+                                                  xrange(npar_sky))])))
 
-    for n,khi in enumerate(khi2):
-        logfile.write('%2s/%2s'%(n+1,nslice)+' :'\
-                      +strParam(n,delta)\
-                      +strParam(n,theta)\
-                      +strParam(n,xc)\
-                      +strParam(n,yc)\
-                      +strParam(n,ell)\
-                      +strParam(n,PA,)\
-                      +strParam(n,alpha)\
-                      +('  '+'0.000'+' ')*alphaDeg
-                      +'  '+str(khi)[:9]\
-                      +'\n')
-    logfile.write('\n\n'+'3Dfit :'\
-                  +strParam(0,model.fitpar)\
-                  +strParam(1,model.fitpar)\
-                  +strParam(2,model.fitpar)\
-                  +strParam(3,model.fitpar)\
-                  +strParam(4,model.fitpar)\
-                  +strParam(5,model.fitpar)\
-                  +''.join([ strParam(6+m,model.fitpar)
-                             for m in xrange(alphaDeg+1) ])\
-                  +'  '+str(khi3D)[:9]\
-                  +'\n')
+    str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
+    str += ' % 10.4e% 10.4e  % 10.4e% 10.4e '
+    str += ' % 10.4e% 10.4e ' * (ellDeg+1)
+    str += ' % 10.4e% 10.4e ' * (alphaDeg+1)
+    str += ' % 10.4e% 10.4e '            # Intensity      
+    str += ' % 10.4e% 10.4e ' * npar_sky # sky      
+    str += ' % 10.4e \n'                 # Khi2
+
+    for n in xrange(cube.nslice):
+
+        list2D  = [cube.lbda[n],
+                   delta[n], error_mat[n][0],
+                   theta[n], error_mat[n][1],
+                   xc[n]   , error_mat[n][2],
+                   yc[n]   , error_mat[n][3],
+                   PA[n]   , error_mat[n][4]]
+        list2D += [ell[n]  , error_mat[n][5]] + [0.,0.] * ellDeg
+        list2D += [alpha[n], error_mat[n][6]] + [0.,0.] * alphaDeg
+        list2D += [int[n], error_mat[n][-npar_sky-1]]
+        tmp = S.array((sky.T[n],error_mat[n][-npar_sky:]))
+        list2D += tmp.T.flatten().tolist()
+        list2D += [khi2[n]]
+
+        logfile.write(str % tuple(list2D))
+        
     logfile.close()
-
 
 def build_sky_cube(cube, sky, sky_var, skyDeg):
 
@@ -541,27 +554,30 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
     return bkg_cube,bkg_spec
 
 
-def fill_header(hdr, param, lbda_ref, cubename, skyDeg, khi2, alphaDeg,
-                ellDeg, method, radius, seeing):
+def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux, skew, kurt):   
     """Fill header hdr with fit-related keywords."""
     
     hdr.update('ES_VERS' ,__version__)
-    hdr.update('ES_CUBE' ,cubename,'Input cube')
-    hdr.update('ES_LREF' ,lbda_ref,'Lambda ref. [A]')
-    hdr.update('ES_SDEG' ,skyDeg,  'Polynomial bkgnd degree')
-    hdr.update('ES_KHI2' ,khi2,    'Reduced khi2 of meta-fit')    
-    hdr.update('ES_DELTA',param[0],'ADR power')
+    hdr.update('ES_CUBE' ,opts.input, 'Input cube')
+    hdr.update('ES_LREF' ,lbda_ref,   'Lambda ref. [A]')
+    hdr.update('ES_SDEG' ,opts.skyDeg,'Polynomial bkgnd degree')
+    hdr.update('ES_KHI2' ,khi2,       'Reduced khi2 of meta-fit')
+    hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
+    hdr.update('ES_SFLUX',sflux,      'Sum of the sky flux')
+    hdr.update('ES_SKEW' ,skew,       'Skewness of residuals')
+    hdr.update('ES_KURT' ,kurt,       'Kurtosis of residuals')
+    hdr.update('ES_DELTA',param[0],   'ADR power')
     hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
-    hdr.update('ES_XC'   ,param[2],'xc @lbdaRef [spx]')
-    hdr.update('ES_YC'   ,param[3],'yc @lbdaRef [spx]')
-    hdr.update('ES_PA'   ,param[4],'Position angle')
-    for i in xrange(ellDeg + 1):    
+    hdr.update('ES_XC'   ,param[2],   'xc @lbdaRef [spx]')
+    hdr.update('ES_YC'   ,param[3],   'yc @lbdaRef [spx]')
+    hdr.update('ES_PA'   ,param[4],   'Position angle')
+    for i in xrange(opts.ellDeg + 1):    
         hdr.update('ES_E%i' % i, param[5+i], 'Ellipticity coeff. e%d' % i)
-    for i in xrange(alphaDeg + 1):
-        hdr.update('ES_A%i' % i, param[6+ellDeg+i], 'Alpha coeff. a%d' % i)
-    hdr.update('ES_METH', method, 'Extraction method')
+    for i in xrange(opts.alphaDeg + 1):
+        hdr.update('ES_A%i' % i, param[6+opts.ellDeg+i], 'Alpha coeff. a%d' % i)
+    hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
-        hdr.update('ES_APRAD', radius, 'Aperture radius [sigma]')
+        hdr.update('ES_APRAD', opts.radius, 'Aperture radius [sigma]')
     hdr.update('SEEING', seeing, 'Seeing [arcsec]')
 
 
@@ -843,8 +859,9 @@ if __name__ == "__main__":
     haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
+    skyDeg   = opts.skyDeg
     npar_psf = 7 + ellDeg + alphaDeg
-    npar_sky = int((opts.skyDeg+1)*(opts.skyDeg+2)/2)
+    npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
 
     if channel.upper().startswith('B'):
         slices=[10, 900, 65]
@@ -896,6 +913,14 @@ if __name__ == "__main__":
     PA_vec,ell_vec,alpha_vec = param_arr[4:7]
     int_vec = param_arr[7]
     sky_vec = param_arr[8:]
+
+    # Save 2D adjusted parameter file ========================================
+    
+    if opts.file:
+        print "Producing 2D adjusted parameter file [%s]..." % opts.file
+        
+        create_2D_log_file(opts.file,obj,airmass,efftime,
+                           cube,param_arr,khi2_vec,error_mat)
 
     # 3D model fitting =======================================================
     
@@ -1005,20 +1030,11 @@ if __name__ == "__main__":
                                  fitpar[:npar_psf], skyDeg=opts.skyDeg,
                                  method=opts.method, radius=radius)
 
-    # Save star spectrum, update headers ==============================
-
-    fill_header(inhdr,fitpar[:npar_psf],lbda_ref,opts.input,opts.skyDeg,khi2,
-                alphaDeg, ellDeg, opts.method, opts.radius, seeing)
-    step = inhdr.get('CDELTS')
-    star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
-    star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
-    star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
-    star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
-
-    # Save sky spectrum/spectra ==============================================
-
+    # Compute background
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
+
+    step = inhdr.get('CDELTS')
 
     sky_spec_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=s,start=lbda[0],
                                                          step=step)
@@ -1031,18 +1047,56 @@ if __name__ == "__main__":
                                        opts.skyDeg)
     bkg_spec.data /= full_cube.nlens
     bkg_spec.var  /= full_cube.nlens
+
+    # Creating a standard SNIFS cube with the adjusted data
+    cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
+    cube_fit.x = cube_fit.i - 7     # x in spaxel 
+    cube_fit.y = cube_fit.j - 7     # y in spaxel
     
+    psf_model = psfFn(psfCtes, cube=cube_fit)
+    bkg_model = pySNIFS_fit.poly2D(opts.skyDeg, cube_fit)
+    
+    psf = psf_model.comp(fitpar[:psf_model.npar])
+    bkg = bkg_model.comp(fitpar[psf_model.npar: \
+                                psf_model.npar+bkg_model.npar])
+    cube_fit.data =  psf + bkg
+    
+    # Skewness & kurtosis     
+    resAll = []
+    for i in xrange(nslice):        # Loop over meta-slices
+        resData = cube.slice2d(i, coord='p')
+        resVar  = cube.slice2d(i, coord='p', var=True)
+        resFit  = cube_fit.slice2d(i, coord='p')
+        res     = S.nan_to_num((resData - resFit)/S.sqrt(resVar))
+        resAll.append(res)
+    resAll = S.array(resAll).ravel()
+    
+    me = S.stats.mean(resAll)
+    st = S.stats.std(resAll)
+    sk = S.stats.skew(resAll).tolist()
+    ku = S.stats.kurtosis(resAll).tolist()
+
+    # Update header ==========================================================
+    
+    tflux = spec[:,0].sum()    # Sum of the total flux of the spectrum
+    sflux = bkg_spec.data.sum()     # Sum of the total flux of the sky
+        
+    fill_header(inhdr,fitpar[:npar_psf],lbda_ref,
+                opts,khi2,seeing,tflux,sflux,sk,ku)
+
+    # Save star spectrum =====================================================
+
+    star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
+    star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
+    star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
+    star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
+
+    # Save sky spectrum/spectra ==============================================
+
     sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
     sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
     sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
-
-    # Save adjusted parameter file ===========================================
-    
-    if opts.file:
-        create_log_file(opts.file, delta_vec,theta_vec,xc_vec,yc_vec,\
-                        ell_vec,PA_vec,alpha_vec,khi2_vec,khi2,\
-                        data_model, nslice)
 
     # Create output graphics =================================================
 
@@ -1126,19 +1180,6 @@ if __name__ == "__main__":
 
         print_msg("Producing profile plot %s..." % plot3, 1)
 
-        # Creating a standard SNIFS cube with the adjusted data
-        cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
-        cube_fit.x = cube_fit.i - 7     # x in spaxel 
-        cube_fit.y = cube_fit.j - 7     # y in spaxel
-
-        psf_model = psfFn(psfCtes, cube=cube_fit)
-        bkg_model = pySNIFS_fit.poly2D(opts.skyDeg, cube_fit)
-
-        psf = psf_model.comp(fitpar[:psf_model.npar])
-        bkg = bkg_model.comp(fitpar[psf_model.npar: \
-                                    psf_model.npar+bkg_model.npar])
-        cube_fit.data =  psf + bkg
-
         fig3 = pylab.figure()
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
         for i in xrange(nslice):        # Loop over slices
@@ -1167,14 +1208,10 @@ if __name__ == "__main__":
 
         print_msg("Producing ADR plot %s..." % plot4, 1)
 
-        xguess = xc + \
-                 delta*psf_model.ADR_coeff[:,0]*S.sin(theta)
-        yguess = yc - \
-                 delta*psf_model.ADR_coeff[:,0]*S.cos(theta)
-        xfit = fitpar[2] + \
-               fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
-        yfit = fitpar[3] - \
-               fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
+        xguess = xc + delta*psf_model.ADR_coeff[:,0]*S.sin(theta)
+        yguess = yc - delta*psf_model.ADR_coeff[:,0]*S.cos(theta)
+        xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
+        yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
 
         fig4 = pylab.figure()
         ax4a = fig4.add_subplot(2, 2, 1)
