@@ -41,7 +41,7 @@ def print_msg(str, limit):
 
 def atmosphericIndex(lbda, P=616, T=2):
     """Compute atmospheric refractive index: lbda in angstrom, P
-    in mbar, T in C, RH in %.
+    in mbar, T in C. Relative humidity effect is neglected.
 
     Cohen & Cromer 1988 (PASP, 100, 1582) give P = 456 mmHg = 608 mbar and T =
     2C for Mauna Kea. However, SNIFS observations show an average recorded
@@ -554,7 +554,7 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
     return bkg_cube,bkg_spec
 
 
-def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux, skew, kurt):   
+def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     """Fill header hdr with fit-related keywords."""
     
     hdr.update('ES_VERS' ,__version__)
@@ -564,8 +564,6 @@ def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux, skew, ku
     hdr.update('ES_KHI2' ,khi2,       'Reduced khi2 of meta-fit')
     hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
     hdr.update('ES_SFLUX',sflux,      'Sum of the sky flux')
-    hdr.update('ES_SKEW' ,skew,       'Skewness of residuals')
-    hdr.update('ES_KURT' ,kurt,       'Kurtosis of residuals')
     hdr.update('ES_DELTA',param[0],   'ADR power')
     hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
     hdr.update('ES_XC'   ,param[2],   'xc @lbdaRef [spx]')
@@ -621,8 +619,12 @@ class ExposurePSF:
         self.l = S.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
 
         # ADR in spaxels (nslice,nlens)
-        self.n_ref = atmosphericIndex(self.lbda_ref)
-        self.ADR_coeff = (self.n_ref - atmosphericIndex(self.l)) * \
+        P,T = 616.,2.            # Default values for pression and temperature
+        if hasattr(cube,'e3d_data_header'): # Read from a real cube if possible
+            P = cube.e3d_data_header.get('PRESSURE',P)
+            T = cube.e3d_data_header.get('TEMP',T)
+        self.n_ref = atmosphericIndex(self.lbda_ref, P=P, T=T)
+        self.ADR_coeff = (self.n_ref - atmosphericIndex(self.l, P=P, T=T)) * \
                          206265 / self.spxSize # l > l_ref <=> coeff > 0
 
     def comp(self, param, normed=False):
@@ -879,7 +881,7 @@ if __name__ == "__main__":
 
     full_cube = pySNIFS.SNIFS_cube(opts.input)
     print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
-              (os.path.split(opts.input)[1], full_cube.nslice,
+              (os.path.basename(opts.input), full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
     print "  Object: %s, Airmass: %.2f [%s], Efftime: %.1fs [%s]" % \
@@ -1061,28 +1063,12 @@ if __name__ == "__main__":
                                 psf_model.npar+bkg_model.npar])
     cube_fit.data =  psf + bkg
     
-    # Skewness & kurtosis     
-    resAll = []
-    for i in xrange(nslice):        # Loop over meta-slices
-        resData = cube.slice2d(i, coord='p')
-        resVar  = cube.slice2d(i, coord='p', var=True)
-        resFit  = cube_fit.slice2d(i, coord='p')
-        res     = S.nan_to_num((resData - resFit)/S.sqrt(resVar))
-        resAll.append(res)
-    resAll = S.array(resAll).ravel()
-    
-    me = S.stats.mean(resAll)
-    st = S.stats.std(resAll)
-    sk = S.stats.skew(resAll).tolist()
-    ku = S.stats.kurtosis(resAll).tolist()
-
     # Update header ==========================================================
     
     tflux = spec[:,0].sum()    # Sum of the total flux of the spectrum
     sflux = bkg_spec.data.sum()     # Sum of the total flux of the sky
         
-    fill_header(inhdr,fitpar[:npar_psf],lbda_ref,
-                opts,khi2,seeing,tflux,sflux,sk,ku)
+    fill_header(inhdr,fitpar[:npar_psf],lbda_ref,opts,khi2,seeing,tflux,sflux)
 
     # Save star spectrum =====================================================
 
@@ -1135,9 +1121,11 @@ if __name__ == "__main__":
         axN = fig1.add_subplot(3, 1, 3)
 
         axS.plot(star_spec.x, star_spec.data, 'b')
-        axS.set_title("Star spectrum [%s, %s]" % (obj,method))
+        axS.set_title("Point-source spectrum [%s, %s]" % (obj,method))
         axS.set_xlim(star_spec.x[0],star_spec.x[-1])
         axS.set_xticklabels([])
+        axS.text(0.95,0.8, os.path.basename(opts.input), fontsize='smaller',
+                 horizontalalignment='right', transform=axS.transAxes)
 
         axB.plot(bkg_spec.x, bkg_spec.data, 'g')
         axB.set_xlim(bkg_spec.x[0],bkg_spec.x[-1])

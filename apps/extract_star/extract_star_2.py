@@ -431,7 +431,7 @@ if __name__ == "__main__":
 ##         alpha_y = N.median(alpha_y_vec)
 ##         alpha = N.mean([alpha_x, alpha_y])
 
-    airmass = dict(cube.e3d_data_header)['AIRMASS']
+    airmass = cube.e3d_data_header['AIRMASS']
     
     alpha = N.tan(N.arccos(1./airmass))
     

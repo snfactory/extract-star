@@ -507,7 +507,7 @@ class SNIFS_cube:
             self.e3d_file = e3d_file
             # The header of the data extension is stored in a field of the
             # class
-            self.e3d_data_header = e3d_cube[1].header.items()
+            self.e3d_data_header = dict(e3d_cube[1].header.items())
             # The group definition HDU and the optional extensions HDU are
             # stored in fields of the class
             self.e3d_grp_hdu = e3d_cube[2]
@@ -1199,11 +1199,11 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     tb_hdu.header.update('EXTNAME','E3D_DATA')
 
     for desc in data_header:
-        if desc[0]!='XTENSION' and desc[0]!='BITPIX' and desc[0][0:5]!='NAXIS' and desc[0]!='GCOUNT' and \
-               desc[0]!='PCOUNT' and desc[0]!='TFIELDS' and desc[0]!='EXTNAME' and desc[0][0:5]!='TTYPE' and \
-               desc[0]!='TFORM' and desc[0]!='TUNIT' and desc[0]!='TDISP' and desc[0]!='CTYPES' and \
-               desc[0]!='CRVALS' and desc[0]!='CDELTS' and desc[0]!='CRPIXS':
-            tb_hdu.header.update(desc[0],desc[1])
+        if desc not in ('XTENSION','BITPIX','GCOUNT','PCOUNT','TFIELDS',
+                        'EXTNAME','TFORM','TUNIT','TDISP',
+                        'CTYPES','CRVALS','CDELTS','CRPIXS') and \
+                        desc[:5] not in ('NAXIS','TTYPE'):
+            tb_hdu.header.update(desc,data_header[desc])
 
     pri_hdu = pyfits.PrimaryHDU()
     pri_hdu.header.update('EURO3D',pyfits.TRUE)

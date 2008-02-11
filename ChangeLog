@@ -1,3 +1,11 @@
+2008-02-11  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (ExposurePSF.__init__): use
+	'PRESSURE' and 'TEMP' estimates from cube keywords.
+
+	* lib/pySNIFS.py (SNIFS_cube.__init__): self.e3d_data_header is
+	now a plain dictionary (instead of a list of items [(key,value)]).
+
 2008-02-04  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Add new keywords and change
