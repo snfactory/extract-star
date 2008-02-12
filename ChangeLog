@@ -1,3 +1,10 @@
+2008-02-13  yannick.copin  <yannick.copin@laposte.net>
+
+	* apps/extract_star/extract_star.py: new meta-slice selection
+	process from position at reference wavelength, updated graphics,
+	new option '--supernova' to fix ADR and position in 3D fit
+	(EXPERIMENTAL).
+
 2008-02-11  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (ExposurePSF.__init__): use

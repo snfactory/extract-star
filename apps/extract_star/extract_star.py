@@ -30,6 +30,73 @@ from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
 
+class ADR_model:
+
+    def __init__(self, pressure=616., temp=2., **kwargs):
+        """ADR_model(pressure, temp, [lref=, delta=, theta=])."""
+
+        self.P = pressure
+        self.T = temp
+        print_msg("ADR: P=%.0f mbar, T=%.0f C" % (self.P,self.T), 1)
+
+        if not 550<pressure<650:        # Non-std pressure
+            self.P = 616.
+            print "WARNING: non-std pressure reset to %.0f mbar" % self.P
+        if not -20<temp<20:             # Non-std temperature
+            self.T = 2.
+            print "WARNING: non-std temperature reset to %.0f C" % self.T
+        
+        if 'lref' in kwargs:
+            self.set_ref(lref=kwargs['lref'])
+        if 'delta' in kwargs and 'theta' in kwargs:
+            self.set_param(delta=kwargs['delta'],theta=kwargs['theta'])
+
+    def set_ref(self, lref=5000.):
+
+        self.lref = lref
+        self.nref = atmosphericIndex(self.lref, P=self.P, T=self.T)
+        print_msg("ADR: reference wavelength set to %.0fA" % self.lref, 1)
+
+    def set_param(self, delta, theta):
+
+        self.delta = delta
+        self.theta = theta
+        print_msg("ADR: delta=%.2f, theta=%.0f deg" % \
+                  (self.delta,self.theta/S.pi*180), 1)
+
+    def refract(self, x, y, lbda, backward=False):
+
+        if not hasattr(self, 'lref'):   # Reference wavelength
+            self.set_ref()
+            print "WARNING: setting ref. wavelength to %.0fA by default" % \
+                  (self.lref)
+
+        x0 = S.atleast_1d(x)            # (npos,)
+        y0 = S.atleast_1d(y)
+        assert len(x)==len(y), "Incompatible x and y vectors."
+        lbda = S.atleast_1d(lbda)       # (nlbda,)
+        npos = len(x)
+        nlbda = len(lbda)
+
+        dz = (self.nref - atmosphericIndex(lbda, P=self.P, T=self.T)) * \
+             206265. / SpaxelSize       # (nlbda,)
+        dz *= self.delta
+
+        if backward:
+            assert npos==nlbda, "Incompatible x,y and lbda vectors."
+            x = x0 - dz*S.sin(self.theta)
+            y = y0 + dz*S.cos(self.theta) # (nlbda=npos,)
+            out = S.vstack((x,y))       # (2,npos)
+        else:
+            dz = dz[:,S.newaxis]        # (nlbda,1)
+            x = x0 + dz*S.sin(self.theta) # (nlbda,npos)
+            y = y0 - dz*S.cos(self.theta) # (nlbda,npos)
+            out = S.dstack((x.T,y.T)).T # (2,nlbda,npos)
+            assert out.shape == (2,nlbda,npos), "ARGH"
+
+        return S.squeeze(out)
+
+
 # Definitions ================================================================
 
 def print_msg(str, limit):
@@ -39,7 +106,7 @@ def print_msg(str, limit):
         print str
 
 
-def atmosphericIndex(lbda, P=616, T=2):
+def atmosphericIndex(lbda, P=616., T=2.):
     """Compute atmospheric refractive index: lbda in angstrom, P
     in mbar, T in C. Relative humidity effect is neglected.
 
@@ -56,10 +123,9 @@ def atmosphericIndex(lbda, P=616, T=2):
     n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
 
     # (P,T) correction
-    P *= 0.75006168               # Convert P to mmHg: *= 760./1013.25
+    P *= 0.75006168                     # Convert P to mmHg: *= 760./1013.25
     n = 1 + (n-1) * P * \
-        ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / \
-        ( 720.883*(1 + 0.003661*T) )
+        ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
     
     return n
 
@@ -77,6 +143,7 @@ def eval_poly(coeffs, x):
         y = S.polyval(coeffs[::-1], x)  # Beware coeffs order!
         
     return y
+
 
 def laplace_filtering(cube, eps=1e-4):
 
@@ -420,14 +487,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., 2.4, imax] # psf parameters
-        b1 = [[None, None],             # delta
-              [None, None],             # theta
+        b1 = [[0, 0],                   # delta (unfitted)
+              [0, 0],                   # theta (unfitted)
               [None, None],             # xc
               [None, None],             # yc
               [None, None],             # PA              
-              [0., None],               # ellipticity 
-              [0., None],               # alpha > 0
-              [0., None]]               # Intensity > 0
+              [0, None],                # ellipticity > 0
+              [0, None],                # alpha > 0
+              [0, None]]                # Intensity > 0
         if skyDeg:
             p2 = model_sky.fitpar       # Use estimate from prev. polynomial fit
         else:
@@ -453,7 +520,15 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         if model_star.fitpar[5]>0 and \
                model_star.fitpar[6]>0 and model_star.fitpar[7]>0: 
             cov = S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
-            errorpar = S.concatenate(([0.,0.], S.sqrt(cov.diagonal())))
+            diag = cov.diagonal()
+            if (diag>0).all():
+                errorpar = S.concatenate(([0.,0.], S.sqrt(diag)))
+                # Shall we *= model_star.khi2
+                # (cf. http://www.asu.edu/sas/sasdoc/sashtml/stat/chap45/sect24.htm)
+            else:                       # Some negative diagonal elements!
+                print "WARNING: negative covariance diag. elements in metaslice %d" % (i+1)
+                model_star.fitpar[2:4] = S.nan # Centroid to be discarded
+                errorpar = S.zeros(len(error_mat.T))
         else:
             # Set error to 0 if alpha, intens. or ellipticity is 0.
             if model_star.fitpar[5]==0:
@@ -462,7 +537,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 print "WARNING: alpha of metaslice %d is null" % (i+1)
             elif model_star.fitpar[7]==0:
                 print "WARNING: intensity of metaslice %d is null" % (i+1)
-            model_star.fitpar[2:4] = S.inf # Centroid to be discarded
+            model_star.fitpar[2:4] = S.nan # Centroid to be discarded
             errorpar = S.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
@@ -493,15 +568,12 @@ def create_2D_log_file(filename,object,airmass,efftime,
     logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
            xc +/- dxc              yc +/- dyc              PA +/- dPA\
        %s%s        I +/- dI      %s      khi2\n' % \
-                  (''.join(['       e%i +/-d e%i       '\
-                            %(i,j) for i,j in zip(xrange(ellDeg+1),
-                                                  xrange(ellDeg+1))]),
-                   ''.join(['   alpha%i +/- dalpha%i   '\
-                            %(i,j) for i,j in zip(xrange(alphaDeg+1),
-                                                  xrange(alphaDeg+1))]),
-                   ''.join(['       sky%i +/- dsky%i   '\
-                            %(i,j) for i,j in zip(xrange(npar_sky),
-                                                  xrange(npar_sky))])))
+                  (''.join(['       e%i +/-d e%i       ' % i
+                            for i in xrange(ellDeg+1)]),
+                   ''.join(['   alpha%i +/- dalpha%i   ' % i
+                            for i in xrange(alphaDeg+1)]),
+                   ''.join(['       sky%i +/- dsky%i   ' % i
+                            for i in xrange(npar_sky)])))
 
     str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
     str += ' % 10.4e% 10.4e  % 10.4e% 10.4e '
@@ -512,7 +584,6 @@ def create_2D_log_file(filename,object,airmass,efftime,
     str += ' % 10.4e \n'                 # Khi2
 
     for n in xrange(cube.nslice):
-
         list2D  = [cube.lbda[n],
                    delta[n], error_mat[n][0],
                    theta[n], error_mat[n][1],
@@ -525,7 +596,6 @@ def create_2D_log_file(filename,object,airmass,efftime,
         tmp = S.array((sky.T[n],error_mat[n][-npar_sky:]))
         list2D += tmp.T.flatten().tolist()
         list2D += [khi2[n]]
-
         logfile.write(str % tuple(list2D))
         
     logfile.close()
@@ -568,6 +638,8 @@ def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
     hdr.update('ES_XC'   ,param[2],   'xc @lbdaRef [spx]')
     hdr.update('ES_YC'   ,param[3],   'yc @lbdaRef [spx]')
+    if opts.supernova:
+        hdr.update('ES_SNMOD',opts.supernova,'ADR and position fixed')
     hdr.update('ES_PA'   ,param[4],   'Position angle')
     for i in xrange(opts.ellDeg + 1):    
         hdr.update('ES_E%i' % i, param[5+i], 'Ellipticity coeff. e%d' % i)
@@ -576,7 +648,7 @@ def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
         hdr.update('ES_APRAD', opts.radius, 'Aperture radius [sigma]')
-    hdr.update('SEEING', seeing, 'Seeing [arcsec]')
+    hdr.update('SEEING', seeing, 'Seeing [arcsec] (extract_star)')
 
 
 # PSF classes ================================================================
@@ -619,13 +691,14 @@ class ExposurePSF:
         self.l = S.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
 
         # ADR in spaxels (nslice,nlens)
-        P,T = 616.,2.            # Default values for pression and temperature
+        pressure,temp = 616.,2.  # Default values for pression and temperature
         if hasattr(cube,'e3d_data_header'): # Read from a real cube if possible
-            P = cube.e3d_data_header.get('PRESSURE',P)
-            T = cube.e3d_data_header.get('TEMP',T)
-        self.n_ref = atmosphericIndex(self.lbda_ref, P=P, T=T)
-        self.ADR_coeff = (self.n_ref - atmosphericIndex(self.l, P=P, T=T)) * \
-                         206265 / self.spxSize # l > l_ref <=> coeff > 0
+            pressure = cube.e3d_data_header.get('PRESSURE',pressure)
+            temp     = cube.e3d_data_header.get('TEMP',temp)
+        self.n_ref = atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
+        self.ADR_coeff = ( self.n_ref - \
+                           atmosphericIndex(self.l, P=pressure, T=temp) ) * \
+                           206265 / self.spxSize # l > l_ref <=> coeff > 0
 
     def comp(self, param, normed=False):
         """
@@ -811,7 +884,7 @@ if __name__ == "__main__":
                       help="Output sky spectrum")
     parser.add_option("-S", "--skyDeg", type="int", dest="skyDeg",
                       help="Sky polynomial background degree [%default]",
-                      default=0 )
+                      default=0)
     parser.add_option("-A", "--alphaDeg", type="int",
                       help="Alpha polynomial degree [%default]",
                       default=2)
@@ -833,6 +906,8 @@ if __name__ == "__main__":
                       default=0)
     parser.add_option("-f", "--file", type="string",
                       help="Save file with the different parameters fitted.")
+    parser.add_option("--supernova", action='store_true',
+                      help="SN mode (ADR and position fixed).")
 
     opts,pars = parser.parse_args()
     if not opts.input or not opts.out or not opts.sky:
@@ -854,11 +929,12 @@ if __name__ == "__main__":
     print "Opening datacube %s" % opts.input
     inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
-    efftime = inhdr.get('EFFTIME')
-    airmass = inhdr.get('AIRMASS', 0.0)
-    parangle = inhdr.get('PARANG', S.NaN)
-    channel = inhdr.get('CHANNEL', 'Unknown')
-    haSign = inhdr.get('HA', '+')[0]=='-' and -1 or +1 # HA sign
+    efftime = inhdr['EFFTIME']
+    airmass = inhdr['AIRMASS']
+    parangle = inhdr['PARANG']
+    channel = inhdr['CHANNEL']
+    pressure = inhdr.get('PRESSURE', 616.)
+    temp = inhdr.get('TEMP', 2.)
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
     skyDeg   = opts.skyDeg
@@ -884,8 +960,8 @@ if __name__ == "__main__":
               (os.path.basename(opts.input), full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
-    print "  Object: %s, Airmass: %.2f [%s], Efftime: %.1fs [%s]" % \
-          (obj, airmass, haSign<0 and '-' or '+', efftime, psfFn.name)
+    print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
+          (obj, airmass, efftime, psfFn.name)
 
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
@@ -919,8 +995,7 @@ if __name__ == "__main__":
     # Save 2D adjusted parameter file ========================================
     
     if opts.file:
-        print "Producing 2D adjusted parameter file [%s]..." % opts.file
-        
+        print "Producing 2D adjusted parameter file [%s]..." % opts.file        
         create_2D_log_file(opts.file,obj,airmass,efftime,
                            cube,param_arr,khi2_vec,error_mat)
 
@@ -934,38 +1009,46 @@ if __name__ == "__main__":
     nslice = cube.nslice
     lbda_rel = cube.lbda / lbda_ref - 1
     
-    # the xc, yc vectors obtained from 2D fit are smoothed, then the
-    # position corresponding to the reference wavelength is read in the
-    # filtered vectors. Finally, the parameters theta and delta are
-    # determined from the xc, yc vectors.
-    ind = ( S.absolute(xc_vec)<7 ) & ( S.absolute(yc_vec)<7 )
-    if not ind.all():                   # Some centroids outside FoV
-        print "%d/%d centroid positions discarded from ADR initial guess" % \
-              (len(xc_vec[-ind]),nslice)
-        if (len(xc_vec[ind])<=1):
-            raise ValueError('Not enough points for ADR initial guess')
+    # 1) ADR parameters (from keywords)
+    delta=S.tan(S.arccos(1./airmass))   # ADR power
+    theta=parangle/180.*S.pi            # ADR angle [rad]
 
-    polADR = polyfit_clip(xc_vec[ind], yc_vec[ind], 1, clip=3)
-    xc = xc_vec[ind][S.argmin(S.absolute(cube.lbda[ind] / lbda_ref - 1))]
-    yc = S.polyval(polADR, xc)
-    delta = S.tan(S.arccos(1./airmass)) # ADR power (>0)
-    # May be wrong when HA~0
-    theta = S.arctan2(haSign,-haSign*polADR[0]) # ADR angle ~ parangle
-    if not S.isnan(parangle):           # Use PARANGLE keyword if available
-        theta,parangle = parangle/180.*S.pi,theta/S.pi*180
+    # 2) Reference position
+    # Convert meta-slice centroids to position at ref. lbda, and clip around
+    # median position
+    adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
+    xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
+    good = S.isfinite(xc_vec)            # Discard unfitted slices
+    x0,y0 = S.median(xref[good]),S.median(yref[good]) # Robust to outliers
+    r = S.hypot(xref - x0, yref - y0)
+    rmax = 5*S.median(r[good])          # Robust to outliers
+    good = r < rmax
+    print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % \
+              (len(xref[good]),len(xref),rmax,x0,y0), 1)
+    # dx,dy are sometimes null (when some cov. diagonal elements are <0)
+    #dx,dy = error_mat[:,2],error_mat[:,3]
+    #xc = S.average(xref[good], weights=1/dx[good]**2)
+    #yc = S.average(yref[good], weights=1/dy[good]**2)
+    xc,yc = xref[good].mean(),yref[good].mean()
+
+    if not good.all():                   # Some centroids outside FoV
+        print "%d/%d centroid positions discarded for initial guess" % \
+              (len(xc_vec[~good]),nslice)
+        if (len(xc_vec[good])<=max(alphaDeg+1,ellDeg+1)):
+            raise ValueError('Not enough points for initial guess')
     print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,xc,yc), 1)
-    print_msg("  ADR guess: delta=%f, theta=%.2f deg [parangle=%.2f deg]" % \
-              (delta, theta/S.pi*180, parangle), 1)
+    print_msg("  ADR guess: delta=%.2f, theta=%.0f deg" % \
+              (delta, theta/S.pi*180), 1)
 
     # 2) Other parameters
-    PA = S.median(PA_vec[ind])
-    if (len(ell_vec[ind])<=ellDeg):
+    PA = S.median(PA_vec[good])
+    if (len(ell_vec[good])<=ellDeg):
         raise ValueError('Not enough points for ellipticity initial guess')
-    polEll = pySNIFS.fit_poly(ell_vec[ind],3,ellDeg,lbda_rel[ind])
-    if (len(alpha_vec[ind])<=alphaDeg):
+    polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
+    if (len(alpha_vec[good])<=alphaDeg):
         raise ValueError('Not enough points for alpha initial guess')
-    polAlpha = pySNIFS.fit_poly(alpha_vec[ind],3,alphaDeg,lbda_rel[ind])
+    polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1 = [None]*(npar_psf+nslice)
@@ -974,18 +1057,25 @@ if __name__ == "__main__":
     p1[6+ellDeg:npar_psf] = polAlpha.coeffs[::-1]
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
-    b1 = [[None, None],                 # delta 
-          [None, None],                 # theta 
-          [None, None],                 # x0 
-          [None, None],                 # y0
-          [None, None]]                 # PA
-    
-    b1 += [[0., None]] + [[None, None]]*ellDeg # ell0 >0 
-    b1 += [[0., None]] + [[None, None]]*alphaDeg # a0 > 0
-    b1 += [[0., None]]*nslice            # Intensities
+    if opts.supernova:                  # Fix ADR and position
+        print "WARNING: supernova mode, ADR and position are not adjusted"
+        b1 = [[delta, delta],           # delta 
+              [theta, theta],           # theta 
+              [xc, xc],                 # x0 
+              [yc, yc]]                 # y0
+    else:
+        b1 = [[None, None],             # delta 
+              [None, None],             # theta 
+              [None, None],             # x0 
+              [None, None]]             # y0
+
+    b1 += [[None, None]]                # PA
+    b1 += [[0, None]] + [[None, None]]*ellDeg   # ell0 >0 
+    b1 += [[0, None]] + [[None, None]]*alphaDeg # a0 > 0
+    b1 += [[0, None]]*nslice            # Intensities
 
     p2 = S.ravel(sky_vec.T)
-    b2 = ([[0.,None]] + [[None,None]]*(npar_sky-1)) * nslice 
+    b2 = ([[0,None]] + [[None,None]]*(npar_sky-1)) * nslice 
 
     print_msg("  Initial guess: %s" % p1[:npar_psf], 2)
 
@@ -1006,10 +1096,10 @@ if __name__ == "__main__":
 
     print_msg("  Fit result: %s" % fitpar[:npar_psf], 2)
 
-    print_msg("  Reference position [%.2fA]: %.2f x %.2f spx" % \
+    print_msg("  Reference position fit [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,fitpar[2],fitpar[3]), 1)
-    print_msg("  ADR: delta=%f, theta=%.2f deg [parangle=%.2f deg]" % \
-              (fitpar[0], fitpar[1]/S.pi*180, parangle), 1)
+    print_msg("  ADR fit: delta=%.2f, theta=%.0f deg" % \
+              (fitpar[0], fitpar[1]/S.pi*180), 1)
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
@@ -1206,8 +1296,11 @@ if __name__ == "__main__":
         ax4b = fig4.add_subplot(2, 2, 2)
         ax4c = fig4.add_subplot(2, 1, 2, aspect='equal', adjustable='datalim')
 
-        ax4a.errorbar(cube.lbda, xc_vec,yerr=error_mat[:,2],
+        ax4a.errorbar(cube.lbda, xc_vec, yerr=error_mat[:,2],
                       fmt='b.',ecolor='b',label="Fit 2D")
+        if not good.all():
+            ax4a.plot(cube.lbda[~good],xc_vec[~good],'r.',
+                      label='_nolegend_')
         ax4a.plot(cube.lbda, xguess, 'k--', label="Guess 3D")
         ax4a.plot(cube.lbda, xfit, 'g', label="Fit 3D")
         ax4a.set_xlabel("Wavelength [A]")
@@ -1216,29 +1309,34 @@ if __name__ == "__main__":
         leg = ax4a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
 
-        ax4b.errorbar(cube.lbda, yc_vec,yerr=error_mat[:,3],fmt='b.',ecolor='b')
+        ax4b.errorbar(cube.lbda, yc_vec, yerr=error_mat[:,3],
+                      fmt='b.',ecolor='b')
+        if not good.all():
+            ax4b.plot(cube.lbda[~good],yc_vec[~good],'r.')
         ax4b.plot(cube.lbda, yfit, 'g')
         ax4b.plot(cube.lbda, yguess, 'k--')
         ax4b.set_xlabel("Wavelength [A]")
         ax4b.set_ylabel("Y center [spaxels]")
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
 
-        ax4c.errorbar(xc_vec, yc_vec,xerr=error_mat[:,2],yerr=error_mat[:,3],
+        ax4c.errorbar(xc_vec,yc_vec,xerr=error_mat[:,2],yerr=error_mat[:,3],
                       fmt=None, ecolor='g')
-        ax4c.scatter(xc_vec, yc_vec,c=cube.lbda[::-1],
+        ax4c.scatter(xc_vec,yc_vec,c=cube.lbda[::-1], faceted=True, 
                      cmap=matplotlib.cm.Spectral, zorder=3)
-        ax4c.plot(xguess, yguess, 'k--')
-        ax4c.plot(xfit, yfit, 'g')
+        # Plot position selection process
+        ax4c.plot(xref[~good],yref[~good],'r.') # Selected ref. positions
+        ax4c.plot(xref[good],yref[good],'b.') # Discarded ref. positions
+        ax4c.plot((x0,xc),(y0,yc),'k-')
+        ax4c.add_patch(matplotlib.patches.Circle((x0,y0),radius=rmax,
+                                                 ec='0.8',fc=None))
+        ax4c.plot(xguess, yguess, 'k--') # Guess ADR
+        ax4c.plot(xfit, yfit, 'g')      # Adjusted ADR
         ax4c.text(0.03, 0.85,
-                  r'$\rm{Guess:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
-                  r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
-                  r'\theta=%6.2f^\circ$' % \
+                  'Guess: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.0fdeg' % \
                   (xc, yc, delta, theta/S.pi*180),
                   transform=ax4c.transAxes)
         ax4c.text(0.03, 0.75,
-                  r'$\rm{Fit:}\hspace{0.5} x_{0}=%4.2f,\hspace{0.5} ' \
-                  r'y_{0}=%4.2f,\hspace{0.5} \delta=%5.2f,\hspace{0.5} ' \
-                  r'\theta=%6.2f^\circ$' % \
+                  'Fit: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.0fdeg' % \
                   (fitpar[2], fitpar[3], fitpar[0], fitpar[1]/S.pi*180),
                   transform=ax4c.transAxes)
         ax4c.set_xlabel("X center [spaxels]")
@@ -1258,80 +1356,75 @@ if __name__ == "__main__":
         def confidence_interval(lbda_rel, cov, index):
             return S.sqrt(eval_poly(cov.diagonal()[index], lbda_rel))
 
-        conf_PA    = confidence_interval(lbda_rel,cov,[4])
-        conf_ell   = confidence_interval(lbda_rel,cov, range(5,6+ellDeg))
-        conf_alpha = confidence_interval(lbda_rel,cov, range(6+ellDeg,npar_psf))
+        conf_ell   = confidence_interval(lbda_rel,cov,range(5,6+ellDeg))
+        conf_alpha = confidence_interval(lbda_rel,cov,range(6+ellDeg,npar_psf))
+        dPA = S.sqrt(cov.diagonal()[4])
 
         fig6 = pylab.figure()
         ax6a = fig6.add_subplot(2, 1, 1)
         ax6c = fig6.add_subplot(4, 1, 3)
         ax6d = fig6.add_subplot(4, 1, 4)
 
-        ax6a.errorbar(cube.lbda, alpha_vec,error_mat[:,6],
-                      fmt='b.', ecolor='blue', label="Fit 2D")
+        ax6a.errorbar(cube.lbda, alpha_vec, error_mat[:,6],
+                      fmt='b.', ecolor='b', label="Fit 2D")
+        if not good.all():
+            ax6a.plot(cube.lbda[~good],alpha_vec[~good],'r.',
+                      label="_nolegend_")
         ax6a.plot(cube.lbda, guess_alpha, 'k--', label="Guess 3D")
         ax6a.plot(cube.lbda, fit_alpha, 'g', label="Fit 3D")
         ax6a.plot(cube.lbda, fit_alpha + conf_alpha, 'g:', label='_nolegend_')
         ax6a.plot(cube.lbda, fit_alpha - conf_alpha, 'g:', label='_nolegend_')
-        ax6a.text(0.03, 0.8,
-                  r'$\rm{Guess:}\hspace{0.5} %s$' % \
-                  (','.join([ 'a_%d=%.2f' % (i,a) for i,a in
+        ax6a.text(0.03, 0.15,
+                  'Guess: %s' % \
+                  (', '.join([ 'a%d=%.2f' % (i,a) for i,a in
                               enumerate(polAlpha.coeffs[::-1]) ]) ),
                   transform=ax6a.transAxes, fontsize=11)
-        ax6a.text(0.03, 0.7,
-                  r'$\rm{Fit:}\hspace{0.5} %s$' % \
-                  (','.join(['a_%d=%.2f' % (i,a) for i,a in
+        ax6a.text(0.03, 0.05,
+                  'Fit: %s' % \
+                  (', '.join(['a%d=%.2f' % (i,a) for i,a in
                              enumerate(fitpar[6+ellDeg:npar_psf])])),
                   transform=ax6a.transAxes, fontsize=11)
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
-        ax6a.set_ylabel(r'$\alpha$')
+        ax6a.set_ylabel(r'Alpha [spx]')
         ax6a.set_xticklabels([])
         ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % \
                        (obj,seeing))
 
         ax6c.errorbar(cube.lbda, ell_vec,error_mat[:,5],
-                      fmt='b.', ecolor='blue',label='_nolegend_')
-        ax6c.plot(cube.lbda, guess_ell, 'k--',label='_nolegend_')
-        ax6c.plot(cube.lbda, fit_ell, 'g',label='_nolegend_')
-        ax6c.plot(cube.lbda, fit_ell + conf_ell, 'g:', label='_nolegend_')
-        ax6c.plot(cube.lbda, fit_ell - conf_ell, 'g:', label='_nolegend_')
+                      fmt='b.',ecolor='blue')
+        if not good.all():
+            ax6c.plot(cube.lbda[~good],ell_vec[~good],'r.')
+        ax6c.plot(cube.lbda, guess_ell, 'k--')
+        ax6c.plot(cube.lbda, fit_ell, 'g')
+        ax6c.plot(cube.lbda, fit_ell + conf_ell, 'g:')
+        ax6c.plot(cube.lbda, fit_ell - conf_ell, 'g:')
         ax6c.text(0.03, 0.3,
-                  r'$\rm{Guess:}\hspace{0.5} %s$' % \
-                  (','.join([ 'e_%d=%.2f' % (i,e)
+                  'Guess: %s' % \
+                  (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(polEll.coeffs[::-1]) ]) ),
                   transform=ax6c.transAxes, fontsize=11)
         ax6c.text(0.03, 0.1,
-                  r'$\rm{Fit:}\hspace{0.5} %s$' % \
-                  (','.join([ 'e_%d=%.2f' % (i,e)
+                  'Fit: %s' % \
+                  (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6c.transAxes, fontsize=11)        
-        ax6c.set_ylabel(r'$1/q^2$')
+        ax6c.set_ylabel(r'1/q^2')
         ax6c.set_xticklabels([])        
 
-        def plot_non_chromatic_param(ax, par_vec, lbda, guess_par, fitpar,
-                                     str_par, error_vec=None, confidence=None):
-            if error_vec is not None:
-                ax.errorbar(lbda, par_vec, error_vec, fmt='b.', ecolor='blue')
-            else:
-                ax.plot(lbda, par_vec, 'bo')
-            ax.axhline(guess_par, color='k', linestyle='--')
-            ax.axhline(fitpar, color='g', linestyle='-')
-            if confidence is not None:
-                ax.plot(lbda, fitpar+confidence, 'g:')
-                ax.plot(lbda, fitpar-confidence, 'g:')
-            ax.set_ylabel(r'$%s$' % (str_par))
-            ax.text(0.03, 0.2,
-                    r'$\rm{Guess:}\hspace{0.5} %s = %4.2f,\hspace{0.5} ' \
-                    r'\rm{Fit:}\hspace{0.5} %s = %4.2f$' % \
-                    (str_par, guess_par, str_par, fitpar),
-                    transform=ax.transAxes, fontsize=11)
-            pylab.setp(ax.get_yticklabels(), fontsize=8)
-
-        plot_non_chromatic_param(ax6d, PA_vec/S.pi*180, cube.lbda,
-                                 PA/S.pi*180, fitpar[4]/S.pi*180, 'PA',
-                                 error_vec=error_mat[:,4]/S.pi*180,
-                                 confidence=conf_PA)
+        ax6d.errorbar(cube.lbda, PA_vec/S.pi*180, error_mat[:,4]/S.pi*180,
+                      fmt='b.', ecolor='b')
+        if not good.all():
+            ax6d.plot(cube.lbda[~good],PA_vec[~good]/S.pi*180,'r.')
+        ax6d.axhline(PA/S.pi*180, color='k', linestyle='--')
+        ax6d.axhline(fitpar[4]/S.pi*180, color='g', linestyle='-')
+        ax6d.axhline((fitpar[4]+dPA)/S.pi*180, color='g', linestyle=':')
+        ax6d.axhline((fitpar[4]-dPA)/S.pi*180, color='g', linestyle=':')
+        ax6d.set_ylabel('PA [deg]')
+        ax6d.text(0.03, 0.2,
+                  'Guess: PA=%4.2f  Fit: PA=%4.2f' % \
+                  (PA/S.pi*180,fitpar[4]/S.pi*180),
+                  transform=ax6d.transAxes, fontsize=11)
         ax6d.set_xlabel("Wavelength [A]")
 
         # Plot of the radial profile -----------------------------------------
@@ -1389,7 +1482,7 @@ if __name__ == "__main__":
             pylab.setp(cnt.collections, linestyle='dotted')
             ax.errorbar((xc_vec[i],),(yc_vec[i],),
                         xerr=(error_mat[i,2],),yerr=(error_mat[i,3],),
-                        fmt=None, ecolor='k')
+                        fmt=None, ecolor=good[i] and 'k' or 'r')
             ax.plot((xfit[i],),(yfit[i],), 'g+')
             if opts.method != 'psf':
                 ax.add_patch(matplotlib.patches.Circle((xfit[i],yfit[i]),
@@ -1423,7 +1516,7 @@ if __name__ == "__main__":
             vmin,vmax = pylab.prctile(res, (3.,97.)) # Percentiles
             ax.imshow(res, origin='lower', extent=extent,
                       vmin=vmin, vmax=vmax, interpolation='nearest')
-            ax.plot((xfit[i],),(yfit[i],), 'k+')
+            ax.plot((xfit[i],),(yfit[i],), 'g+')
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
