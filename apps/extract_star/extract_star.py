@@ -548,6 +548,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
     return (param_arr,khi2_vec,error_mat)
 
+
 def create_2D_log_file(filename,object,airmass,efftime,
                        cube,param_arr,khi2,error_mat):
 
@@ -568,11 +569,11 @@ def create_2D_log_file(filename,object,airmass,efftime,
     logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
            xc +/- dxc              yc +/- dyc              PA +/- dPA\
        %s%s        I +/- dI      %s      khi2\n' % \
-                  (''.join(['       e%i +/-d e%i       ' % i
+                  (''.join(['       e%i +/-d e%i       ' % (i,i)
                             for i in xrange(ellDeg+1)]),
-                   ''.join(['   alpha%i +/- dalpha%i   ' % i
+                   ''.join(['   alpha%i +/- dalpha%i   ' % (i,i)
                             for i in xrange(alphaDeg+1)]),
-                   ''.join(['       sky%i +/- dsky%i   ' % i
+                   ''.join(['       sky%i +/- dsky%i   ' % (i,i)
                             for i in xrange(npar_sky)])))
 
     str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
@@ -599,6 +600,46 @@ def create_2D_log_file(filename,object,airmass,efftime,
         logfile.write(str % tuple(list2D))
         
     logfile.close()
+
+    
+def create_3D_log_file(filename,object,airmass,efftime,\
+                       seeing,fitpar,khi3D,errorpar,lbda_ref):
+
+    logfile = open(filename,'w')
+    logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
+    logfile.write('# object  : %s   \n' % object)
+    logfile.write('# airmass : %.2f \n' % airmass)
+    logfile.write('# efftime : %.2f \n' % efftime)
+    logfile.write('# seeing  : %.2f \n' % seeing)
+    
+    logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
+           xc +/- dxc              yc +/- dyc              PA +/- dPA\
+       %s%s    khi2\n' % \
+                  (''.join(['       e%i +/- de%i       '\
+                            %(i,i) for i in xrange(ellDeg+1)]),
+                   ''.join(['   alpha%i +/- dalpha%i   '\
+                            %(i,i) for i in xrange(alphaDeg+1)])))
+    
+    str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
+    str += ' % 10.4e% 10.4e  % 10.4e% 10.4e '
+    str += ' % 10.4e% 10.4e ' * (ellDeg+1)
+    str += ' % 10.4e% 10.4e ' * (alphaDeg+1)
+    str += ' % 10.4e \n'                # Khi2
+     
+    list3D = [lbda_ref,
+              fitpar[0],errorpar[0],
+              fitpar[1],errorpar[1],
+              fitpar[2],errorpar[2],
+              fitpar[3],errorpar[3],
+              fitpar[4],errorpar[4]]
+    for i in xrange(ellDeg+1):
+        list3D += [fitpar[5+i],errorpar[5+i]]
+    for i in xrange(alphaDeg+1):
+        list3D += [fitpar[6+ellDeg+i],errorpar[6+ellDeg+i]]
+    list3D += [khi3D]
+
+    logfile.write(str % tuple(list3D))  
+
 
 def build_sky_cube(cube, sky, sky_var, skyDeg):
 
@@ -906,6 +947,8 @@ if __name__ == "__main__":
                       default=0)
     parser.add_option("-f", "--file", type="string",
                       help="Save file with the different parameters fitted.")
+    parser.add_option("-F", "--File", type="string",
+                      help="Save file with the fitted parameters of the final 3D fit.")
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (ADR and position fixed).")
 
@@ -1152,6 +1195,14 @@ if __name__ == "__main__":
     bkg = bkg_model.comp(fitpar[psf_model.npar: \
                                 psf_model.npar+bkg_model.npar])
     cube_fit.data =  psf + bkg
+    
+    # Save 3D adjusted parameter file ========================================
+    
+    if opts.File:
+        print "Producing 3D adjusted parameter file [%s]..." % opts.File
+        
+        create_3D_log_file(opts.File,obj,airmass,efftime,
+                           seeing,fitpar,khi2,errorpar,lbda_ref)
     
     # Update header ==========================================================
     
