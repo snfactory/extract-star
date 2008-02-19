@@ -1077,26 +1077,22 @@ if __name__ == "__main__":
     if not good.all():                   # Some centroids outside FoV
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nslice)
-        if (len(xc_vec[good])<=max(alphaDeg+1,ellDeg+1)):
-            raise ValueError('Not enough points for initial guess')
+        if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
+            raise ValueError('Not enough points for initial guesses')
     print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.0f deg" % \
               (delta, theta/S.pi*180), 1)
 
-    # 2) Other parameters
-    PA = S.median(PA_vec[good])
-    if (len(ell_vec[good])<=ellDeg):
-        raise ValueError('Not enough points for ellipticity initial guess')
-    polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
-    if (len(alpha_vec[good])<=alphaDeg):
-        raise ValueError('Not enough points for alpha initial guess')
+    # 3) Other parameters
+    PA       = S.median(PA_vec[good])
+    polEll   = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
     polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-    p1 = [None]*(npar_psf+nslice)
+    p1     = [None]*(npar_psf+nslice)
     p1[:5] = [delta, theta, xc, yc, PA]
-    p1[5:6+ellDeg] = polEll.coeffs[::-1]
+    p1[5:6+ellDeg]        = polEll.coeffs[::-1]
     p1[6+ellDeg:npar_psf] = polAlpha.coeffs[::-1]
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
@@ -1147,6 +1143,17 @@ if __name__ == "__main__":
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
     print "  Seeing estimate: %.2f'' FWHM" % seeing
+
+    # Test positivity of alpha and ellipticity. At some point, maybe it would
+    # be necessary to force positivity in the fit (e.g. fmin_cobyla).
+    fit_alpha = eval_poly(fitpar[6+ellDeg:npar_psf], lbda_rel)
+    if fit_alpha.min() < 0:
+        raise ValueError('Alpha is negative (%.2f) at %.0fA' % \
+                         (fit_alpha.min(), cube.lbda[fit_alpha.argmin()]))
+    fit_ell = eval_poly(fitpar[5:6+ellDeg], lbda_rel)
+    if fit_ell.min() < 0:
+        raise ValueError('Ellipticity is negative (%.2f) at %.0fA' % \
+                         (fit_ell.min(), cube.lbda[fit_ell.argmin()]))
 
     # Computing final spectra for object and background ======================
 
@@ -1400,9 +1407,7 @@ if __name__ == "__main__":
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
         guess_ell = eval_poly(polEll.coeffs[::-1], lbda_rel)
-        fit_ell   = eval_poly(fitpar[5:6+ellDeg], lbda_rel)
         guess_alpha = eval_poly(polAlpha.coeffs[::-1], lbda_rel)
-        fit_alpha   = eval_poly(fitpar[6+ellDeg:npar_psf], lbda_rel)
 
         def confidence_interval(lbda_rel, cov, index):
             return S.sqrt(eval_poly(cov.diagonal()[index], lbda_rel))

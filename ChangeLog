@@ -1,3 +1,8 @@
+2008-02-19  yannick.copin  <yannick.copin@laposte.net>
+
+	* apps/extract_star/extract_star.py: test positivity of alpha and
+	ellipticity after 3D fit.
+
 2008-02-18  Clement Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py : add new option "-F" to
