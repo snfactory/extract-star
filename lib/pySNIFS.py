@@ -512,7 +512,7 @@ class SNIFS_cube:
             # stored in fields of the class
             self.e3d_grp_hdu = e3d_cube[2]
             self.e3d_extra_hdu_list = [ e3d_cube[i]
-                                        for i in num.arange(3,len(e3d_cube)) ]
+                                        for i in xrange(3,len(e3d_cube)) ]
             ref_start = e3d_cube[1].header['CRVALS']
             step      = e3d_cube[1].header['CDELTS']
             self.lstep = step
@@ -639,7 +639,7 @@ class SNIFS_cube:
                                                 num.arange(14,-1,-1)) ]
                 x = (i-7)*self.spxSize
                 y = (j-7)*self.spxSize
-                no = num.ravel(num.transpose(num.reshape(num.arange(self.nlens)+1,(15,15)))) 
+                no = num.arange(1,self.nlens+1).reshape(15,15).T.ravel()
                 lbda = num.array(lbda)
                 if num_array:
                     self.data = data
@@ -856,7 +856,7 @@ class SNIFS_cube:
             #var_list = (num.transpose(self.var)).tolist()
         else:
             var_list = None
-        start_list = [self.lstart for i in num.arange(self.nlens)]
+        start_list = [self.lstart for i in xrange(self.nlens)]
         no_list = self.no.tolist()
         xpos_list = self.x.tolist()
         ypos_list = self.y.tolist()
@@ -888,7 +888,8 @@ class SNIFS_cube:
         hdulist.append(hdu)
         if self.var is not None:
             hdu_var = pyfits.ImageHDU()
-            var3D = num.array([self.slice2d(i,coord='p',var=True) for i in arange(self.nslice)])
+            var3D = num.array([ self.slice2d(i,coord='p',var=True)
+                                for i in xrange(self.nslice) ])
             hdu_var.data = var3D
         hdulist.append(hdu_var)
             
@@ -1035,9 +1036,9 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     
     hist.len = len(bin_array)
     if cumul:
-        hist.data = num.array([float(num.sum(hist.data[0:i+1]))
-                               for i in num.arange(hist.len)]) / \
-                               float(num.sum(hist.data))
+        hist.data = num.array([ float(num.sum(hist.data[0:i+1]))
+                                for i in xrange(hist.len) ]) / \
+                                float(num.sum(hist.data))
     return hist
 
 def common_bounds_cube(cube_list):
@@ -1087,7 +1088,7 @@ def common_lens(cube_list):
     @return: inters: list of the lenses common to all the cubes of the list
     """
     inters = cube_list[0].no
-    for i in num.arange(len(cube_list)-1)+1:
+    for i in xrange(1,len(cube_list)):
         inters = filter(lambda x:x in cube_list[i].no,inters) 
     return inters
 
@@ -1159,10 +1160,10 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
     spec_len = [len(s) for s in data_list]
-    selected = [0 for i in num.arange(len(data_list))]
-    group_n = [1 for i in num.arange(len(data_list))]
-    nspax = [1 for i in num.arange(len(data_list))]
-    spax_id = [' ' for i in num.arange(len(data_list))]
+    selected = [0]*len(data_list)
+    group_n =  [1]*len(data_list) 
+    nspax =    [1]*len(data_list) 
+    spax_id =  [' ']*len(data_list) 
     
     col_list = []
     col_list.append(pyfits.Column(name='SPEC_ID',format='J',array=no_list))
@@ -1245,14 +1246,10 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
         if pa is None:
             raise ValueError('Position angle must be supplied by the user')
         pa = pa*num.pi/180.
-        nx = ima_shape[0]
-        ny = ima_shape[1]
-        xc = center[0]
-        yc = center[1]
-        sx = sigma[0]
-        sy = sigma[1]
-        x = num.reshape(num.repeat(num.arange(nx),ny),(nx,ny))
-        y = num.transpose(num.reshape(num.repeat(num.arange(ny),nx),(ny,nx)))
+        nx,ny = ima_shape
+        xc,yc = center
+        sx,sy = sigma
+        x,y = num.indices((nx,ny))      # (nx,ny)
         xr = (x-xc)*num.cos(pa) - (y-yc)*num.sin(pa)
         yr = (x-xc)*num.sin(pa) + (y-yc)*num.cos(pa)
         val = (xr/sx)**2 + (yr/sy)**2

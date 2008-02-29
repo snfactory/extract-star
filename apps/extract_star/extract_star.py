@@ -1061,10 +1061,10 @@ if __name__ == "__main__":
     # median position
     adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
-    good = S.isfinite(xc_vec)            # Discard unfitted slices
-    x0,y0 = S.median(xref[good]),S.median(yref[good]) # Robust to outliers
+    valid = S.isfinite(xc_vec)          # Discard unfitted slices
+    x0,y0 = S.median(xref[valid]),S.median(yref[valid]) # Robust to outliers
     r = S.hypot(xref - x0, yref - y0)
-    rmax = 5*S.median(r[good])          # Robust to outliers
+    rmax = 5*S.median(r[valid])         # Robust to outliers
     good = r < rmax
     print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % \
               (len(xref[good]),len(xref),rmax,x0,y0), 1)
@@ -1354,7 +1354,7 @@ if __name__ == "__main__":
         ax4b = fig4.add_subplot(2, 2, 2)
         ax4c = fig4.add_subplot(2, 1, 2, aspect='equal', adjustable='datalim')
 
-        ax4a.errorbar(cube.lbda, xc_vec, yerr=error_mat[:,2],
+        ax4a.errorbar(cube.lbda[valid], xc_vec[valid], yerr=error_mat[valid,2],
                       fmt='b.',ecolor='b',label="Fit 2D")
         if not good.all():
             ax4a.plot(cube.lbda[~good],xc_vec[~good],'r.',
@@ -1367,7 +1367,7 @@ if __name__ == "__main__":
         leg = ax4a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
 
-        ax4b.errorbar(cube.lbda, yc_vec, yerr=error_mat[:,3],
+        ax4b.errorbar(cube.lbda[valid], yc_vec[valid], yerr=error_mat[valid,3],
                       fmt='b.',ecolor='b')
         if not good.all():
             ax4b.plot(cube.lbda[~good],yc_vec[~good],'r.')
@@ -1377,9 +1377,11 @@ if __name__ == "__main__":
         ax4b.set_ylabel("Y center [spaxels]")
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
 
-        ax4c.errorbar(xc_vec,yc_vec,xerr=error_mat[:,2],yerr=error_mat[:,3],
+        ax4c.errorbar(xc_vec[valid],yc_vec[valid],
+                      xerr=error_mat[valid,2],yerr=error_mat[valid,3],
                       fmt=None, ecolor='g')
-        ax4c.scatter(xc_vec,yc_vec,c=cube.lbda[::-1], faceted=True, 
+        ax4c.scatter(xc_vec[valid],yc_vec[valid], faceted=True,
+                     c=cube.lbda[valid][::-1],
                      cmap=matplotlib.cm.Spectral, zorder=3)
         # Plot position selection process
         ax4c.plot(xref[~good],yref[~good],'r.') # Selected ref. positions
