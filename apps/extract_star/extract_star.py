@@ -18,7 +18,8 @@ import os
 import sys
 import optparse
 
-import pyfits
+import pyfits                           # getheader
+import pySnurp                          # estimate_parangle
 import pySNIFS
 import pySNIFS_fit
 
@@ -37,7 +38,6 @@ class ADR_model:
 
         self.P = pressure
         self.T = temp
-        print_msg("ADR: P=%.0f mbar, T=%.0f C" % (self.P,self.T), 1)
 
         if not 550<pressure<650:        # Non-std pressure
             self.P = 616.
@@ -48,28 +48,36 @@ class ADR_model:
         
         if 'lref' in kwargs:
             self.set_ref(lref=kwargs['lref'])
+        else:
+            self.set_ref()
         if 'delta' in kwargs and 'theta' in kwargs:
             self.set_param(delta=kwargs['delta'],theta=kwargs['theta'])
+
+    def __str__(self):
+
+        s = "ADR: P=%.0f mbar, T=%.0fC" % (self.P,self.T)
+        if hasattr(self, 'lref'):
+            s += ", ref.lambda=%.0fA"
+        if hasattr(self, 'delta') and hasattr(self, 'theta'):
+            s += ", delta=%.2f, theta=%.1f deg" % \
+                 (self.delta,self.theta/S.pi*180)
+
+        return s
 
     def set_ref(self, lref=5000.):
 
         self.lref = lref
         self.nref = atmosphericIndex(self.lref, P=self.P, T=self.T)
-        print_msg("ADR: reference wavelength set to %.0fA" % self.lref, 1)
 
     def set_param(self, delta, theta):
 
         self.delta = delta
         self.theta = theta
-        print_msg("ADR: delta=%.2f, theta=%.0f deg" % \
-                  (self.delta,self.theta/S.pi*180), 1)
 
     def refract(self, x, y, lbda, backward=False):
 
-        if not hasattr(self, 'lref'):   # Reference wavelength
-            self.set_ref()
-            print "WARNING: setting ref. wavelength to %.0fA by default" % \
-                  (self.lref)
+        if not hasattr(self, 'delta'):
+            raise AttributeError("ADR parameters 'delta' and 'theta' are not set.")
 
         x0 = S.atleast_1d(x)            # (npos,)
         y0 = S.atleast_1d(y)
@@ -668,17 +676,17 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
 def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     """Fill header hdr with fit-related keywords."""
     
-    hdr.update('ES_VERS' ,__version__)
-    hdr.update('ES_CUBE' ,opts.input, 'Input cube')
-    hdr.update('ES_LREF' ,lbda_ref,   'Lambda ref. [A]')
-    hdr.update('ES_SDEG' ,opts.skyDeg,'Polynomial bkgnd degree')
-    hdr.update('ES_KHI2' ,khi2,       'Reduced khi2 of meta-fit')
+    hdr.update('ES_VERS', __version__)
+    hdr.update('ES_CUBE', opts.input, 'Input cube')
+    hdr.update('ES_LREF', lbda_ref,   'Lambda ref. [A]')
+    hdr.update('ES_SDEG', opts.skyDeg,'Polynomial bkgnd degree')
+    hdr.update('ES_KHI2', khi2,       'Reduced khi2 of meta-fit')
     hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
     hdr.update('ES_SFLUX',sflux,      'Sum of the sky flux')
     hdr.update('ES_DELTA',param[0],   'ADR power')
     hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
-    hdr.update('ES_XC'   ,param[2],   'xc @lbdaRef [spx]')
-    hdr.update('ES_YC'   ,param[3],   'yc @lbdaRef [spx]')
+    hdr.update('ES_XC',   param[2],   'xc @lbdaRef [spx]')
+    hdr.update('ES_YC',   param[3],   'yc @lbdaRef [spx]')
     if opts.supernova:
         hdr.update('ES_SNMOD',opts.supernova,'ADR and position fixed')
     hdr.update('ES_PA'   ,param[4],   'Position angle')
@@ -970,27 +978,30 @@ if __name__ == "__main__":
     # Input datacube =========================================================
 
     print "Opening datacube %s" % opts.input
+    full_cube = pySNIFS.SNIFS_cube(opts.input)
+    print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
+              (os.path.basename(opts.input), full_cube.nslice,
+               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
+
+    # The full_cube.e3d_data_header dictionary is not enough for later updates
+    # in fill_hdr, which requires a *true* pyfits header.
     inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr['EFFTIME']
     airmass = inhdr['AIRMASS']
-    parangle = inhdr['PARANG']
+    parangle = inhdr.get('PARANG', S.nan)
+    if S.isnan(parangle):
+        print "WARNING: cannot read PARANG keyword, estimate it from header"
+        parangle = pySnurp.estimate_parangle(inhdr)
     channel = inhdr['CHANNEL']
-    pressure = inhdr.get('PRESSURE', 616.)
-    temp = inhdr.get('TEMP', 2.)
+    pressure = inhdr.get('PRESSURE', 616.) # Default Mauna-Kea pressure [mbar]
+    temp = inhdr.get('TEMP', 2.)        # Default Mauna-Kea temp. [C]
+
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
     skyDeg   = opts.skyDeg
     npar_psf = 7 + ellDeg + alphaDeg
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
-
-    if channel.upper().startswith('B'):
-        slices=[10, 900, 65]
-    elif channel.upper().startswith('R'):
-        slices=[10, 1500, 130]
-    else:
-        parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
-                     (opts.input, channel))
 
     # Select the PSF (short or long)
     if efftime > 5.:                    # Long exposure
@@ -998,13 +1009,17 @@ if __name__ == "__main__":
     else:                               # Short exposure
         psfFn = short_exposure_psf
 
-    full_cube = pySNIFS.SNIFS_cube(opts.input)
-    print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
-              (os.path.basename(opts.input), full_cube.nslice,
-               full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
-
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
+
+    # Meta-slices
+    if channel.upper().startswith('B'):
+        slices=[10, 900, 65]
+    elif channel.upper().startswith('R'):
+        slices=[10, 1500, 130]
+    else:
+        parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
+                     (opts.input, channel))
 
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
@@ -1053,13 +1068,14 @@ if __name__ == "__main__":
     lbda_rel = cube.lbda / lbda_ref - 1
     
     # 1) ADR parameters (from keywords)
-    delta=S.tan(S.arccos(1./airmass))   # ADR power
-    theta=parangle/180.*S.pi            # ADR angle [rad]
+    delta = S.tan(S.arccos(1./airmass)) # ADR power
+    theta = parangle/180.*S.pi          # ADR angle [rad]
 
     # 2) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position
     adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
+    print_msg(str(adr), 1)
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
     valid = S.isfinite(xc_vec)          # Discard unfitted slices
     x0,y0 = S.median(xref[valid]),S.median(yref[valid]) # Robust to outliers
@@ -1081,7 +1097,7 @@ if __name__ == "__main__":
             raise ValueError('Not enough points for initial guesses')
     print_msg("  Reference position guess [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,xc,yc), 1)
-    print_msg("  ADR guess: delta=%.2f, theta=%.0f deg" % \
+    print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
               (delta, theta/S.pi*180), 1)
 
     # 3) Other parameters
@@ -1137,12 +1153,13 @@ if __name__ == "__main__":
 
     print_msg("  Reference position fit [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,fitpar[2],fitpar[3]), 1)
-    print_msg("  ADR fit: delta=%.2f, theta=%.0f deg" % \
+    print_msg("  ADR fit: delta=%.2f, theta=%.1f deg" % \
               (fitpar[0], fitpar[1]/S.pi*180), 1)
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], lbda_ref) * SpaxelSize
     print "  Seeing estimate: %.2f'' FWHM" % seeing
+    print "  Effective airmass: %.2f" % (1/S.cos(S.arctan(fitpar[0])))
 
     # Test positivity of alpha and ellipticity. At some point, maybe it would
     # be necessary to force positivity in the fit (e.g. fmin_cobyla).
@@ -1176,8 +1193,7 @@ if __name__ == "__main__":
     spec[:,1:] /= SpaxelSize**2         # Per arcsec^2
     var[:,1:]  /= SpaxelSize**4
 
-    step = inhdr.get('CDELTS')
-
+    step = full_cube.lstep
     sky_spec_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=s,start=lbda[0],
                                                          step=step)
                                         for s in spec[:,1:] ])
@@ -1215,7 +1231,7 @@ if __name__ == "__main__":
     
     tflux = spec[:,0].sum()    # Sum of the total flux of the spectrum
     sflux = bkg_spec.data.sum()     # Sum of the total flux of the sky
-        
+    
     fill_header(inhdr,fitpar[:npar_psf],lbda_ref,opts,khi2,seeing,tflux,sflux)
 
     # Save star spectrum =====================================================
@@ -1392,13 +1408,13 @@ if __name__ == "__main__":
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
         ax4c.plot(xfit, yfit, 'g')      # Adjusted ADR
         ax4c.text(0.03, 0.85,
-                  'Guess: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.0fdeg' % \
+                  'Guess: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.1fdeg' % \
                   (xc, yc, delta, theta/S.pi*180),
-                  transform=ax4c.transAxes)
+                  transform=ax4c.transAxes, fontsize='smaller')
         ax4c.text(0.03, 0.75,
-                  'Fit: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.0fdeg' % \
+                  'Fit: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.1fdeg' % \
                   (fitpar[2], fitpar[3], fitpar[0], fitpar[1]/S.pi*180),
-                  transform=ax4c.transAxes)
+                  transform=ax4c.transAxes, fontsize='smaller')
         ax4c.set_xlabel("X center [spaxels]")
         ax4c.set_ylabel("Y center [spaxels]")
         fig4.text(0.5, 0.93, "ADR plot [%s, airmass=%.2f]" % (obj, airmass),
@@ -1436,12 +1452,12 @@ if __name__ == "__main__":
                   'Guess: %s' % \
                   (', '.join([ 'a%d=%.2f' % (i,a) for i,a in
                               enumerate(polAlpha.coeffs[::-1]) ]) ),
-                  transform=ax6a.transAxes, fontsize=11)
+                  transform=ax6a.transAxes, fontsize='smaller')
         ax6a.text(0.03, 0.05,
                   'Fit: %s' % \
                   (', '.join(['a%d=%.2f' % (i,a) for i,a in
                              enumerate(fitpar[6+ellDeg:npar_psf])])),
-                  transform=ax6a.transAxes, fontsize=11)
+                  transform=ax6a.transAxes, fontsize='smaller')
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
         ax6a.set_ylabel(r'Alpha [spx]')
@@ -1461,12 +1477,12 @@ if __name__ == "__main__":
                   'Guess: %s' % \
                   (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(polEll.coeffs[::-1]) ]) ),
-                  transform=ax6c.transAxes, fontsize=11)
+                  transform=ax6c.transAxes, fontsize='smaller')
         ax6c.text(0.03, 0.1,
                   'Fit: %s' % \
                   (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
-                  transform=ax6c.transAxes, fontsize=11)        
+                  transform=ax6c.transAxes, fontsize='smaller')
         ax6c.set_ylabel(r'1/q^2')
         ax6c.set_xticklabels([])        
 
@@ -1482,7 +1498,7 @@ if __name__ == "__main__":
         ax6d.text(0.03, 0.2,
                   'Guess: PA=%4.2f  Fit: PA=%4.2f' % \
                   (PA/S.pi*180,fitpar[4]/S.pi*180),
-                  transform=ax6d.transAxes, fontsize=11)
+                  transform=ax6d.transAxes, fontsize='smaller')
         ax6d.set_xlabel("Wavelength [A]")
 
         # Plot of the radial profile -----------------------------------------

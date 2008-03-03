@@ -1,3 +1,8 @@
+2008-03-03  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: estimate parallactic angle
+	from header if 'PARANG' keyword is missing.
+
 2008-02-19  yannick.copin  <yannick.copin@laposte.net>
 
 	* apps/extract_star/extract_star.py: test positivity of alpha and
