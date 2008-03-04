@@ -19,7 +19,6 @@ import sys
 import optparse
 
 import pyfits                           # getheader
-import pySnurp                          # estimate_parangle
 import pySNIFS
 import pySNIFS_fit
 
@@ -136,6 +135,51 @@ def atmosphericIndex(lbda, P=616., T=2.):
         ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
     
     return n
+
+
+def estimate_parangle(hdr):
+    """Estimate parallactic angle [degree] from header keywords."""
+
+    from math import sin,cos,pi,sqrt,acos,atan2
+
+    d2r = pi/180.                       # Degree to Radians
+
+    # DTCS latitude is probably not the most precise one (see fit_ADR.py)
+    phi = hdr['LATITUDE']*d2r           # Latitude [rad]
+    sinphi = sin(phi)
+    cosphi = cos(phi)
+
+    ha = hdr['HA']                      # Hour angle (format: 04:04:52.72)
+    try:
+        dec = hdr['TELDEC']             # Declination (format 08:23:19.20)
+    except:
+        dec = hdr['DEC']                # Declination (format 08:23:19.20)
+    # We neglect position offset (see
+    # https://projects.lbl.gov/mantis/view.php?id=280 note 773) since offset
+    # keywords are not universal...
+
+    def dec_deg(dec):
+        """Convert DEC string (DD:MM:SS.SS) to degrees."""
+        l = [ float(x) for x in dec.split(':') ]
+        return l[0] + l[1]/60. + l[2]/3600.
+
+    ha  = dec_deg(ha)*15*d2r            # Hour angle [rad]
+    dec = dec_deg(dec)*d2r              # Declination [rad]
+    sinha = sin(ha)
+    cosha = cos(ha)
+    sindec = sin(dec)
+    cosdec = cos(dec)
+
+    # Zenithal angle (to be compared to dec_deg(hdr['ZD']))
+    cosdz = sindec*sinphi + cosphi*cosdec*cosha
+    sindz = sqrt(1. - cosdz**2)
+
+    # Parallactic angle (to be compared to hdr['PARANG'])
+    sineta = sinha*cosphi / sindz
+    coseta = ( cosdec*sinphi - sindec*cosphi*cosha ) / sindz
+    eta = atan2(sineta,coseta)          # [rad]
+
+    return eta/d2r                      # [deg]
 
 
 def eval_poly(coeffs, x):
@@ -992,7 +1036,7 @@ if __name__ == "__main__":
     parangle = inhdr.get('PARANG', S.nan)
     if S.isnan(parangle):
         print "WARNING: cannot read PARANG keyword, estimate it from header"
-        parangle = pySnurp.estimate_parangle(inhdr)
+        parangle = estimate_parangle(inhdr)
     channel = inhdr['CHANNEL']
     pressure = inhdr.get('PRESSURE', 616.) # Default Mauna-Kea pressure [mbar]
     temp = inhdr.get('TEMP', 2.)        # Default Mauna-Kea temp. [C]
@@ -1403,10 +1447,13 @@ if __name__ == "__main__":
         ax4c.plot(xref[~good],yref[~good],'r.') # Selected ref. positions
         ax4c.plot(xref[good],yref[good],'b.') # Discarded ref. positions
         ax4c.plot((x0,xc),(y0,yc),'k-')
-        ax4c.add_patch(matplotlib.patches.Circle((x0,y0),radius=rmax,
-                                                 ec='0.8',fc=None))
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
         ax4c.plot(xfit, yfit, 'g')      # Adjusted ADR
+        ax4c.set_autoscale_on(False)
+        ax4c.add_patch(matplotlib.patches.Circle((x0,y0),radius=rmax,
+                                                 ec='0.8',fc=None))
+        ax4c.add_patch(matplotlib.patches.Rectangle((-7.5,-7.5),15,15,
+                                                 ec='0.8',lw=2,fc=None)) # FoV
         ax4c.text(0.03, 0.85,
                   'Guess: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.1fdeg' % \
                   (xc, yc, delta, theta/S.pi*180),
@@ -1495,7 +1542,7 @@ if __name__ == "__main__":
         ax6d.axhline((fitpar[4]+dPA)/S.pi*180, color='g', linestyle=':')
         ax6d.axhline((fitpar[4]-dPA)/S.pi*180, color='g', linestyle=':')
         ax6d.set_ylabel('PA [deg]')
-        ax6d.text(0.03, 0.2,
+        ax6d.text(0.03, 0.1,
                   'Guess: PA=%4.2f  Fit: PA=%4.2f' % \
                   (PA/S.pi*180,fitpar[4]/S.pi*180),
                   transform=ax6d.transAxes, fontsize='smaller')
