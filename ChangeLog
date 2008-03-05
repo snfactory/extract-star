@@ -1,3 +1,7 @@
+2008-03-04  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: add FoV to ADR plot.
+
 2008-03-03  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (estimate_parangle): estimate

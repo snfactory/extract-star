@@ -579,8 +579,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 # (cf. http://www.asu.edu/sas/sasdoc/sashtml/stat/chap45/sect24.htm)
             else:                       # Some negative diagonal elements!
                 print "WARNING: negative covariance diag. elements in metaslice %d" % (i+1)
-                model_star.fitpar[2:4] = S.nan # Centroid to be discarded
-                errorpar = S.zeros(len(error_mat.T))
+                errorpar = S.zeros(len(error_mat.T)) # To be discarded
         else:
             # Set error to 0 if alpha, intens. or ellipticity is 0.
             if model_star.fitpar[5]==0:
@@ -589,8 +588,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 print "WARNING: alpha of metaslice %d is null" % (i+1)
             elif model_star.fitpar[7]==0:
                 print "WARNING: intensity of metaslice %d is null" % (i+1)
-            model_star.fitpar[2:4] = S.nan # Centroid to be discarded
-            errorpar = S.zeros(len(error_mat.T))
+            errorpar = S.zeros(len(error_mat.T)) # To be discarded
 
         # Storing the result of the current slice parameters
         param_arr[i] = model_star.fitpar
@@ -1005,9 +1003,8 @@ if __name__ == "__main__":
                       help="SN mode (ADR and position fixed).")
 
     opts,pars = parser.parse_args()
-    if not opts.input or not opts.out or not opts.sky:
-        parser.error("At least one option is missing among " \
-                     "'--in', '--out' and '--sky'.")
+    if not opts.input:
+        parser.error("No input datacube specified.")
 
     if opts.graph:
         opts.plot = True
@@ -1037,7 +1034,7 @@ if __name__ == "__main__":
     if S.isnan(parangle):
         print "WARNING: cannot read PARANG keyword, estimate it from header"
         parangle = estimate_parangle(inhdr)
-    channel = inhdr['CHANNEL']
+    channel = inhdr['CHANNEL'][0].upper()
     pressure = inhdr.get('PRESSURE', 616.) # Default Mauna-Kea pressure [mbar]
     temp = inhdr.get('TEMP', 2.)        # Default Mauna-Kea temp. [C]
 
@@ -1057,9 +1054,9 @@ if __name__ == "__main__":
           (obj, airmass, efftime, psfFn.name)
 
     # Meta-slices
-    if channel.upper().startswith('B'):
+    if channel == 'B':
         slices=[10, 900, 65]
-    elif channel.upper().startswith('R'):
+    elif channel == 'R':
         slices=[10, 1500, 130]
     else:
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
@@ -1121,11 +1118,12 @@ if __name__ == "__main__":
     adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
     print_msg(str(adr), 1)
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
-    valid = S.isfinite(xc_vec)          # Discard unfitted slices
+    valid = S.array([row.any() for row in error_mat]) # Discard unfitted slices
     x0,y0 = S.median(xref[valid]),S.median(yref[valid]) # Robust to outliers
     r = S.hypot(xref - x0, yref - y0)
     rmax = 5*S.median(r[valid])         # Robust to outliers
-    good = r < rmax
+    good = valid & (r <= rmax)          # Valid fit and reasonable position
+    bad = valid & (r > rmax)            # Valid fit but discarded position
     print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % \
               (len(xref[good]),len(xref),rmax,x0,y0), 1)
     # dx,dy are sometimes null (when some cov. diagonal elements are <0)
@@ -1134,7 +1132,7 @@ if __name__ == "__main__":
     #yc = S.average(yref[good], weights=1/dy[good]**2)
     xc,yc = xref[good].mean(),yref[good].mean()
 
-    if not good.all():                   # Some centroids outside FoV
+    if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nslice)
         if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
@@ -1280,12 +1278,20 @@ if __name__ == "__main__":
 
     # Save star spectrum =====================================================
 
+    if not opts.out:
+        opts.out = 'spec_%s.fits' % (channel)
+        print "WARNING: saving output source spectrum to %s" % opts.out
+
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
     star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
 
     # Save sky spectrum/spectra ==============================================
+
+    if not opts.sky:
+        opts.sky = 'sky_%s.fits' % (channel)
+        print "WARNING: saving output sky spectrum to %s" % opts.sky
 
     sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
     sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
@@ -1414,11 +1420,10 @@ if __name__ == "__main__":
         ax4b = fig4.add_subplot(2, 2, 2)
         ax4c = fig4.add_subplot(2, 1, 2, aspect='equal', adjustable='datalim')
 
-        ax4a.errorbar(cube.lbda[valid], xc_vec[valid], yerr=error_mat[valid,2],
+        ax4a.errorbar(cube.lbda[good], xc_vec[good], yerr=error_mat[good,2],
                       fmt='b.',ecolor='b',label="Fit 2D")
-        if not good.all():
-            ax4a.plot(cube.lbda[~good],xc_vec[~good],'r.',
-                      label='_nolegend_')
+        if bad.any():
+            ax4a.plot(cube.lbda[bad],xc_vec[bad],'r.', label='_nolegend_')
         ax4a.plot(cube.lbda, xguess, 'k--', label="Guess 3D")
         ax4a.plot(cube.lbda, xfit, 'g', label="Fit 3D")
         ax4a.set_xlabel("Wavelength [A]")
@@ -1427,10 +1432,10 @@ if __name__ == "__main__":
         leg = ax4a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
 
-        ax4b.errorbar(cube.lbda[valid], yc_vec[valid], yerr=error_mat[valid,3],
+        ax4b.errorbar(cube.lbda[good], yc_vec[good], yerr=error_mat[good,3],
                       fmt='b.',ecolor='b')
-        if not good.all():
-            ax4b.plot(cube.lbda[~good],yc_vec[~good],'r.')
+        if bad.any():
+            ax4b.plot(cube.lbda[bad],yc_vec[bad],'r.')
         ax4b.plot(cube.lbda, yfit, 'g')
         ax4b.plot(cube.lbda, yguess, 'k--')
         ax4b.set_xlabel("Wavelength [A]")
@@ -1440,16 +1445,17 @@ if __name__ == "__main__":
         ax4c.errorbar(xc_vec[valid],yc_vec[valid],
                       xerr=error_mat[valid,2],yerr=error_mat[valid,3],
                       fmt=None, ecolor='g')
-        ax4c.scatter(xc_vec[valid],yc_vec[valid], faceted=True,
-                     c=cube.lbda[valid][::-1],
+        ax4c.scatter(xc_vec[good],yc_vec[good], faceted=True,
+                     c=cube.lbda[good][::-1],
                      cmap=matplotlib.cm.Spectral, zorder=3)
         # Plot position selection process
-        ax4c.plot(xref[~good],yref[~good],'r.') # Selected ref. positions
-        ax4c.plot(xref[good],yref[good],'b.') # Discarded ref. positions
+        ax4c.plot(xref[good],yref[good],'b.') # Selected ref. positions
+        ax4c.plot(xref[bad],yref[bad],'r.')   # Discarded ref. positions
         ax4c.plot((x0,xc),(y0,yc),'k-')
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
-        ax4c.plot(xfit, yfit, 'g')      # Adjusted ADR
+        ax4c.plot(xfit, yfit, 'g')       # Adjusted ADR
         ax4c.set_autoscale_on(False)
+        ax4c.plot((xc,),(yc,),'k+')
         ax4c.add_patch(matplotlib.patches.Circle((x0,y0),radius=rmax,
                                                  ec='0.8',fc=None))
         ax4c.add_patch(matplotlib.patches.Rectangle((-7.5,-7.5),15,15,
@@ -1474,27 +1480,28 @@ if __name__ == "__main__":
         guess_ell = eval_poly(polEll.coeffs[::-1], lbda_rel)
         guess_alpha = eval_poly(polAlpha.coeffs[::-1], lbda_rel)
 
-        def confidence_interval(lbda_rel, cov, index):
-            return S.sqrt(eval_poly(cov.diagonal()[index], lbda_rel))
+        def estimate_error(x, cov, idx):
+            return S.sqrt(eval_poly(cov.diagonal()[idx], x))
+        def plot_conf_interval(ax, x, y, dy):
+            ax.plot(x, y, 'g', label="Fit 3D")
+            ax.plot(x, y+dy, 'g:', label='_nolegend_')
+            ax.plot(x, y-dy, 'g:', label='_nolegend_')
 
-        conf_ell   = confidence_interval(lbda_rel,cov,range(5,6+ellDeg))
-        conf_alpha = confidence_interval(lbda_rel,cov,range(6+ellDeg,npar_psf))
-        dPA = S.sqrt(cov.diagonal()[4])
+        err_ell   = estimate_error(lbda_rel,cov,range(5,6+ellDeg))
+        err_alpha = estimate_error(lbda_rel,cov,range(6+ellDeg,npar_psf))
+        err_PA = S.sqrt(cov.diagonal()[4])
 
         fig6 = pylab.figure()
         ax6a = fig6.add_subplot(2, 1, 1)
-        ax6c = fig6.add_subplot(4, 1, 3)
-        ax6d = fig6.add_subplot(4, 1, 4)
+        ax6b = fig6.add_subplot(4, 1, 3)
+        ax6c = fig6.add_subplot(4, 1, 4)
 
-        ax6a.errorbar(cube.lbda, alpha_vec, error_mat[:,6],
+        ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6],
                       fmt='b.', ecolor='b', label="Fit 2D")
-        if not good.all():
-            ax6a.plot(cube.lbda[~good],alpha_vec[~good],'r.',
-                      label="_nolegend_")
+        if bad.any():
+            ax6a.plot(cube.lbda[bad],alpha_vec[bad],'r.', label="_nolegend_")
         ax6a.plot(cube.lbda, guess_alpha, 'k--', label="Guess 3D")
-        ax6a.plot(cube.lbda, fit_alpha, 'g', label="Fit 3D")
-        ax6a.plot(cube.lbda, fit_alpha + conf_alpha, 'g:', label='_nolegend_')
-        ax6a.plot(cube.lbda, fit_alpha - conf_alpha, 'g:', label='_nolegend_')
+        plot_conf_interval(ax6a, cube.lbda, fit_alpha, err_alpha)
         ax6a.text(0.03, 0.15,
                   'Guess: %s' % \
                   (', '.join([ 'a%d=%.2f' % (i,a) for i,a in
@@ -1507,46 +1514,44 @@ if __name__ == "__main__":
                   transform=ax6a.transAxes, fontsize='smaller')
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='smaller')
-        ax6a.set_ylabel(r'Alpha [spx]')
+        ax6a.set_ylabel('Alpha [spx]')
         ax6a.set_xticklabels([])
         ax6a.set_title("Model parameters [%s, seeing %.2f'' FWHM]" % \
                        (obj,seeing))
 
-        ax6c.errorbar(cube.lbda, ell_vec,error_mat[:,5],
+        ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5],
                       fmt='b.',ecolor='blue')
-        if not good.all():
-            ax6c.plot(cube.lbda[~good],ell_vec[~good],'r.')
-        ax6c.plot(cube.lbda, guess_ell, 'k--')
-        ax6c.plot(cube.lbda, fit_ell, 'g')
-        ax6c.plot(cube.lbda, fit_ell + conf_ell, 'g:')
-        ax6c.plot(cube.lbda, fit_ell - conf_ell, 'g:')
-        ax6c.text(0.03, 0.3,
+        if bad.any():
+            ax6b.plot(cube.lbda[bad],ell_vec[bad],'r.')
+        ax6b.plot(cube.lbda, guess_ell, 'k--')
+        plot_conf_interval(ax6b, cube.lbda, fit_ell, err_ell)
+        ax6b.text(0.03, 0.3,
                   'Guess: %s' % \
                   (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(polEll.coeffs[::-1]) ]) ),
-                  transform=ax6c.transAxes, fontsize='smaller')
-        ax6c.text(0.03, 0.1,
+                  transform=ax6b.transAxes, fontsize='smaller')
+        ax6b.text(0.03, 0.1,
                   'Fit: %s' % \
                   (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
-                  transform=ax6c.transAxes, fontsize='smaller')
-        ax6c.set_ylabel(r'1/q^2')
-        ax6c.set_xticklabels([])        
+                  transform=ax6b.transAxes, fontsize='smaller')
+        ax6b.set_ylabel('1/q^2')
+        ax6b.set_xticklabels([])        
 
-        ax6d.errorbar(cube.lbda, PA_vec/S.pi*180, error_mat[:,4]/S.pi*180,
-                      fmt='b.', ecolor='b')
-        if not good.all():
-            ax6d.plot(cube.lbda[~good],PA_vec[~good]/S.pi*180,'r.')
-        ax6d.axhline(PA/S.pi*180, color='k', linestyle='--')
-        ax6d.axhline(fitpar[4]/S.pi*180, color='g', linestyle='-')
-        ax6d.axhline((fitpar[4]+dPA)/S.pi*180, color='g', linestyle=':')
-        ax6d.axhline((fitpar[4]-dPA)/S.pi*180, color='g', linestyle=':')
-        ax6d.set_ylabel('PA [deg]')
-        ax6d.text(0.03, 0.1,
+        ax6c.errorbar(cube.lbda[good], PA_vec[good]/S.pi*180,
+                      error_mat[good,4]/S.pi*180, fmt='b.', ecolor='b')
+        if bad.any():
+            ax6c.plot(cube.lbda[bad],PA_vec[bad]/S.pi*180,'r.')
+        ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA/S.pi*180]*2, 'k--')
+        plot_conf_interval(ax6c, S.asarray([cube.lbda[0],cube.lbda[-1]]),
+                           S.asarray([fitpar[4]/S.pi*180]*2),
+                           S.asarray([err_PA/S.pi*180]*2))
+        ax6c.set_ylabel('PA [deg]')
+        ax6c.text(0.03, 0.1,
                   'Guess: PA=%4.2f  Fit: PA=%4.2f' % \
                   (PA/S.pi*180,fitpar[4]/S.pi*180),
-                  transform=ax6d.transAxes, fontsize='smaller')
-        ax6d.set_xlabel("Wavelength [A]")
+                  transform=ax6c.transAxes, fontsize='smaller')
+        ax6c.set_xlabel("Wavelength [A]")
 
         # Plot of the radial profile -----------------------------------------
 
