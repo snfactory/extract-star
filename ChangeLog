@@ -1,3 +1,18 @@
+2008-03-11  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: can now fit the PSF without
+	any background ('-S -1').
+
+2008-03-07  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new cut for 'long exposure'
+	above 12s.
+
+2008-03-06  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: option '--supernova' now
+	discards completely 3D fit.
+
 2008-03-04  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: add FoV to ADR plot.
