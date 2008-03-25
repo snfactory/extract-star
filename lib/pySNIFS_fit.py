@@ -507,8 +507,8 @@ class model:
             self.data.lbda = S.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
-            self.data.i = S.ravel(indices((data.nx,data.ny))[0]) 
-            self.data.j = S.ravel(indices((data.nx,data.ny))[1]) 
+            self.data.i = S.ravel(numpy.indices((data.nx,data.ny))[0]) 
+            self.data.j = S.ravel(numpy.indices((data.nx,data.ny))[1]) 
             self.data.x = self.data.i*data.stepx+data.startx
             self.data.y = self.data.j*data.stepy+data.starty
         elif isinstance(data,spectrum):
