@@ -1,3 +1,15 @@
+2008-04-09  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new radial chi2 plot
+	(commented out).
+
+	* apps/extract_star/convert_3DPSF.py: ad-hoc convertor from PSF
+	3D-cube simulated by G.Rigaudier to Euro3D cube suitable for
+	extract_star (requires IFU python wrapper IFU_py_io).
+
+	* apps/extract_star/psf_sympy.py: toy script to check PSF model
+	and derivatives under sympy.
+
 2008-03-11  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: can now fit the PSF without

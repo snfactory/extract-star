@@ -39,10 +39,12 @@ class ADR_model:
 
         if not 550<pressure<650:        # Non-std pressure
             self.P = 616.
-            print "WARNING: non-std pressure reset to %.0f mbar" % self.P
+            print "WARNING: non-std pressure (%.0f mbar) reset to %.0f mbar" % \
+                  (pressure,self.P)
         if not -20<temp<20:             # Non-std temperature
             self.T = 2.
-            print "WARNING: non-std temperature reset to %.0f C" % self.T
+            print "WARNING: non-std temperature (%.0f C) reset to %.0f C" % \
+                  (temp,self.T)
         
         if 'lref' in kwargs:
             self.set_ref(lref=kwargs['lref'])
@@ -55,7 +57,7 @@ class ADR_model:
 
         s = "ADR: P=%.0f mbar, T=%.0fC" % (self.P,self.T)
         if hasattr(self, 'lref'):
-            s += ", ref.lambda=%.0fA"
+            s += ", ref.lambda=%.0fA" % self.lref
         if hasattr(self, 'delta') and hasattr(self, 'theta'):
             s += ", delta=%.2f, theta=%.1f deg" % \
                  (self.delta,self.theta/S.pi*180)
@@ -578,8 +580,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         model_star.fit(maxfun=400, msge=int(opts.verbosity >= 3))
 
         # Error computation
-        hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
-                                        model_star.fitpar,order=2)
+        hess = pySNIFS_fit.approx_deriv(model_star.objgrad, model_star.fitpar,
+                                        order=2)
 
         if model_star.fitpar[5]>0 and \
                model_star.fitpar[6]>0 and model_star.fitpar[7]>0: 
@@ -1390,10 +1392,6 @@ if __name__ == "__main__":
                  horizontalalignment='right', transform=axS.transAxes)
 
         axN.plot(star_spec.x, S.sqrt(star_var.data), 'b')
-        axN.set_title("Error spectrum")
-        axN.semilogy()
-        axN.set_xlim(star_spec.x[0],star_spec.x[-1])
-        axN.set_xlabel("Wavelength [A]")
 
         if skyDeg >= 0:
             axB.plot(bkg_spec.x, bkg_spec.data, 'g')
@@ -1403,6 +1401,11 @@ if __name__ == "__main__":
 
             axN.plot(bkg_spec.x, S.sqrt(bkg_spec.var), 'g')
             axN.set_title("Error spectra")
+
+        axN.set_title("Error spectrum")
+        axN.semilogy()
+        axN.set_xlim(star_spec.x[0],star_spec.x[-1])
+        axN.set_xlabel("Wavelength [A]")
 
         # Plot of the fit on each slice --------------------------------------
 
@@ -1610,18 +1613,20 @@ if __name__ == "__main__":
 
         fig7 = pylab.figure()
         fig7.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
+
+        def ellRadius(x,y, x0,y0, ell, q):
+            dx = x - x0
+            dy = y - y0
+            return S.sqrt(dx**2 + ell*dy**2 + 2*q*dx*dy)
         
         for i in xrange(nslice):        # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
             # Use adjusted elliptical radius instead of plain radius
             #r = S.hypot(cube.x-xfit[i],cube.y-yfit[i])
             #rfit = S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
-            dx = cube.x - xfit[i]
-            dy = cube.y - yfit[i]
-            r = S.sqrt(dx**2 +  fit_ell[i]*dy**2 + 2*fitpar[4]*dx*dy)
-            dx = cube_fit.x - xfit[i]
-            dy = cube_fit.y - yfit[i]
-            rfit = S.sqrt(dx**2 +  fit_ell[i]*dy**2 + 2*fitpar[4]*dx*dy)
+            r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
+            rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
+                             fit_ell[i], fitpar[4])
             ax.plot(r, cube.data[i], 'b.')
             ax.plot(rfit, cube_fit.data[i], 'r,')
             ax.plot(rfit, psf[i], 'g,')
@@ -1639,6 +1644,29 @@ if __name__ == "__main__":
             ax.axis([0, rfit.max()*1.1, 
                      cube.data[i][cube.data[i]>0].min()/1.2,
                      cube.data[i].max()*1.2])
+
+        # Radial Chi2 plot (not activated by default)
+        ## print_msg("Producing radial chi2 plot...", 1)
+        ## fig = pylab.figure()
+        ## fig.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
+        ## for i in xrange(nslice):        # Loop over slices
+        ##     ax = fig.add_subplot(nrow, ncol, i+1)
+        ##     r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
+        ##     rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
+        ##                      fit_ell[i], fitpar[4])
+        ##     # Find index of fit radii corresponding to data radii
+        ##     idx = S.setmember1d(rfit,r) # True if rfit is also in r
+        ##     chi2 = (cube.data[i]-cube_fit.data[i][idx])**2/cube.var[i]
+        ##     ax.plot(r, chi2, 'b.')
+        ##     ax.semilogy()
+        ##     pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
+        ##     ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
+        ##             horizontalalignment='right', transform=ax.transAxes)
+        ##     if method!='psf':
+        ##         ax.axvline(radius/SpaxelSize, color='y', lw=2)
+        ##     if ax.is_last_row() and ax.is_first_col():
+        ##         ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
+        ##         ax.set_ylabel("chi2", fontsize=8)
 
         # Contour plot of each slice -----------------------------------------
 

@@ -669,7 +669,7 @@ class model:
     def res_eval(self,param=None):
         """ Evaluate the residuals at the current parameters stored in the field flatparam."""
         if param is None:
-            param = deepcopy(self.flatparam)
+            param = self.flatparam
         val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
