@@ -28,6 +28,8 @@ from scipy import interpolate as I
 from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
+MK_pressure = 616.                      # Default pressure [mbar]
+MK_temp = 2.                            # Default temperature [C]
 
 class ADR_model:
 
@@ -38,11 +40,11 @@ class ADR_model:
         self.T = temp
 
         if not 550<pressure<650:        # Non-std pressure
-            self.P = 616.
+            self.P = MK_pressure
             print "WARNING: non-std pressure (%.0f mbar) reset to %.0f mbar" % \
                   (pressure,self.P)
         if not -20<temp<20:             # Non-std temperature
-            self.T = 2.
+            self.T = MK_temp
             print "WARNING: non-std temperature (%.0f C) reset to %.0f C" % \
                   (temp,self.T)
         
@@ -749,7 +751,7 @@ def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_XC',   param[2],   'xc @lbdaRef [spx]')
     hdr.update('ES_YC',   param[3],   'yc @lbdaRef [spx]')
     if opts.supernova:
-        hdr.update('ES_SNMOD',opts.supernova,'SN mode (no 3D fit for PSF)')
+        hdr.update('ES_SNMOD',opts.supernova,'Supernova mode')
     hdr.update('ES_PA'   ,param[4],   'Position angle')
     for i in xrange(opts.ellDeg + 1):    
         hdr.update('ES_E%i' % i, param[5+i], 'Ellipticity coeff. e%d' % i)
@@ -801,7 +803,8 @@ class ExposurePSF:
         self.l = S.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
 
         # ADR in spaxels (nslice,nlens)
-        pressure,temp = 616.,2.  # Default values for pression and temperature
+        pressure = MK_pressure   # Default values for pression and temperature
+        temp = MK_temp
         if hasattr(cube,'e3d_data_header'): # Read from a real cube if possible
             pressure = cube.e3d_data_header.get('PRESSURE',pressure)
             temp     = cube.e3d_data_header.get('TEMP',temp)
@@ -1015,11 +1018,13 @@ if __name__ == "__main__":
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
     parser.add_option("-f", "--file", type="string",
-                      help="Save file with the different parameters fitted.")
+                      help="Save 2D adjustment results in file.")
     parser.add_option("-F", "--File", type="string",
-                      help="Save file with the fitted parameters of the final 3D fit.")
+                      help="Save 3D adjustment results in file.")
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (ADR and position fixed).")
+    parser.add_option("--psf", action='store_true',
+                      help="Store adjusted meta-slice PSF in 3D-cube.")
 
     opts,pars = parser.parse_args()
     if not opts.input:
@@ -1060,8 +1065,8 @@ if __name__ == "__main__":
         print "WARNING: cannot read PARANG keyword, estimate it from header"
         parangle = estimate_parangle(inhdr)
     channel = inhdr['CHANNEL'][0].upper()
-    pressure = inhdr.get('PRESSURE', 616.) # Default Mauna-Kea pressure [mbar]
-    temp = inhdr.get('TEMP', 2.)        # Default Mauna-Kea temp. [C]
+    pressure = inhdr.get('PRESSURE', MK_pressure) # Use default if no keyword
+    temp = inhdr.get('TEMP', MK_temp)
 
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
@@ -1079,7 +1084,7 @@ if __name__ == "__main__":
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
 
-    # Meta-slices
+    # Meta-slice definition (min,max,step [px])
     if channel == 'B':
         slices=[10, 900, 65]
     elif channel == 'R':
@@ -1087,7 +1092,6 @@ if __name__ == "__main__":
     else:
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
                      (opts.input, channel))
-
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
     cube   = pySNIFS.SNIFS_cube(opts.input, slices=slices)
@@ -1096,7 +1100,7 @@ if __name__ == "__main__":
 
     print_msg("  Meta-slices before selection: %d " \
               "from %.2f to %.2f by %.2f A" % \
-              (len(cube.lbda), cube.lbda[0], cube.lbda[-1], cube.lstep), 1)
+              (len(cube.lbda), cube.lbda[0], cube.lbda[-1], cube.lstep), 0)
 
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
@@ -1182,10 +1186,10 @@ if __name__ == "__main__":
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
     if opts.supernova:                  # Fix all parameters but intensities
+        print "WARNING: supernova-mode, no 3D PSF-fit"
         # This mode completely discards 3D fit. In pratice, a 3D-fit is still
         # performed on intensities, just to be coherent w/ the remaining of
         # the code.
-        print "WARNING: supernova mode, discard 3D fit"
         b1 = [[delta, delta],           # delta 
               [theta, theta],           # theta 
               [xc, xc],                 # x0 
@@ -1302,15 +1306,7 @@ if __name__ == "__main__":
         bkg = bkg_model.comp(fitpar[psf_model.npar: \
                                     psf_model.npar+bkg_model.npar])
         cube_fit.data += bkg
-    
-    # Save 3D adjusted parameter file ========================================
-    
-    if opts.File:
-        print "Producing 3D adjusted parameter file [%s]..." % opts.File
-        
-        create_3D_log_file(opts.File,obj,airmass,efftime,
-                           seeing,fitpar,khi2,errorpar,lbda_ref)
-    
+
     # Update header ==========================================================
     
     tflux = spec[:,0].sum()             # Total flux of extracted spectrum
@@ -1344,6 +1340,21 @@ if __name__ == "__main__":
         sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
         sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
 
+    # Save 3D adjusted parameter file ========================================
+    
+    if opts.File:
+        print "Producing 3D adjusted parameter file '%s'..." % opts.File
+        create_3D_log_file(opts.File,obj,airmass,efftime,
+                           seeing,fitpar,khi2,errorpar,lbda_ref)
+    
+    # Save adjusted PSF ==============================
+
+    if opts.psf:
+        path,name = os.path.split(opts.out)
+        outpsf = os.path.join(path,'psf_'+name)
+        print "Saving adjusted meta-slice PSF in 3D-fits cube '%s'..." % outpsf
+        cube_fit.WR_3d_fits(outpsf)
+    
     # Create output graphics =================================================
 
     if opts.plot:

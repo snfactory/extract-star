@@ -629,9 +629,17 @@ class SNIFS_cube:
             self.nlens = 225
             if lbda is None:
                 self.data = num.zeros(self.nlens,num.float32)
+                self.var = None
                 self.lbda = None  
                 self.nslice = None
             else:
+                # Check 1st that lbda is a linear ramp
+                lbda = num.array(lbda)
+                delta = lbda[1:] - lbda[:-1]
+                if not num.allclose(delta, delta.mean()):
+                    raise ValueError("Input wavelength ramp is not linear.")
+                self.lstart = lbda[0]
+                self.lstep = delta.mean()
                 self.nslice = len(lbda)
                 data = num.zeros((self.nslice,self.nlens),num.float64)
                 i,j = [ arr.ravel()
@@ -640,7 +648,6 @@ class SNIFS_cube:
                 x = (i-7)*self.spxSize
                 y = (j-7)*self.spxSize
                 no = num.arange(1,self.nlens+1).reshape(15,15).T.ravel()
-                lbda = num.array(lbda)
                 if num_array:
                     self.data = data
                     self.x = x
@@ -657,6 +664,7 @@ class SNIFS_cube:
                     self.j = num.array(j)
                     self.no = num.array(no)
                     self.lbda = num.array(lbda)  
+                self.var = None
           
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):
         """
@@ -847,13 +855,8 @@ class SNIFS_cube:
         if not self.from_e3d_file:
             raise NotImplementedError("Writing e3d file from scratch not yet implemented")
         data_list = num.transpose(self.data)
-        #data_list = [row for row in num.transpose(self.data)]
-        #data_list = (num.transpose(self.data)).tolist()
         if self.var is not None:
             var_list = num.transpose(self.var)
-            
-            #var_list = [row for row in num.transpose(self.var)]
-            #var_list = (num.transpose(self.var)).tolist()
         else:
             var_list = None
         start_list = [self.lstart for i in xrange(self.nlens)]
@@ -891,7 +894,7 @@ class SNIFS_cube:
             var3D = num.array([ self.slice2d(i,coord='p',var=True)
                                 for i in xrange(self.nslice) ])
             hdu_var.data = var3D
-        hdulist.append(hdu_var)
+            hdulist.append(hdu_var)
             
         hdulist.writeto(fits_file,clobber=(mode=='w+'))
 
