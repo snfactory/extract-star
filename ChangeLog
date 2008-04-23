@@ -2,8 +2,8 @@
 
 	* lib/pySNIFS.py (SNIFS_cube.WR_3d_fits): debugging.
 
-	* apps/extract_star/extract_star.py: new option '--psf' to store
-	adjusted meta-slice PSF in 3D-cube.
+	* apps/extract_star/extract_star.py: new option '--keepmodel' to store
+	meta-slice model in 3D-cube.
 
 2008-04-09  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 

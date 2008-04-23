@@ -965,13 +965,13 @@ class ExposurePSF:
         return fwhm                     # In spaxels
 
 
-class long_exposure_psf(ExposurePSF): 
+class Long_ExposurePSF(ExposurePSF): 
 
     name = 'long'
     corrCoeffs = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
 
 
-class short_exposure_psf(ExposurePSF):
+class Short_ExposurePSF(ExposurePSF):
 
     name = 'short'
     corrCoeffs = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
@@ -1022,9 +1022,9 @@ if __name__ == "__main__":
     parser.add_option("-F", "--File", type="string",
                       help="Save 3D adjustment results in file.")
     parser.add_option("--supernova", action='store_true',
-                      help="SN mode (ADR and position fixed).")
-    parser.add_option("--psf", action='store_true',
-                      help="Store adjusted meta-slice PSF in 3D-cube.")
+                      help="SN mode (no final 3D fit).")
+    parser.add_option("--keepmodel", action='store_true',
+                      help="Store meta-slice model in 3D-cube.")
 
     opts,pars = parser.parse_args()
     if not opts.input:
@@ -1076,10 +1076,7 @@ if __name__ == "__main__":
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
 
     # Select the PSF (short or long)
-    if efftime > 12.:                   # Long exposure
-        psfFn = long_exposure_psf
-    else:                               # Short exposure
-        psfFn = short_exposure_psf
+    psfFn = (efftime > 12.) and Long_ExposurePSF or Short_ExposurePSF
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
@@ -1349,7 +1346,7 @@ if __name__ == "__main__":
     
     # Save adjusted PSF ==============================
 
-    if opts.psf:
+    if opts.keepmodel:
         path,name = os.path.split(opts.out)
         outpsf = os.path.join(path,'psf_'+name)
         print "Saving adjusted meta-slice PSF in 3D-fits cube '%s'..." % outpsf
