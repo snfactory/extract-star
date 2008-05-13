@@ -1,3 +1,10 @@
+2008-05-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: long bug fighting session,
+	lots of leftovers...
+
+	* lib/pySNIFS_fit.py: rephrasing and optimizations.
+
 2008-04-23  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS.py (SNIFS_cube.WR_3d_fits): debugging.

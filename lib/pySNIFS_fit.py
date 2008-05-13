@@ -563,21 +563,16 @@ class model:
             if self.model_3D:
                 #self.weight = SNIFS_cube()
                 #self.weight.data = S.array(where(data.var!=0,1./abs(data.var),0.),'d')
-                self.weight = S.where(data.var!=0,
-                                          1./S.absolute(data.var),
-                                          0.).astype('d')
+                self.weight = S.where(data.var>0, 1/data.var, 0.).astype('d')
             elif self.model_2D:# TODO: Implement the variance
-                self.data.var = S.array(data.var)
+                self.data.var = S.array(data.var, dtype='d')
                 self.data.var = self.data.var.reshape(1,self.data.var.size)
-                self.weight = S.where(self.data.var!=0,
-                                          1./S.absolute(self.data.var),
-                                          0.).astype('d')
-                
+                self.weight = S.where(self.data.var>0, 1./self.data.var, 0.)
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
-                weight_val = S.where(data.var[data.index_list]!=0,
-                                         1./S.absolute(data.var[data.index_list]),
-                                         0.).astype('d')
+                weight_val = S.where(data.var[data.index_list]>0,
+                                     1./data.var[data.index_list],
+                                     0.).astype('d')
                 self.weight = S.reshape(weight_val,(len(data.index_list),1))
                 #self.weight.lbda = data.x
                 #self.weight.nslice = data.len
@@ -635,7 +630,7 @@ class model:
                     raise ValueError, "Function #%d has not the same bound pairs and variables number." % i
                 for j in range(len(param[i])):
                     self.bounds.append(bounds[i][j])
-                n = n + nparam[i]
+                n += nparam[i]
  
     def new_param(self,param=None):
         """ Store new parameters for the model evaluation. """
@@ -646,62 +641,42 @@ class model:
         self.param = param
         self.flatparam = S.concatenate(param).astype('d')
    
-    def eval(self):
-        """ Evaluate the model at the current parameters stored in the field flatparam."""
-        val = S.zeros((self.data.nslice,self.data.nlens),'d')
-        i = 0
-        for f in self.func:
-            val += f.comp(self.flatparam[i:i+f.npar])
-            i += f.npar
-        return val
-
-    def evalfit(self):
-        """ Evaluate the model at the last fitted parameters stored in the field fitpar."""
-        if self.fitpar is None:
-            raise ValueError, "No fit parameter to evaluate model."
-        val = S.zeros((self.data.nslice,self.data.nlens),'d')
-        i = 0
-        for f in self.func:
-            val = val + f.comp(self.fitpar[i:i+f.npar])
-            i=i+f.npar
-        return val
-
-    def res_eval(self,param=None):
-        """ Evaluate the residuals at the current parameters stored in the field flatparam."""
+    def eval(self, param=None):
+        """Evaluate model with current parameters stored in flatparam."""
         if param is None:
             param = self.flatparam
         val = S.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
-            val = val + f.comp(param[i:i+f.npar])
-            i = i + f.npar
-        val = self.data.data - val
+            val += f.comp(param[i:i+f.npar])
+            i += f.npar
         return val
+
+    def res_eval(self, param=None):
+        """Evaluate model residuals with current parameters stored in
+        flatparam."""
+        return self.data.data - self.eval(param)
+
+    def evalfit(self):
+        """Evaluate model at fitted parameters stored in fitpar."""
+        if self.fitpar is None:
+            raise ValueError, "No fit parameters to evaluate model."
+        return self.eval(param=self.fitpar)
 
     def res_evalfit(self):
-        """ Evaluate the residuals at the last fitted parameters stored in the field fitpar."""
-        if self.fitpar is None:
-            raise ValueError, "No parameter to estimate function value."
-        val = S.zeros((self.data.nslice,self.data.nlens),'d')
-        i = 0
-        for f in self.func: 
-            val =val+ f.comp(self.fitpar[i:i+f.npar])
-            i=i+f.npar
-        val = self.data.data - val
-        return val
+        """Evaluate model residuals at fitted parameters stored fitpar."""
+        return self.data.data - self.evalfit()
 
-    def objfun(self,param=None):
+    def objfun(self, param=None):
         """ Compute the objective function to be minimized:
         Sum(weight*(data-model)^2) at the given parameters values."""
-        #val = sum(self.res_eval(param=param)**2 * self.weight.data,1)
         return (self.res_eval(param=param)**2 * self.weight).sum()
         
-    def objgrad(self,param=None):
+    def objgrad(self, param=None):
         """ Compute the gradient of the objective function at the given
         parameters value."""
         if param is None:
             param = self.flatparam
-        #val1 = self.res_eval(param=param) * self.weight.data
         val1 = self.res_eval(param=param) * self.weight
         val2 = S.zeros(S.size(param),'d')
         i = 0
@@ -714,7 +689,7 @@ class model:
                 val2[i+f.npar_cor+n*self.data.nslice:
                      i+f.npar_cor+(n+1)*self.data.nslice] = \
                      deriv[n+f.npar_cor].sum(axis=1)
-            i=i+f.npar
+            i += f.npar
         return val2
 
     def check_grad(self, param=None, eps=1e-6):
@@ -733,38 +708,40 @@ class model:
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters
         (flatparam and param)."""
-        self.flatparam = S.array(self.fitpar,'d')
+        self.flatparam = self.fitpar.copy()
         self.param = self.unflat_param(self.fitpar)
     
     def fit(self, disp=False, save=False, deriv=True,
             maxfun=1000, msge=0, scale=None):
         """ Perform the model fitting by minimizing the objective function
         objfun."""
-        xopt = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                   fprime=deriv and self.objgrad or None, 
-                                   approx_grad=not deriv,
-                                   bounds=self.bounds,
-                                   messages=msge,maxfun=maxfun,
-                                   scale=deriv and scale or None)
-        res = S.array(xopt[2])
-        self.fitpar = res
+        out = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                  fprime=deriv and self.objgrad or None, 
+                                  approx_grad=not deriv,
+                                  bounds=self.bounds,
+                                  messages=msge,maxfun=maxfun,
+                                  scale=deriv and scale or None)
+        # See S.optimize.tnc.RCSTRINGS for status message
+        self.status = (out[0] not in [0,1]) and out[0] or 0
+        if msge>=1:
+            print "fmin_tnc (%d iter): %s" % \
+                  (out[1],S.optimize.tnc.RCSTRINGS[out[0]])
+        self.fitpar = S.asarray(out[2],'d')
         
-        if disp:
-            return res
-        
-        if save:
-            self.flatparam = S.array(self.fitpar,'d')
-        self.khi2 = self.objfun(param=res) / \
-                    (self.data.nlens*self.data.nslice - S.size(self.flatparam))
+        # Reduced khi2 = khi2 / DoF
+        self.dof = self.data.nlens*self.data.nslice - self.flatparam.size
+        self.khi2 = self.objfun(param=self.fitpar) / self.dof
 
+        if disp:
+            return self.fitpar
+        if save:
+            self.flatparam = self.fitpar.copy()
         
     def param_error(self,param=None):
         if param is None:
             param = self.fitpar
         jac = self.objgrad
-        #print 'jac: ',shape(jac(param))
         hess = lambda param: approx_deriv(jac,param,order=2)
-        #print 'hess: ',shape(hess(param))
         try:
             cov = S.linalg.inv(hess(param))
             return cov
@@ -778,7 +755,7 @@ class model:
         i = 0
         for f in self.func:    
             newparam.append(param[i:i+f.npar])
-            i=i+f.npar
+            i += f.npar
         return newparam
 
     def save_fit_as_SNIFS_cube(self):
@@ -820,7 +797,7 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
         raise NotImplementedError
 
     if dpars is None:
-        dpars = S.ones(len(pars))*eps  # N
+        dpars = S.ones(len(pars))*eps   # N
     mat = S.diag(dpars)                 # NxN
 
     delta = S.arange(len(weights)) - (len(weights)-1)//2

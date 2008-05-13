@@ -36,18 +36,11 @@ class ADR_model:
     def __init__(self, pressure=616., temp=2., **kwargs):
         """ADR_model(pressure, temp, [lref=, delta=, theta=])."""
 
+        if not 550<pressure<650 and not not -20<temp<20:
+            raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
+                             "temperature (%.0f C)" % (pressure, temp))        
         self.P = pressure
         self.T = temp
-
-        if not 550<pressure<650:        # Non-std pressure
-            self.P = MK_pressure
-            print "WARNING: non-std pressure (%.0f mbar) reset to %.0f mbar" % \
-                  (pressure,self.P)
-        if not -20<temp<20:             # Non-std temperature
-            self.T = MK_temp
-            print "WARNING: non-std temperature (%.0f C) reset to %.0f C" % \
-                  (temp,self.T)
-        
         if 'lref' in kwargs:
             self.set_ref(lref=kwargs['lref'])
         else:
@@ -140,19 +133,42 @@ def atmosphericIndex(lbda, P=616., T=2.):
     return n
 
 
+def read_PT(hdr, update=False):
+    """Read pressure and temperature from hdr, and check value consistency."""
+
+    pressure = hdr.get('PRESSURE', S.nan)
+    temp = hdr.get('TEMP', S.nan)
+
+    if not 550<pressure<650:        # Non-std pressure
+        if update:
+            print "WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
+                  (pressure, MK_pressure)
+            hdr.update('PRESSURE',MK_pressure,"Default MaunaKea pressure [mbar]")
+        pressure = MK_pressure
+    if not -20<temp<20:             # Non-std temperature
+        if update:
+            print "WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
+                  (temp, MK_temp)
+            hdr.update('TEMP', MK_temp, "Default MaunaKea temperature [C]")
+        temp = MK_temp
+
+    return pressure,temp
+
+
 def estimate_parangle(hdr):
     """Estimate parallactic angle [degree] from header keywords."""
 
     from math import sin,cos,pi,sqrt,acos,atan2
 
     d2r = pi/180.                       # Degree to Radians
-
     # DTCS latitude is probably not the most precise one (see fit_ADR.py)
     phi = hdr['LATITUDE']*d2r           # Latitude [rad]
     sinphi = sin(phi)
     cosphi = cos(phi)
-
-    ha = hdr['HA']                      # Hour angle (format: 04:04:52.72)
+    try:
+        ha = hdr['HAMID']               # Hour angle (format: 04:04:52.72)
+    except:
+        ha = hdr['HA']                  # Hour angle (format: 04:04:52.72)
     try:
         dec = hdr['TELDEC']             # Declination (format 08:23:19.20)
     except:
@@ -208,8 +224,9 @@ def laplace_filtering(cube, eps=1e-4):
                              Max=100, cumul=True)
     threshold = hist.x[S.argmax(S.where(hist.data<(1-eps), 0, 1))]
     print_msg("Laplace filter threshold [eps=%g]: %.2f" % (eps,threshold), 2)
+    filt = (S.absolute(lapl) <= threshold)
 
-    return (S.absolute(lapl) <= threshold)
+    return filt
 
 
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
@@ -266,9 +283,9 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # Rejection of bad points (YC: need some clarifications...)
     filt = laplace_filtering(cube)
     if (~filt).any():
-        print "WARNING: filtering out %d vx in %d slices in extract_spec" % \
-              (len((~filt).nonzero()[0]),
-               len(S.nonzero([ f.any() for f in ~filt ])[0]))
+        print "WARNING: %d/%d vx in %d/%d slices filtered out in extract_spec" % \
+              (len((~filt).nonzero()[0]), cube.data.size, 
+               len(S.nonzero([ f.any() for f in ~filt ])[0]), cube.nslice)
     cube.var *= filt                    # Discard non-selected voxels
 
     # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
@@ -510,6 +527,9 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
+    print_msg("  Adjusted parameters: [delta],[theta],xc,yc,PA,ell,alpha,I,"
+              "%d bkgndCoeffs" % (skyDeg and npar_sky or 0),2)
+
     for i in xrange(cube.nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
         cube_star.data = cube.data[i, S.newaxis]
@@ -518,7 +538,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         cube_sky.var   = cube.var[i,  S.newaxis].copy()
 
         # Sky estimate (from FoV edge spx)
-        star_int = F.median_filter(cube_star.data[0], 3)
+        medstar = F.median_filter(cube_star.data[0], 3)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
@@ -531,14 +551,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                                                   [[None,None]]*(npar_sky-1)])
             model_sky.fit()
             cube_sky.data = model_sky.evalfit() # 1st background estimate
-            star_int -= cube_sky.data[0] # Subtract structured background estim.
+            medstar -= cube_sky.data[0] # Subtract structured background estim.
         elif skyDeg == 0:
-            star_int -= skyLev          # Subtract sky level estimate
+            medstar -= skyLev           # Subtract sky level estimate
 
         # Guess parameters for the current slice
-        imax = star_int.max()           # Intensity
-        xc = S.average(cube_star.x, weights=star_int) # Centroid [spx]
-        yc = S.average(cube_star.y, weights=star_int)
+        imax = medstar.max()            # Intensity
+        xc = S.average(cube_star.x, weights=medstar) # Centroid [spx]
+        yc = S.average(cube_star.y, weights=medstar)
         xc = S.clip(xc, -7.5,7.5)       # Put initial guess ~ in FoV
         yc = S.clip(yc, -7.5,7.5)
 
@@ -564,13 +584,12 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             else:                       # Guess: Background=constant (>0)
                 p2 = [skyLev] 
             b2 = [[0,None]] + [[None,None]]*(npar_sky-1)
-
             func += ['poly2D;%d' % skyDeg]
             param += [p2]
             bounds += [b2]
         else:                           # No background
             p2 = [] 
-        print_msg("    Initial guess [#%d/%d, %.0fA]: %s" % \
+        print_msg("  Initial guess [#%d/%d, %.0fA]: %s" % \
                   (i+1,cube.nslice,cube.lbda[i],p1+p2), 2)
 
         # Instanciating of a model class
@@ -580,6 +599,12 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
         # Fit of the current slice
         model_star.fit(maxfun=400, msge=int(opts.verbosity >= 3))
+
+        # Probably one should check model_star.status...
+
+        # Restore true chi2 (not reduced one), ie.
+        # chi2 = ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
+        model_star.khi2 *= model_star.dof
 
         # Error computation
         hess = pySNIFS_fit.approx_deriv(model_star.objgrad, model_star.fitpar,
@@ -591,11 +616,12 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             diag = cov.diagonal()
             if (diag>0).all():
                 errorpar = S.concatenate(([0.,0.], S.sqrt(diag)))
-                # Shall we *= model_star.khi2
-                # (cf. http://www.asu.edu/sas/sasdoc/sashtml/stat/chap45/sect24.htm)
+                # Shall we *= model_star.khi2, see
+                # http://www.asu.edu/sas/sasdoc/sashtml/stat/chap45/sect24.htm
             else:                       # Some negative diagonal elements!
                 print "WARNING: negative covariance diag. elements in metaslice %d" % (i+1)
-                errorpar = S.zeros(len(error_mat.T)) # To be discarded
+                model_star.khi2 *= -1   # To be discarded
+                errorpar = S.zeros(len(error_mat.T))
         else:
             # Set error to 0 if alpha, intens. or ellipticity is 0.
             if model_star.fitpar[5]==0:
@@ -604,16 +630,17 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 print "WARNING: alpha of metaslice %d is null" % (i+1)
             elif model_star.fitpar[7]==0:
                 print "WARNING: intensity of metaslice %d is null" % (i+1)
-            errorpar = S.zeros(len(error_mat.T)) # To be discarded
+            model_star.khi2 *= -1       # To be discarded
+            errorpar = S.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
         param_arr[i] = model_star.fitpar
         khi2_vec[i]  = model_star.khi2
         error_mat[i] = errorpar
-        print_msg("    Fit result [#%d/%d, %.0fA]: %s" % \
-                  (i+1,cube.nslice,cube.lbda[i],model_star.fitpar), 2)
+        print_msg("  Fit result [DoF=%d chi2=%f]: %s" % \
+                  (model_star.dof,model_star.khi2,model_star.fitpar), 2)
 
-    return (param_arr,khi2_vec,error_mat)
+    return param_arr,khi2_vec,error_mat
 
 
 def create_2D_log_file(filename,object,airmass,efftime,
@@ -632,24 +659,13 @@ def create_2D_log_file(filename,object,airmass,efftime,
     logfile.write('# object  : %s   \n' % object)
     logfile.write('# airmass : %.2f \n' % airmass)
     logfile.write('# efftime : %.2f \n' % efftime)
-    
-    logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
-           xc +/- dxc              yc +/- dyc              PA +/- dPA\
-       %s%s        I +/- dI      %s      khi2\n' % \
-                  (''.join(['       e%i +/-d e%i       ' % (i,i)
-                            for i in xrange(ellDeg+1)]),
-                   ''.join(['   alpha%i +/- dalpha%i   ' % (i,i)
-                            for i in xrange(alphaDeg+1)]),
-                   ''.join(['       sky%i +/- dsky%i   ' % (i,i)
-                            for i in xrange(npar_sky)])))
 
-    str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
-    str += ' % 10.4e% 10.4e  % 10.4e% 10.4e '
-    str += ' % 10.4e% 10.4e ' * (ellDeg+1)
-    str += ' % 10.4e% 10.4e ' * (alphaDeg+1)
-    str += ' % 10.4e% 10.4e '            # Intensity      
-    str += ' % 10.4e% 10.4e ' * npar_sky # sky      
-    str += ' % 10.4e \n'                 # Khi2
+    logfile.write('# lbda  %s        chi2\n' % \
+                  '  '.join('%8s +/- d%-8s' % (n,n)
+                            for n in ['delta','theta','xc','yc','PA',
+                                      'ell','alpha','I'] + \
+                            ['sky%d' % d for d in xrange(npar_sky)] ))
+    fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((8+npar_sky)*2+1)) + '\n'
 
     for n in xrange(cube.nslice):
         list2D  = [cube.lbda[n],
@@ -657,42 +673,36 @@ def create_2D_log_file(filename,object,airmass,efftime,
                    theta[n], error_mat[n][1],
                    xc[n]   , error_mat[n][2],
                    yc[n]   , error_mat[n][3],
-                   PA[n]   , error_mat[n][4]]
-        list2D += [ell[n]  , error_mat[n][5]] + [0.,0.] * ellDeg
-        list2D += [alpha[n], error_mat[n][6]] + [0.,0.] * alphaDeg
-        list2D += [intensity[n], error_mat[n][-npar_sky-1]]
-        tmp = S.array((sky.T[n],error_mat[n][-npar_sky:]))
-        list2D += tmp.T.flatten().tolist()
+                   PA[n]   , error_mat[n][4],
+                   ell[n]  , error_mat[n][5],
+                   alpha[n], error_mat[n][6],
+                   intensity[n], error_mat[n][-npar_sky-1]]
+        if npar_sky:
+            tmp = S.array((sky.T[n],error_mat[n][-npar_sky:]))
+            list2D += tmp.T.flatten().tolist()
         list2D += [khi2[n]]
-        logfile.write(str % tuple(list2D))
-        
+        logfile.write(fmt % tuple(list2D))
     logfile.close()
 
     
-def create_3D_log_file(filename,object,airmass,efftime,\
-                       seeing,fitpar,khi3D,errorpar,lbda_ref):
+def create_3D_log_file(filename,object,airmass,efftime,
+                       cube,cube_fit,fitpar,khi3D,errorpar,lbda_ref):
 
     logfile = open(filename,'w')
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
     logfile.write('# object  : %s   \n' % object)
     logfile.write('# airmass : %.2f \n' % airmass)
     logfile.write('# efftime : %.2f \n' % efftime)
-    logfile.write('# seeing  : %.2f \n' % seeing)
-    
-    logfile.write('# lbda      delta +/- ddelta        theta +/- dtheta\
-           xc +/- dxc              yc +/- dyc              PA +/- dPA\
-       %s%s    khi2\n' % \
-                  (''.join(['       e%i +/- de%i       '\
-                            %(i,i) for i in xrange(ellDeg+1)]),
-                   ''.join(['   alpha%i +/- dalpha%i   '\
-                            %(i,i) for i in xrange(alphaDeg+1)])))
-    
-    str  = '  %i  % 10.4e% 10.4e  % 10.4e% 10.4e  % 10.4e% 10.4e '
-    str += ' % 10.4e% 10.4e  % 10.4e% 10.4e '
-    str += ' % 10.4e% 10.4e ' * (ellDeg+1)
-    str += ' % 10.4e% 10.4e ' * (alphaDeg+1)
-    str += ' % 10.4e \n'                # Khi2
-     
+
+    # Global parameters
+    logfile.write('# lref  %s        chi2\n' % \
+                  '  '.join('%8s +/- d%-8s' % (n,n)
+                            for n in ['delta','theta','xc','yc','PA'] + \
+                            ['ell%d' % d for d in xrange(ellDeg+1)] +
+                            ['alpha%d' % d for d in xrange(alphaDeg+1)]))
+    fmt = '%6.0f  ' + \
+          '  '.join(["%10.4g"]*((5+(ellDeg+1)+(alphaDeg+1))*2+1)) + \
+          '\n'
     list3D = [lbda_ref,
               fitpar[0],errorpar[0],
               fitpar[1],errorpar[1],
@@ -704,8 +714,29 @@ def create_3D_log_file(filename,object,airmass,efftime,\
     for i in xrange(alphaDeg+1):
         list3D += [fitpar[6+ellDeg+i],errorpar[6+ellDeg+i]]
     list3D += [khi3D]
+    logfile.write(fmt % tuple(list3D))  
 
-    logfile.write(str % tuple(list3D))  
+    # Megaslice parameters
+    npar_psf = 7 + ellDeg + alphaDeg
+    npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
+
+    logfile.write('# lbda  %s        chi2\n' % \
+                  '  '.join('%8s +/- d%-8s' % (n,n)
+                            for n in ['I'] + \
+                            ['sky%d' % d for d in xrange(npar_sky)] ))
+    fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((1+npar_sky)*2+1)) + '\n'
+    for n in xrange(cube.nslice):
+        list2D  = [cube.lbda[n],
+                   fitpar[npar_psf+n], errorpar[npar_psf+n]]
+        for i in xrange(npar_sky):
+            list2D.extend([fitpar[npar_psf+nslice+n*npar_sky+i],
+                           errorpar[npar_psf+nslice+n*npar_sky+i]])
+        chi2 = S.nan_to_num((cube.slice2d(n, coord='p') - \
+                             cube_fit.slice2d(n, coord='p'))**2 / \
+                            cube.slice2d(n, coord='p', var=True))
+        list2D += [chi2.sum()]          # Slice chi2
+        logfile.write(fmt % tuple(list2D))
+    logfile.close()
 
 
 def build_sky_cube(cube, sky, sky_var, skyDeg):
@@ -742,24 +773,24 @@ def fill_header(hdr, param, lbda_ref, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_CUBE', opts.input, 'Input cube')
     hdr.update('ES_LREF', lbda_ref,   'Lambda ref. [A]')
     hdr.update('ES_SDEG', opts.skyDeg,'Polynomial bkgnd degree')
-    hdr.update('ES_KHI2', khi2,       'Reduced khi2 of meta-fit')
-    hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
-    if opts.skyDeg >= 0:
-        hdr.update('ES_SFLUX',sflux,  'Sum of the sky flux')
-    hdr.update('ES_DELTA',param[0],   'ADR power')
-    hdr.update('ES_THETA',param[1]/S.pi*180,'ADR angle [deg]')
+    hdr.update('ES_KHI2', khi2,       'Chi2 of 3D fit')
+    hdr.update('ES_AIRM', 1/S.cos(S.arctan(param[0])), 'Effective airmass')
+    hdr.update('ES_PARAN',param[1]/S.pi*180, 'Effective parangle [deg]')
     hdr.update('ES_XC',   param[2],   'xc @lbdaRef [spx]')
     hdr.update('ES_YC',   param[3],   'yc @lbdaRef [spx]')
-    if opts.supernova:
-        hdr.update('ES_SNMOD',opts.supernova,'Supernova mode')
     hdr.update('ES_PA'   ,param[4],   'Position angle')
     for i in xrange(opts.ellDeg + 1):    
         hdr.update('ES_E%i' % i, param[5+i], 'Ellipticity coeff. e%d' % i)
     for i in xrange(opts.alphaDeg + 1):
         hdr.update('ES_A%i' % i, param[6+opts.ellDeg+i], 'Alpha coeff. a%d' % i)
+    if opts.supernova:
+        hdr.update('ES_SNMOD',opts.supernova,'Supernova mode')
     hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
         hdr.update('ES_APRAD', opts.radius, 'Aperture radius [sigma]')
+    hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
+    if opts.skyDeg >= 0:
+        hdr.update('ES_SFLUX',sflux,  'Sum of the sky flux')
     hdr.update('SEEING', seeing, 'Seeing [arcsec] (extract_star)')
 
 
@@ -783,10 +814,10 @@ class ExposurePSF:
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
         
-        self.npar_ind = 1               # Intensity
         self.npar_cor = 7 + self.alphaDeg + self.ellDeg # PSF parameters
-        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.npar_ind = 1               # Intensity parameters per slice
         self.nslice = cube.nslice
+        self.npar = self.npar_cor + self.npar_ind*self.nslice
 
         if coords is None:
             self.nlens = cube.nlens
@@ -803,11 +834,10 @@ class ExposurePSF:
         self.l = S.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
 
         # ADR in spaxels (nslice,nlens)
-        pressure = MK_pressure   # Default values for pression and temperature
-        temp = MK_temp
-        if hasattr(cube,'e3d_data_header'): # Read from a real cube if possible
-            pressure = cube.e3d_data_header.get('PRESSURE',pressure)
-            temp     = cube.e3d_data_header.get('TEMP',temp)
+        if hasattr(cube,'e3d_data_header'): # Read from cube if possible
+            pressure,temp = read_PT(cube.e3d_data_header)
+        else:
+            pressure,temp = MK_pressure,MK_temp # Default values for P and T
         self.n_ref = atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
         self.ADR_coeff = ( self.n_ref - \
                            atmosphericIndex(self.l, P=pressure, T=temp) ) * \
@@ -986,7 +1016,7 @@ if __name__ == "__main__":
     methods = ('psf','aperture','optimal')
 
     usage = "usage: [%prog] [options] -i inE3D.fits " \
-            "-o outSpec.fits -s outSky.fits -f file.log"
+            "[-o outSpec.fits -s outSky.fits]"
 
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-i", "--in", type="string", dest="input",
@@ -1026,7 +1056,7 @@ if __name__ == "__main__":
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slice model in 3D-cube.")
 
-    opts,pars = parser.parse_args()
+    opts,args = parser.parse_args()
     if not opts.input:
         parser.error("No input datacube specified.")
 
@@ -1065,8 +1095,7 @@ if __name__ == "__main__":
         print "WARNING: cannot read PARANG keyword, estimate it from header"
         parangle = estimate_parangle(inhdr)
     channel = inhdr['CHANNEL'][0].upper()
-    pressure = inhdr.get('PRESSURE', MK_pressure) # Use default if no keyword
-    temp = inhdr.get('TEMP', MK_temp)
+    pressure,temp = read_PT(inhdr, update=True)
 
     ellDeg   = opts.ellDeg
     alphaDeg = opts.alphaDeg
@@ -1146,19 +1175,22 @@ if __name__ == "__main__":
     adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
     print_msg(str(adr), 1)
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
-    valid = S.array([row.any() for row in error_mat]) # Discard unfitted slices
+    valid = khi2_vec > 0                # Discard unfitted slices
     x0,y0 = S.median(xref[valid]),S.median(yref[valid]) # Robust to outliers
     r = S.hypot(xref - x0, yref - y0)
     rmax = 5*S.median(r[valid])         # Robust to outliers
     good = valid & (r <= rmax)          # Valid fit and reasonable position
     bad = valid & (r > rmax)            # Valid fit but discarded position
+    if (valid & bad).any():
+        print "WARNING: %d metaslices discarded after ADR selection" % \
+              (len(S.nonzero(valid & bad)))
     print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % \
               (len(xref[good]),len(xref),rmax,x0,y0), 1)
-    # dx,dy are sometimes null (when some cov. diagonal elements are <0)
-    #dx,dy = error_mat[:,2],error_mat[:,3]
-    #xc = S.average(xref[good], weights=1/dx[good]**2)
-    #yc = S.average(yref[good], weights=1/dy[good]**2)
     xc,yc = xref[good].mean(),yref[good].mean()
+    # We could use a weighted average, but does not make much of a difference
+    # dx,dy = error_mat[:,2],error_mat[:,3]
+    # xc = S.average(xref[good], weights=1/dx[good]**2)
+    # yc = S.average(yref[good], weights=1/dy[good]**2)
 
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
@@ -1216,7 +1248,15 @@ if __name__ == "__main__":
         param += [p2]
         bounds += [b2]
 
+    print_msg("  Adjusted parameters: delta,theta,xc,yc,PA,"
+              "%d ellCoeffs,%d alphaCoeffs,%d intens., %d bkgndCoeffs" % \
+              (ellDeg+1,alphaDeg+1,nslice,
+               skyDeg>=0 and (npar_sky*nslice) or 0), 3)
     print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
+    print_msg("  Initial guess [Intensities]: %s" % \
+              p1[npar_psf:npar_psf+nslice], 3)
+    if skyDeg >= 0:
+        print_msg("  Initial guess [Background]: %s" % p2, 3)
 
     # Instanciating the model class and perform the fit
     data_model = pySNIFS_fit.model(data=cube, func=func,
@@ -1225,12 +1265,19 @@ if __name__ == "__main__":
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=3))
 
     # Storing result and guess parameters
-    fitpar   = data_model.fitpar
-    khi2     = data_model.khi2          # Reduced khi2 of meta-fit
-    cov      = data_model.param_error(fitpar)
+    fitpar = data_model.fitpar          # Adjusted parameters
+    khi2 = data_model.khi2              # Reduced khi2 of meta-fit
+    khi2 *= data_model.dof              # Restore real chi2
+    cov = data_model.param_error(fitpar) # Covariance matrix
     errorpar = S.sqrt(cov.diagonal())
 
-    print_msg("  Fit result: %s" % fitpar[:npar_psf], 2)
+    print_msg("  Fit result: DoF: %d, chi2=%f" % (data_model.dof, khi2), 2)
+    print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
+    print_msg("  Fit result [Intensities]: %s" % \
+              fitpar[npar_psf:npar_psf+nslice], 3)
+    if skyDeg >= 0:
+        print_msg("  Fit result [Background]: %s" % \
+                  fitpar[npar_psf+nslice:], 3)
 
     print_msg("  Reference position fit [%.2fA]: %.2f x %.2f spx" % \
               (lbda_ref,fitpar[2],fitpar[3]), 1)
@@ -1290,16 +1337,20 @@ if __name__ == "__main__":
         bkg_spec.var  /= full_cube.nlens
 
     # Creating a standard SNIFS cube with the adjusted data
+    # Do not use directly data_model.evalfit() since we want to keep
+    # psf and bkg separated. But in the end, psf+bkg = data_model.evalfit()
     cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda)
     cube_fit.x = cube_fit.i - 7     # x in spaxel 
     cube_fit.y = cube_fit.j - 7     # y in spaxel
     
     psf_model = psfFn(psfCtes, cube=cube_fit)
+    #psf_model = data_model.func[0]
     psf = psf_model.comp(fitpar[:psf_model.npar])
     cube_fit.data = psf
 
     if skyDeg >= 0:
         bkg_model = pySNIFS_fit.poly2D(skyDeg, cube_fit)
+        #bkg_model = data_model.func[1]
         bkg = bkg_model.comp(fitpar[psf_model.npar: \
                                     psf_model.npar+bkg_model.npar])
         cube_fit.data += bkg
@@ -1342,7 +1393,7 @@ if __name__ == "__main__":
     if opts.File:
         print "Producing 3D adjusted parameter file '%s'..." % opts.File
         create_3D_log_file(opts.File,obj,airmass,efftime,
-                           seeing,fitpar,khi2,errorpar,lbda_ref)
+                           cube,cube_fit,fitpar,khi2,errorpar,lbda_ref)
     
     # Save adjusted PSF ==============================
 
@@ -1424,13 +1475,14 @@ if __name__ == "__main__":
 
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
+        mod = data_model.evalfit()
         for i in xrange(nslice):        # Loop over meta-slices
             ax = fig2.add_subplot(nrow, ncol, i+1)
             data = cube.data[i,:]
-            fit = data_model.evalfit()[i,:]
+            fit = mod[i,:]
             fmin = min(data.min(), fit.min()) - 2e-2
-            ax.plot(data-fmin)          # Signal
-            ax.plot(fit-fmin)           # Fit
+            ax.plot(data - fmin)        # Signal
+            ax.plot(fit - fmin)         # Fit
             ax.semilogy()
             ax.set_xlim(0,len(data))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
@@ -1448,8 +1500,8 @@ if __name__ == "__main__":
         fig3.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
         for i in xrange(nslice):        # Loop over slices
             ax = fig3.add_subplot(nrow, ncol, i+1)
-            sigSlice = S.nan_to_num(cube.slice2d(i, coord='p'))
-            varSlice = S.nan_to_num(cube.slice2d(i, coord='p', var=True))
+            sigSlice = cube.slice2d(i, coord='p', NAN=False)
+            varSlice = cube.slice2d(i, coord='p', var=True, NAN=False)
             modSlice = cube_fit.slice2d(i, coord='p')
             prof_I = sigSlice.sum(axis=0) # Sum along rows
             prof_J = sigSlice.sum(axis=1) # Sum along columns
@@ -1523,12 +1575,13 @@ if __name__ == "__main__":
         ax4c.add_patch(matplotlib.patches.Rectangle((-7.5,-7.5),15,15,
                                                  ec='0.8',lw=2,fc=None)) # FoV
         ax4c.text(0.03, 0.85,
-                  'Guess: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.1fdeg' % \
-                  (xc, yc, delta, theta/S.pi*180),
+                  'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1fdeg' % \
+                  (xc, yc, airmass, parangle),
                   transform=ax4c.transAxes, fontsize='smaller')
         ax4c.text(0.03, 0.75,
-                  'Fit: x0,y0=%4.2f,%4.2f  delta=%.2f theta=%.1fdeg' % \
-                  (fitpar[2], fitpar[3], fitpar[0], fitpar[1]/S.pi*180),
+                  'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1fdeg' % \
+                  (fitpar[2], fitpar[3],
+                   1/S.cos(S.arctan(fitpar[0])), fitpar[1]/S.pi*180),
                   transform=ax4c.transAxes, fontsize='smaller')
         ax4c.set_xlabel("X center [spaxels]")
         ax4c.set_ylabel("Y center [spaxels]")
@@ -1654,27 +1707,27 @@ if __name__ == "__main__":
                      cube.data[i].max()*1.2])
 
         # Radial Chi2 plot (not activated by default)
-        ## print_msg("Producing radial chi2 plot...", 1)
-        ## fig = pylab.figure()
-        ## fig.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
-        ## for i in xrange(nslice):        # Loop over slices
-        ##     ax = fig.add_subplot(nrow, ncol, i+1)
-        ##     r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
-        ##     rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
-        ##                      fit_ell[i], fitpar[4])
-        ##     # Find index of fit radii corresponding to data radii
-        ##     idx = S.setmember1d(rfit,r) # True if rfit is also in r
-        ##     chi2 = (cube.data[i]-cube_fit.data[i][idx])**2/cube.var[i]
-        ##     ax.plot(r, chi2, 'b.')
-        ##     ax.semilogy()
-        ##     pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
-        ##     ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
-        ##             horizontalalignment='right', transform=ax.transAxes)
-        ##     if method!='psf':
-        ##         ax.axvline(radius/SpaxelSize, color='y', lw=2)
-        ##     if ax.is_last_row() and ax.is_first_col():
-        ##         ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
-        ##         ax.set_ylabel("chi2", fontsize=8)
+        if False:
+            print_msg("Producing radial chi2 plot...", 1)
+            fig = pylab.figure()
+            fig.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)
+            for i in xrange(nslice):        # Loop over slices
+                ax = fig.add_subplot(nrow, ncol, i+1)
+                rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
+                                 fit_ell[i], fitpar[4])
+                chi2 = (cube.slice2d(i,coord='p') - \
+                        cube_fit.slice2d(i,coord='p'))**2 / \
+                        cube.slice2d(i,coord='p',var=True)
+                ax.plot(rfit, chi2.flatten(), 'b.')
+                ax.semilogy()
+                pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
+                ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
+                        horizontalalignment='right', transform=ax.transAxes)
+                if method!='psf':
+                    ax.axvline(radius/SpaxelSize, color='y', lw=2)
+                if ax.is_last_row() and ax.is_first_col():
+                    ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
+                    ax.set_ylabel("chi2", fontsize=8)
 
         # Contour plot of each slice -----------------------------------------
 
