@@ -721,21 +721,17 @@ class model:
                                   bounds=self.bounds,
                                   messages=msge,maxfun=maxfun,
                                   scale=deriv and scale or None)
-        # See S.optimize.tnc.RCSTRINGS for status message
 
         # Fmin_tnc's outputs inversion in the new version of scipy ('0.6.0').
         if (S.__version__ >='0.6.0'): 
-            self.status = (out[2] not in [0,1]) and out[2] or 0
-            if msge>=1:
-                print "fmin_tnc (%d iter): %s" % \
-                    (out[1],S.optimize.tnc.RCSTRINGS[out[2]])
-            self.fitpar = S.asarray(out[0],'d')
-        else:
-            self.status = (out[0] not in [0,1]) and out[0] or 0
-            if msge>=1:
-                print "fmin_tnc (%d iter): %s" % \
-                    (out[1],S.optimize.tnc.RCSTRINGS[out[0]])
-            self.fitpar = S.asarray(out[2],'d')
+            out = out[::-1]
+
+        # See S.optimize.tnc.RCSTRINGS for status message
+        self.status = (out[0] not in [0,1]) and out[0] or 0
+        if msge>=1:
+            print "fmin_tnc (%d iter): %s" % \
+                (out[1],S.optimize.tnc.RCSTRINGS[out[0]])
+        self.fitpar = S.asarray(out[2],'d')
 
         # Reduced khi2 = khi2 / DoF
         self.dof = self.data.nlens*self.data.nslice - self.flatparam.size

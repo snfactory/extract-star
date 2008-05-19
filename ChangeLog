@@ -1,5 +1,7 @@
 2008-05-19  ClÃ©ment BUTON  <cbuton@bigbrother.dhcp.lbnl.us>
 
+	* lib/pySNIFS_fit.py (model.fit): minor changes
+
 	* apps/extract_star/PSF_analysis.py: same point source extractor
 	than extract_star, except that all the PSF parameters can be 
 	correlated or free. (based on extract_star 1.86)
