@@ -1,3 +1,8 @@
+2008-05-19  ClÃ©ment BUTON  <cbuton@bigbrother.dhcp.lbnl.us>
+
+	* lib/pySNIFS_fit.py (model.fit): Fmin_tnc's outputs inversion
+	in the new version of scipy ('0.6.0').  
+
 2008-05-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: long bug fighting session,
