@@ -276,7 +276,8 @@ class spectrum:
                        desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
                        desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
                        desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
-                       desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS':
+                       desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS' and desc[0][0:5] != 'CRVAL' and \
+                       desc[0][0:5] != 'CDELT' and desc[0][0:5] != 'CRPIX':
                     hdu.header.update(desc[0],desc[1])
         if self.has_var:
             hdu_var = pyfits.ImageHDU()
@@ -452,7 +453,7 @@ class SNIFS_cube:
 
     spxSize = 0.43                      # Spx size in arcsec
     
-    def __init__(self,e3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20,nodata=False):
+    def __init__(self,e3d_file=None,fits3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20,nodata=False):
         """
         Initiating the class.
         @warning: If the spectra in the datacube do not have the same lengthes, they will be truncated
@@ -471,32 +472,33 @@ class SNIFS_cube:
         @param nodata: If set to True, only the descriptors (start,step...) will be saved. It may be useful when the user
             wants to read many cubes to compare their descriptors without using to much memory.
         """
-        if e3d_file is not None:
-            if slices is not None:
-                if not isinstance(slices,list):
-                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if len(slices) != 2 and len(slices) != 3:
-                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if False in [isinstance(sl,int) for sl in slices]:
-                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if False in [sl>=0 for sl in slices]:
-                    raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
-                if len(slices) == 3:
-                    if slices[2] == 0:
-                        raise ValueError('The slices step cannot be set to 0')
-                    else:
-                        s = True
+
+        if slices is not None:
+            if not isinstance(slices,list):
+                raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
+            if len(slices) != 2 and len(slices) != 3:
+                raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
+            if False in [isinstance(sl,int) for sl in slices]:
+                raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
+            if False in [sl>=0 for sl in slices]:
+                raise ValueError('The wavelength range must be given as a list of two or three integer positive values')
+            if len(slices) == 3:
+                if slices[2] == 0:
+                    raise ValueError('The slices step cannot be set to 0')
                 else:
-                    s = False
-                if slices[0] > slices[1]:
-                    tmp = slices[0]
-                    slices[0] = slices[1]
-                    slices[1] = tmp
-                l = [int(sl) for sl in slices]
+                    s = True
             else:
-                l = slices
                 s = False
-            
+            if slices[0] > slices[1]:
+                tmp = slices[0]
+                slices[0] = slices[1]
+                slices[1] = tmp
+            l = [int(sl) for sl in slices]
+        else:
+            l = slices
+            s = False
+                
+        if e3d_file is not None:
             e3d_cube = pyfits.open(e3d_file)
             gen_header = dict(e3d_cube[0].header.items())
             if not gen_header.has_key('EURO3D') or \
@@ -623,8 +625,107 @@ class SNIFS_cube:
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
             self.nlens = len(self.x)
+            
+        elif fits3d_file is not None:
+            
+            fits3d_cube = pyfits.open(fits3d_file)
+            gen_header = dict(fits3d_cube[1].header.items())
+            nslice = gen_header['NAXIS3']
+            nx = gen_header['NAXIS1']
+            ny = gen_header['NAXIS2']
+            startx = gen_header['CRVAL1']
+            starty = gen_header['CRVAL2']
+            startl = gen_header['CRVAL3']
+            stepx = gen_header['CDELT1']
+            stepy = gen_header['CDELT2']
+            stepl = gen_header['CDELT3']
+            if gen_header['NAXIS'] != 3:
+                raise ValueError("Invalid 3D file: NAXIS!=3")
+            self.fits3d_file = fits3d_file
+            self.lstep = stepl
+            if (len(fits3d_cube)==3) and (num.shape(fits3d_cube[0])==num.shape(fits3d_cube[1])):
+                var = num.reshape(fits3d_cube[2].data[:,:,::-1],(nslice,nx*ny))
+            else:
+                var = None
+            data = num.reshape(fits3d_cube[1].data[:,:,::-1],(nslice,nx*ny))
+            lbda = num.arange(nslice)*stepl + startl
+
+            if l is not None:
+                lmin,lmax = max([0,l[0]]),min([nslice-1,l[1]])
+                if len(l) == 3:
+                    lstep = l[2]
+                else:
+                    lstep=1
+            else:
+                lmin,lmax = 0,nslice-1
+                lstep = 1
+
+            if lmax-lmin < lstep:
+                raise ValueError('Slice step incompatible with requested slices interval')
+
+            if not s:
+                if not nodata:
+                    self.data = data
+                    if var is not None:
+                        self.var = var
+                else:
+                    self.data = None
+                    self.var = None
+                self.lbda = lbda
+            else:
+                if not nodata:
+                    self.data = F.uniform_filter(num.array(data,'d'),(lstep,1)) \
+                                [lmin + lstep/2: \
+                                 lmax +lstep/2:lstep]
+                    if var is not None:
+                        self.var = F.uniform_filter(num.array(var,'d'),(lstep,1)) \
+                                   [lmin + lstep/2: \
+                                    lmax+lstep/2:lstep]/lstep
+                else:
+                    self.data = None
+                    self.var = None
+                self.lbda = lbda[lmin+lstep/2: \
+                                 lmax+lstep/2:lstep]
+            self.lstep = self.lstep * lstep
+            self.lstart = self.lbda[0]
+            self.i = nx - 1-num.ravel(num.indices((nx,ny))[1]) 
+            self.j = num.ravel(num.indices((nx,ny))[0])
+            self.x = self.i*stepx+startx
+            self.y = self.j*stepy+starty
+            self.no = nx*(num.arange(nx*ny)%nx)+num.arange(nx*ny)//nx+1
+
+            # Search the indexes of the spectra containing only nan
+            ind = num.where(num.min(num.isnan(num.transpose(self.data)),1)==False)[0]
+            self.data = num.transpose(num.transpose(self.data)[ind])
+            if self.var != None:
+               self.var = num.transpose(num.transpose(self.var)[ind])
+            self.i = self.i[ind]
+            self.j = self.j[ind]
+            self.x = self.x[ind]
+            self.y = self.y[ind]
+            self.no = self.no[ind]
+ 
+            if not num_array:
+                if not nodata:
+                    self.data = num.array(self.data,'f')
+                    if var is not None:
+                        self.var = num.array(self.var,'f')
+                else:
+                    self.data = None
+                    self.var = None
+                self.lbda = num.array(self.lbda)
+                self.x = num.array(self.x)
+                self.y = num.array(self.y)
+                self.i = num.array(self.i)
+                self.j = num.array(self.j)
+                self.no = num.array(self.no)
+                
+            self.nslice = len(self.lbda)
+            self.lend = self.lstart + (self.nslice-1)*self.lstep
+            self.nlens = len(self.x)
+            
         else:
-            # If no euro3d file is given, we create an SNIFS cube from  
+            # If neither euro3d nor fits3d file is given, we create an SNIFS cube from  
             self.from_e3d_file = False
             self.nlens = 225
             if lbda is None:
@@ -867,33 +968,53 @@ class SNIFS_cube:
                     xpos_list,ypos_list, fits_file, self.e3d_data_header,
                     self.e3d_grp_hdu,self.e3d_extra_hdu_list,nslice=self.nslice)
 
-    def WR_3d_fits(self,fits_file,mode='w+'):
+    def WR_3d_fits(self,fits_file,header=None,mode='w+'):
         """
         Write the datacube in a 3D fits file.
         @param file_name: name of the fits file
         @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
         """
         hdulist = pyfits.HDUList()
-        hdu = pyfits.PrimaryHDU()
+        hdu0 = pyfits.PrimaryHDU()
+        if header!=None:
+            for h in header:
+                hdu0.header.update(h,header[h])
+        hdulist = pyfits.HDUList()
+        hdulist.append(hdu0)
+
         data3D = num.array([ self.slice2d(i,coord='p')
                              for i in xrange(self.nslice) ])
-        hdu.data = data3D
-        hdu.header.update('CRVAL1', 0.)
-        hdu.header.update('CRVAL2', 0.)
-        hdu.header.update('CRVAL3', self.lstart)
-        hdu.header.update('CDELT1', 1.)
-        hdu.header.update('CDELT2', 1.)
-        hdu.header.update('CDELT3', self.lstep)
-        hdu.header.update('CRPIX1', 1)
-        hdu.header.update('CRPIX2', 1)
-        hdu.header.update('CRPIX3', 1)
-        hdulist = pyfits.HDUList()
-        hdulist.append(hdu)
+        hdu_data = pyfits.ImageHDU()
+        hdu_data.data = data3D
+        stepx = stepy = self.spxSize
+        startx = starty = -7*self.spxSize
+        hdu_data.header.update('CRVAL1', startx)
+        hdu_data.header.update('CRVAL2', starty)
+        hdu_data.header.update('CRVAL3', self.lstart)
+        hdu_data.header.update('CDELT1', stepx)
+        hdu_data.header.update('CDELT2', stepy)
+        hdu_data.header.update('CDELT3', self.lstep)
+        hdu_data.header.update('CRPIX1', 1)
+        hdu_data.header.update('CRPIX2', 1)
+        hdu_data.header.update('CRPIX3', 1)
+        if header!=None:
+            for h in header:
+                hdu_data.header.update(h,header[h])
+        hdulist.append(hdu_data)
         if self.var is not None:
             hdu_var = pyfits.ImageHDU()
             var3D = num.array([ self.slice2d(i,coord='p',var=True)
                                 for i in xrange(self.nslice) ])
             hdu_var.data = var3D
+            hdu_var.header.update('CRVAL1', startx)
+            hdu_var.header.update('CRVAL2', starty)
+            hdu_var.header.update('CRVAL3', self.lstart)
+            hdu_var.header.update('CDELT1', stepx)
+            hdu_var.header.update('CDELT2', stepy)
+            hdu_var.header.update('CDELT3', self.lstep)
+            hdu_var.header.update('CRPIX1', 1)
+            hdu_var.header.update('CRPIX2', 1)
+            hdu_var.header.update('CRPIX3', 1)
             hdulist.append(hdu_var)
             
         hdulist.writeto(fits_file,clobber=(mode=='w+'))
@@ -1286,9 +1407,17 @@ def zerolike(cube):
     newcube.nlens = cube.nlens
     newcube.no = cube.no
     newcube.nslice = cube.nslice
-    newcube.e3d_data_header = cube.e3d_data_header
-    newcube.e3d_extra_hdu_list = cube.e3d_extra_hdu_list
-    newcube.e3d_file = cube.e3d_file
-    newcube.e3d_grp_hdu = cube.e3d_grp_hdu
-    
+
+   
+
+    try:
+        newcube.e3d_data_header = cube.e3d_data_header
+        newcube.e3d_extra_hdu_list = cube.e3d_extra_hdu_list
+        newcube.e3d_file = cube.e3d_file
+        newcube.e3d_grp_hdu = cube.e3d_grp_hdu
+    except:
+        newcube.e3d_data_header = None
+        newcube.e3d_extra_hdu_list = None
+        newcube.e3d_file = None 
+        newcube.e3d_grp_hdu = None 
     return newcube

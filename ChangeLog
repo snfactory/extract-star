@@ -1,3 +1,11 @@
+2008-05-26  Emmanuel Pecontal
+
+	* lib/pySNIFS.py : Allow to create a SNIFS_cube object from a 3D
+	fits file
+
+	* apps/extract_star : Test if the input datacube is a e3d or a
+	fits3d file
+	
 2008-05-19  ClÃ©ment BUTON  <cbuton@bigbrother.dhcp.lbnl.us>
 
 	* lib/pySNIFS_fit.py (model.fit): minor changes
