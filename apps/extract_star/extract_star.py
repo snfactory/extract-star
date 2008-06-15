@@ -1078,19 +1078,23 @@ if __name__ == "__main__":
     # Input datacube =========================================================
 
     print "Opening datacube %s" % opts.input
-    ise3d = pyfits.getheader(opts.input,1)['NAXIS']!=3
-    if ise3d:
+
+    # The pySNIFS e3d_data_header dictionary is not enough for later
+    # updates in fill_hdr, which requires a *true* pyfits header.
+    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
+
+    # Test if input cube is Euro3D or plain NAXIS=3.
+    isE3D = (inhdr['NAXIS'] != 3)
+    if isE3D:
         full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
     else:
         full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
     step = full_cube.lstep
-    print_msg("Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
-              (os.path.basename(opts.input), full_cube.nslice,
+    print_msg("Cube %s [%s]: %d slices [%.2f-%.2f], %d spaxels" % \
+              (os.path.basename(opts.input), isE3D and 'E3D' or '3D',
+               full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
-    # The full_cube.e3d_data_header dictionary is not enough for later updates
-    # in fill_hdr, which requires a *true* pyfits header.
-    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
     obj = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr['EFFTIME']
     airmass = inhdr['AIRMASS']
@@ -1124,10 +1128,10 @@ if __name__ == "__main__":
                      (opts.input, channel))
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
-    if ise3d:
-        cube   = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
+    if isE3D:
+        cube = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
     else:
-        cube   = pySNIFS.SNIFS_cube(fits3d_file=opts.input, slices=slices)
+        cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input, slices=slices)
     cube.x = cube.i - 7                 # From arcsec to spx
     cube.y = cube.j - 7
 
@@ -1378,9 +1382,7 @@ if __name__ == "__main__":
         opts.out = 'spec_%s.fits' % (channel)
         print "WARNING: saving output source spectrum to %s" % opts.out
 
-    print lbda[0],step
     star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
-    print star_spec.start,star_spec.step
     star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
     star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
     star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
