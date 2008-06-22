@@ -52,11 +52,10 @@ def main():
           author = "E. Pecontal",
           author_email = "pecontal@obs.univ-lyon1.fr",
           platforms = ["Linux"],
-          py_modules = ['pySNIFS', 'pySNIFS_fit', 'pySNIFS_plot'],
+          py_modules = ['pySNIFS', 'pySNIFS_fit', 'pySNIFS_plot', 
+                        'libExtractStar'],
           package_dir={'':'lib'},
           scripts=[os.path.join('apps','extract_star','extract_star.py')],
-          #packages=['pySNIFS','extract_star','cube_explorer'],
-          #package_dir={'pySNIFS':'lib'}
           )
 
 if __name__ == "__main__":

@@ -1,3 +1,11 @@
+2008-06-23  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/extract_star.py: now calls external
+	libExtractStar.py.
+
+	* lib/libExtractStar.py: ADR and PSF utilities externalized from
+	extract_star.
+					 
 2008-06-20  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (model.fit_bfgs): similar to model.fit but
