@@ -715,23 +715,29 @@ class model:
             maxfun=1000, msge=0, scale=None):
         """ Perform the model fitting by minimizing the objective function
         objfun."""
-        out = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                  fprime=deriv and self.objgrad or None, 
-                                  approx_grad=not deriv,
-                                  bounds=self.bounds,
-                                  messages=msge,maxfun=maxfun,
-                                  scale=deriv and scale or None)
 
-        # Fmin_tnc's outputs inversion in the new version of scipy ('0.6.0').
+        # From scipy 0.6.0, fmin_tnc's output was inverted, and auto-offset is buggy
         if (S.__version__ >='0.6.0'): 
-            out = out[::-1]
+            x,nfeval,rc = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                              fprime=deriv and self.objgrad or None, 
+                                              approx_grad=not deriv,
+                                              bounds=self.bounds, offset=[0]*self.nparam,
+                                              messages=msge,maxfun=maxfun,
+                                              scale=deriv and scale or None)
+        else:
+            rc,nfeval,x = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                              fprime=deriv and self.objgrad or None, 
+                                              approx_grad=not deriv,
+                                              bounds=self.bounds,
+                                              messages=msge,maxfun=maxfun,
+                                              scale=deriv and scale or None)
 
         # See S.optimize.tnc.RCSTRINGS for status message
-        self.status = (out[0] not in [0,1]) and out[0] or 0
+        self.status = (rc not in [0,1]) and rc or 0
         if msge>=1:
-            print "fmin_tnc (%d iter): %s" % \
-                (out[1],S.optimize.tnc.RCSTRINGS[out[0]])
-        self.fitpar = S.asarray(out[2],'d')
+            print "fmin_tnc (%d funcalls): %s" % \
+                (nfeval,S.optimize.tnc.RCSTRINGS[rc])
+        self.fitpar = S.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
         self.dof = self.data.nlens*self.data.nslice - self.flatparam.size
@@ -742,6 +748,30 @@ class model:
         if save:
             self.flatparam = self.fitpar.copy()
         
+    def fit_bfgs(self, disp=False, save=False, deriv=True,
+                 maxfun=1000, msge=0, scale=None):
+        """Same as fit, but using S.optimize.fmin_l_bfgs_b instead of
+        S.optimize.fmin_tnc."""
+
+        x,f,d = S.optimize.fmin_l_bfgs_b(self.objfun, self.flatparam.tolist(),
+                                         fprime=deriv and self.objgrad or None,
+                                         approx_grad=not deriv,
+                                         bounds=self.bounds,
+                                         iprint= msge==0 and -1 or 0)
+        self.status = d['warnflag']
+        if msge>=1:
+            print "fmin_l_bfgs_b [%d funcalls]: %s" % (d['funcalls'],d['task'])
+        self.fitpar = S.asarray(x,'d')
+
+        # Reduced khi2 = khi2 / DoF
+        self.dof = self.data.nlens*self.data.nslice - self.flatparam.size
+        self.khi2 = f / self.dof
+
+        if disp:
+            return self.fitpar
+        if save:
+            self.flatparam = self.fitpar.copy()
+
     def param_error(self,param=None):
         if param is None:
             param = self.fitpar

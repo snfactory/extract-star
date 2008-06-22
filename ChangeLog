@@ -1,3 +1,15 @@
+2008-06-20  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* lib/pySNIFS_fit.py (model.fit_bfgs): similar to model.fit but
+	using S.optimize.fmin_l_bfgs_b as fit engine instead of
+	S.optimize.fmin_tnc (for testing purpose, much slower than TNC).
+
+	* lib/pySNIFS_fit.py (model.fit): debugging to accomodate scipy
+	0.6.0 (reversed output order, buggy auto-offset).
+
+	* setup.py (main): old extract_star2.py (2-gaussian PSF) not
+	installed anymore.
+
 2008-05-26  Emmanuel Pecontal
 
 	* lib/pySNIFS.py : Allow to create a SNIFS_cube object from a 3D

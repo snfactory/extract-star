@@ -31,6 +31,9 @@ SpaxelSize = 0.43                       # Spaxel size in arcsec
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]
 
+#print "DEBUG: linking model.fit to fit_bfgs"
+#pySNIFS_fit.model.fit = pySNIFS_fit.model.fit_bfgs
+
 class ADR_model:
 
     def __init__(self, pressure=616., temp=2., **kwargs):
