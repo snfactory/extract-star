@@ -1,3 +1,9 @@
+2008-09-24  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/extract_star.py (extract_spec): do not apply
+	Laplacian filter prior to spectrum extraction (was causing Mantis
+	#1282).
+
 2008-06-23  Yannick Copin  <ycopin@lyopc469>
 
 	* apps/extract_star/extract_star.py: now calls external

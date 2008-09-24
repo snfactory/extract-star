@@ -84,19 +84,6 @@ def estimate_parangle(hdr):
     return eta/d2r                      # [deg]
 
 
-def laplace_filtering(cube, eps=1e-4):
-
-    lapl = F.laplace(cube.data/cube.data.mean())
-    fdata = F.median_filter(cube.data, size=[1, 3])
-    hist = pySNIFS.histogram(S.ravel(S.absolute(lapl)), nbin=100,
-                             Max=100, cumul=True)
-    threshold = hist.x[S.argmax(S.where(hist.data<(1-eps), 0, 1))]
-    print_msg("Laplace filter threshold [eps=%g]: %.2f" % (eps,threshold), 2)
-    filt = (S.absolute(lapl) <= threshold)
-
-    return filt
-
-
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
     polynomial coeffs w/ same convention as S.polyfit: [cn,...,c1,c0]."""
@@ -147,14 +134,6 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
     param = S.concatenate((psf_param,[1.]*cube.nslice))
-
-    # Rejection of bad points (YC: need some clarifications...)
-    filt = laplace_filtering(cube)
-    if (~filt).any():
-        print "WARNING: %d/%d vx in %d/%d slices filtered out in extract_spec" % \
-              (len((~filt).nonzero()[0]), cube.data.size, 
-               len(S.nonzero([ f.any() for f in ~filt ])[0]), cube.nslice)
-    cube.var *= filt                    # Discard non-selected voxels
 
     # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
 
