@@ -598,8 +598,7 @@ class SNIFS_cube:
             # common lenslets.
             if len(e3d_cube)>3 and e3d_cube[3].name=='TIGERTBL':
                 nos = e3d_cube[3].data.field('NO').tolist()
-                ind = [ nos.index(i)
-                        for i in e3d_cube[1].data.field('SPEC_ID') ]
+                ind = [ nos.index(i) for i in self.no ]
                 self.i = e3d_cube[3].data.field('I')[ind] + 7
                 self.j = e3d_cube[3].data.field('J')[ind] + 7
             else:

@@ -1,3 +1,9 @@
+2008-10-22  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_host.py: Simple host spectrum
+	extraction on reference cube. Sky spectrum is estimated from bottom
+	quartile, and galaxy+sky from top quartile.
+
 2008-09-24  Yannick Copin  <ycopin@lyopc469>
 
 	* apps/extract_star/extract_star.py (extract_spec): do not apply

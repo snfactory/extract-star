@@ -5,7 +5,7 @@
 ## Description:   pySNIFS setup script
 ## Author:        Yannick Copin <ycopin@ipnl.in2p3.fr>
 ## Created at:    Thu Apr 13 13:47:49 2006
-## Modified at:   Fri Jun 20 12:32:35 2008
+## Modified at:   Wed Oct 22 13:11:49 2008
 ## Modified by:   Yannick Copin <ycopin@ipnl.in2p3.fr>
 ######################################################################
 
@@ -55,7 +55,8 @@ def main():
           py_modules = ['pySNIFS', 'pySNIFS_fit', 'pySNIFS_plot', 
                         'libExtractStar'],
           package_dir={'':'lib'},
-          scripts=[os.path.join('apps','extract_star','extract_star.py')],
+          scripts=[os.path.join('apps','extract_star','extract_star.py'),
+                   os.path.join('apps','extract_star','extract_host.py')],
           )
 
 if __name__ == "__main__":

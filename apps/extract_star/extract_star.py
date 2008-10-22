@@ -9,7 +9,12 @@
 
 """Primarily based on E. Pecontal's point source extractor (extract_star.py).
 This version replaces the double gaussian PSF profile by an ad-hoc PSF profile
-(correlated Gaussian + Moffat)."""
+(correlated Gaussian + Moffat).
+
+Todo:
+
+* replace meta-slice centroid-based initial guess by gaussian-fit.
+"""
 
 __author__ = "C. Buton, Y. Copin, E. Pecontal"
 __version__ = '$Id$'
@@ -747,7 +752,9 @@ if __name__ == "__main__":
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
 
     # Select the PSF (short or long)
-    psfFn = (efftime > 12.) and libES.Long_ExposurePSF or libES.Short_ExposurePSF
+    psfFn = (efftime > 12.) and \
+            libES.Long_ExposurePSF or \
+            libES.Short_ExposurePSF
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
