@@ -629,6 +629,7 @@ class SNIFS_cube:
             
             fits3d_cube = pyfits.open(fits3d_file)
             gen_header = dict(fits3d_cube[1].header.items())
+            self.e3d_data_header = gen_header # Not really e3d_data_header...
             nslice = gen_header['NAXIS3']
             nx = gen_header['NAXIS1']
             ny = gen_header['NAXIS2']

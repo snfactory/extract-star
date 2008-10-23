@@ -48,6 +48,10 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
         phdu.header.update('CRVAL1', hdr['CRVALS'], after='NAXIS1')
         phdu.header.update('CDELT1', hdr['CDELTS'], after='CRVAL1')
         phdu.header.update('CRPIX1', hdr['CRPIXS'], after='CDELT1')
+    elif hdr.get('NAXIS') == 3:
+        phdu.header.update('CRVAL1', hdr['CRVAL3'], after='NAXIS1')
+        phdu.header.update('CDELT1', hdr['CDELT3'], after='CRVAL1')
+        phdu.header.update('CRPIX1', hdr['CRPIX3'], after='CDELT1')
     hdulist = pyfits.HDUList([phdu])
     # Add extension(s) if any
     for i,key in enumerate(kwargs):
@@ -81,7 +85,14 @@ if __name__ == '__main__':
     else:
         cubename = args[0]
 
-    cube = SNIFS_cube(cubename)
+    try:
+        pyfits.getval(cubename, 'EURO3D', 0) # Check for EURO3D keyword
+        isE3D = True
+        cube = SNIFS_cube(e3d_file=cubename)
+    except:                     # Fits cube from DDT
+        isE3D = False 
+        cube = SNIFS_cube(fits3d_file=cubename)
+
     X = cube.e3d_data_header['CHANNEL'][0].upper()
 
     if opts.out is None:
@@ -135,7 +146,10 @@ if __name__ == '__main__':
 
     # Save host spectrum (along w/ variance)
     print "Host spectrum in '%s' (w/ VARIANCE extension)" % opts.out
-    cubeHdr = pyfits.getheader(cubename, extname='E3D_DATA')
+    if isE3D:
+        cubeHdr = pyfits.getheader(cubename, extname='E3D_DATA')
+    else: 
+        cubeHdr = pyfits.getheader(cubename)
     dumpSpectrum(opts.out, resSpec, hdr=cubeHdr, variance=resVar)
 
     if opts.plot:
@@ -143,8 +157,8 @@ if __name__ == '__main__':
 
         fig = P.figure(figsize=(12,6))
 
-        title = "%s [%s]" % (cube.e3d_data_header['OBJECT'],
-                             cube.e3d_data_header['FILENAME'])
+        title = "%s [%s]" % (cube.e3d_data_header.get('OBJECT','Unknown'),
+                             cube.e3d_data_header.get('FILENAME','Unknown'))
         ax = fig.add_subplot(1,2,1, title=title,
                              xlabel='I [spx]', ylabel='J [spx]')
         ax.imshow(ima, vmin=fsmin, vmax=fgmax, extent=(-7.5,7.5,-7.5,7.5))

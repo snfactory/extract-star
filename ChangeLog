@@ -1,3 +1,12 @@
+2008-10-23  Yannick Copin  <ycopin@lyopc469>
+
+	* lib/pySNIFS.py (SNIFS_cube.__init__): generate a
+	'e3d_data_header' attribute in the fits3d_file case just for
+	consistency.
+
+	* apps/extract_star/extract_host.py: handle reference galaxy FITS
+	3D-cubes from DDT (after a bit of massage).
+
 2008-10-22  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_host.py: Simple host spectrum
