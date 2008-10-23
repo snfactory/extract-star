@@ -82,9 +82,9 @@ class poly1D:
                      spaxel. It is built from a L{spectrum} object by the
                      L{model} class.
         """
-        self.deg = deg
+        self.deg = int(deg)
         self.npar_ind = 0
-        self.npar_cor = deg+1
+        self.npar_cor = self.deg + 1
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'poly1D'
         self.l = S.reshape(cube.lbda,S.shape(cube.data))

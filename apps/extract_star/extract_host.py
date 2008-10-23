@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ##############################################################################
-## Filename:      extractHost.py
+## Filename:      extract_host.py
 ## Version:       $Revision$
 ## Description:   Extract host spectrum from reference cube
 ## Author:        $Author$
@@ -10,11 +10,14 @@
 __version__ = "$Id$"
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 
-from pySNIFS import SNIFS_cube
+import pySNIFS
 import numpy as N
 from matplotlib.mlab import prctile
 import pyfits
 import optparse
+import scipy as S
+
+CLIGHT = 299792.458
 
 def decipher2floats(parser, option):
     """Decipher option 'f1,f2'."""
@@ -43,12 +46,12 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
     """Dump array y as spectrum."""
 
     phdu = pyfits.PrimaryHDU(y, header=hdr)
-    if hdr.get('EXTNAME') == 'E3D_DATA':
+    if hdr.get('EXTNAME') == 'E3D_DATA': # E3d cube header
         del phdu.header['EXTNAME']
         phdu.header.update('CRVAL1', hdr['CRVALS'], after='NAXIS1')
         phdu.header.update('CDELT1', hdr['CDELTS'], after='CRVAL1')
         phdu.header.update('CRPIX1', hdr['CRPIXS'], after='CDELT1')
-    elif hdr.get('NAXIS') == 3:
+    elif hdr.has_key('CRVAL3'):         # Fits 3D cube header
         phdu.header.update('CRVAL1', hdr['CRVAL3'], after='NAXIS1')
         phdu.header.update('CDELT1', hdr['CDELT3'], after='CRVAL1')
         phdu.header.update('CRPIX1', hdr['CRPIX3'], after='CDELT1')
@@ -60,13 +63,102 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
     hdulist.writeto(outname, clobber=True)
 
 
+class LinesOII:
+    """[OII] doublet is described by 2 independant gaussians +
+    background"""
+
+    name = "LinesOII"
+    l1 = 3726.03                        # [OII] doublet
+    l2 = 3728.73
+
+    def __init__(self, cube):
+
+        self.npar_ind = 0
+        self.npar_cor = 6               # 1+z,sigma,I1,I2,bkgnd(d=1)
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.l = N.reshape(cube.lbda,cube.data.shape)
+
+    def comp(self, param):
+        """[OII] (2G) + bkgnd(polyn(d=1))"""
+
+        self.param = param
+        zp1,s,i1,i2,b0,b1 = param
+        val = i1 * N.exp(-0.5*( (self.l - self.l1*zp1)/s )**2) + \
+              i2 * N.exp(-0.5*( (self.l - self.l2*zp1)/s )**2)
+        val+= b0 + (self.l/self.l1 - 1)*b1 # Background
+
+        return val
+
+
+class LinesNIIHa:
+    """[NII]+Halpha complex is described by 1 gaussian for Ha + 2 correlated
+    gaussians for [NII] + background"""
+
+    name = "LinesNIIHa"
+    lHa = 6562.80                       # Halpha
+    lNII1 = 6547.96                     # [NII]
+    lNII2 = 6583.34                     # [NII]
+    rNII = 0.340                        # [NII]1/[NII]2
+
+    def __init__(self, cube):
+
+        self.npar_ind = 0
+        self.npar_cor = 6               # 1+z,sigma,I(Ha),I([NII]),bkgnd(d=1)
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.l = N.reshape(cube.lbda,cube.data.shape)
+
+    def comp(self, param):
+        """Halpha(G1) + [NII](G2,G3) + bkgnd(polyn(d=1))"""
+
+        self.param = param
+        zp1,s,iH,iN,b0,b1 = param
+        val = iH * N.exp(-0.5*( (self.l - self.lHa*zp1)/s )**2) # Halpha
+        val+= ( N.exp(-0.5*( (self.l - self.lNII1*zp1)/s )**2) * self.rNII +
+                N.exp(-0.5*( (self.l - self.lNII2*zp1)/s )**2) ) * iN # [NII]
+        val+= b0 + (self.l/self.lHa - 1)*b1   # Background
+
+        return val
+
+
+def addRedshiftedLines(ax, z):
+
+    lines = [('[OII]',   (3726.03,3728.73)),
+             ('[NeIII]', (3868.69,)),
+             ('He',      (3970.07,)),
+             ('Hd',      (4101.73,)),
+             ('Hg',      (4340.46,)),
+             ('[OIII]',  (4363.15,)),
+             ('HeII',    (4685.74,)),
+             ('Hb',      (4861.32,)),
+             ('[OIII]',  (4958.83,5006.77)),
+             ('[NI]',    (5197.90,5200.39)),
+             ('[OI]',    (6300.20,)),
+             ('[NII]',   (6547.96,6583.34)),
+             ('Ha',      (6562.80,)),
+             ('[SII]',   (6716.31,6730.68))]
+    
+    lmin,lmax = ax.get_xlim()
+    ymin,ymax = ax.get_ylim()
+    y0 = ymax - (ymax-ymin)/5
+    for name,lbdas in lines:
+        for i,l in enumerate(lbdas):
+            l *= (1+z)
+            if not lmin<l<lmax: continue
+            ax.axvline(l, ymin=0.2,ymax=0.7, c='0.7', label='_', zorder=1)
+            if i==0:
+                ax.text(l,y0,name, size='x-small',
+                        horizontalalignment='center',
+                        verticalalignment='center',
+                        rotation='vertical')
+        
+
 if __name__ == '__main__':
 
     usage = "usage: [%prog] [options] e3d_galaxy.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-o", "--out", type="string",
-                      help="Output host spectrum [host_X.fits]")
+                      help="Output host spectrum [object_X.fits]")
     parser.add_option("-r", "--range", type="string",
                       help="Reconstructed image wavelength range [%default]",
                       default='auto')
@@ -75,12 +167,14 @@ if __name__ == '__main__':
                       default="1,25")
     parser.add_option("-g", "--gal", type="string",
                       help="Galaxy percentiles [%default]",
-                      default="75,99")
+                      default="75,100")
+    parser.add_option("--nofit", action='store_true',
+                      help="Do not try to estimate redshift.")
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag.")
 
     opts,args = parser.parse_args()
-    if len(args)!=1:
+    if len(args) != 1:
         parser.error("No or too many arguments")
     else:
         cubename = args[0]
@@ -88,36 +182,28 @@ if __name__ == '__main__':
     try:
         pyfits.getval(cubename, 'EURO3D', 0) # Check for EURO3D keyword
         isE3D = True
-        cube = SNIFS_cube(e3d_file=cubename)
+        cube = pySNIFS.SNIFS_cube(e3d_file=cubename)
     except:                     # Fits cube from DDT
         isE3D = False 
-        cube = SNIFS_cube(fits3d_file=cubename)
+        cube = pySNIFS.SNIFS_cube(fits3d_file=cubename)
 
     X = cube.e3d_data_header['CHANNEL'][0].upper()
-
+    obj = cube.e3d_data_header.get('OBJECT','unknown')
+    filename = cube.e3d_data_header.get('FILENAME','unknown')
+    if X not in ('B','R'):
+        raise ValueError("Unknown channel '%s'" % X)
     if opts.out is None:
-        opts.out = "host_%c.fits" % X
+        opts.out = "%s_%c.fits" % (obj,X)
     if opts.range=='auto':
-        if X=='B':
-            lmin,lmax = 3700,4100 # Around [OII] abd Balmer at z=0.01-0.03
-        elif X=='R':
-            lmin,lmax = 6400,6800 # Around Halpha at z=0.01-0.03
-        else:
-            raise ValueError("Unknown channel '%s'" % X)
+        ranges = {'B':(3700,4100),    # Around [OII] and Balmer at z=0.01-0.03
+                  'R':(6400,6800)}    # Around Halpha at z=0.01-0.03
+        lmin,lmax = ranges[X]
     else:
         lmin,lmax = decipher2floats(parser, 'range')
-        try:
-            lmin,lmax = [ float(x) for x in opts.range.split(',') ]
-        except:
-            parser.error("Cannot decipher range option '%s'" % opts.range)
-    try:
-        csmin,csmax = [ float(x) for x in opts.sky.split(',') ]
-    except:
-        parser.error("Cannot decipher sky option '%s'" % opts.sky)
-    try:
-        cgmin,cgmax = [ float(x) for x in opts.gal.split(',') ]
-    except:
-        parser.error("Cannot decipher gal option '%s'" % opts.gal)
+    csmin,csmax = decipher2floats(parser, 'sky')
+    cgmin,cgmax = decipher2floats(parser, 'gal')
+
+    print "%s: %s [%s]" % (cubename, obj, filename)
 
     # Image reconstruction
     print "Reconstructed image: %.1f,%.1f" % (lmin,lmax)
@@ -130,12 +216,12 @@ if __name__ == '__main__':
     # Sky region
     skyIdx = (fsmin<=ima) & (ima<=fsmax)
     isky,jsky = skyIdx.nonzero()
-    print "Sky [%.0f%%-%.0f%%]: %f,%f (%d spx)" % \
+    print "Sky [%.0f%%-%.0f%%]: %.2f,%.2f (%d spx)" % \
         (csmin,csmax,fsmin,fsmax,len(isky))
     # Galaxy region
     galIdx = (fgmin<=ima) & (ima<=fgmax)
     igal,jgal = galIdx.nonzero()
-    print "Gal [%.0f%%-%.0f%%]: %f,%f (%d spx)" % \
+    print "Gal [%.0f%%-%.0f%%]: %.2f,%.2f (%d spx)" % \
         (cgmin,cgmax,fgmin,fgmax,len(igal))
 
     lbda = cube.lbda
@@ -149,16 +235,99 @@ if __name__ == '__main__':
     if isE3D:
         cubeHdr = pyfits.getheader(cubename, extname='E3D_DATA')
     else: 
-        cubeHdr = pyfits.getheader(cubename)
+        cubeHdr = pyfits.getheader(cubename, 0)
     dumpSpectrum(opts.out, resSpec, hdr=cubeHdr, variance=resVar)
+
+    if not opts.nofit: # Estimate redshift from [OII] or Halpha/[NII]
+
+        import pySNIFS_fit
+
+        # Convert array to spectrum on a restricted range
+        if X=='B':
+            g = (3700<=lbda) & (lbda<=4100)
+            l0 = lbda[g][resSpec[g].argmax()]
+            print "Fit [OII] doublet in %.0f,%.0f A" % (l0-50,l0+50)
+            g = ((l0-50)<=lbda) & (lbda<=(l0+50))
+        elif X=='R':
+            g = (6560<=lbda) & (lbda<=7100)
+            l0 = lbda[g][resSpec[g].argmax()]
+            print "Fit [NII],Ha complex in %.0f,%.0f A" % (l0-100,l0+100)
+            g = ((l0-100)<=lbda) & (lbda<=(l0+100))
+
+        x = lbda[g]
+        bkg = N.median(resSpec[g])
+        norm = resSpec[g].max() - bkg
+        y = (resSpec[g] - bkg) / norm
+        v = resVar[g] / norm**2
+        spec = pySNIFS.spectrum(data=y, var=v, start=x[0], step=cube.lstep)
+
+        # TODO:
+        # 1. estimate of redshift by looking at max in [6560,7100]
+        # 2. restrict range to max +/- 100
+
+        if X=='B':                      # [OII] doublet
+            funcs = [ LinesOII.name, ]
+            # 1+z,sigma,I1,I2,bkgnd(d=1)
+            zp1 = x[resSpec[g].argmax()] / LinesOII.l2
+            params = [ [zp1, 3, 0.5, 0.5, 0, 0] ]
+            bounds = [ [[1.0,1.1],[2,5],[0,1],[0,1],[None,None],[None,None]]]
+            myfunc = {LinesOII.name:LinesOII}
+
+        elif X=='R':                    # [NII]+Halpha complex
+            funcs = [ LinesNIIHa.name, ]
+            # 1+z,sigma,I(Ha),I([NII]),bkgnd(d=1)
+            zp1 = x[resSpec[g].argmax()] / LinesNIIHa.lHa
+            params = [ [zp1, 4, 1, 0.5, 0, 0] ]
+            bounds = [ [[1.0,1.1],[2,5],[0.1,2],[0,1],[None,None],[None,None]]]
+            myfunc = {LinesNIIHa.name:LinesNIIHa}
+
+        print "Initial guess:", params
+
+        # Actual fit
+        model = pySNIFS_fit.model(data=spec, func=funcs,
+                                  param=params, bounds=bounds, myfunc=myfunc)
+        model.fit(msge=False, deriv=False)
+        model.khi2 *= model.dof             # True Chi2
+
+        print "Adjusted parameters:", model.fitpar
+        print "Chi2 (DoF=%d): %.2f" % (model.dof, model.khi2)
+
+        #z = model.fitpar[0]/6562.80 - 1
+        zsys = model.fitpar[0] - 1
+        print "Estimated redshift: %.5f (%.2f km/s), Sigma: %f A" % \
+            (zsys,zsys*CLIGHT,model.fitpar[1])
+
+    makeMap = False and not opts.nofit
+    if makeMap:
+
+        zmap = N.zeros_like(ima) * N.nan # Redshift
+        params = [ model.fitpar ] # Use global fit result as initial guess
+        for ino,ii,ij in zip(cube.no,cube.i,cube.j):
+            print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
+            y = cube.spec(no=ino)[g]
+            ibkg = N.median(y)
+            inorm = y.max() - ibkg
+            y = ( y - ibkg ) / inorm
+            v = cube.spec(no=ino, var=True)[g] / inorm**2
+            ispec = pySNIFS.spectrum(data=y, var=v, start=x[0], step=cube.lstep)
+            imodel = pySNIFS_fit.model(data=ispec, func=funcs,
+                                      param=params,bounds=bounds,myfunc=myfunc)
+            imodel.fit(msge=False, deriv=False)
+            imodel.khi2 *= imodel.dof   # True Chi2
+            #print "   Fitpar:", imodel.fitpar
+            z = imodel.fitpar[0] - 1
+            print "Chi2 (DoF=%d)=%.2f, v=%+.2f km/s" % \
+                (imodel.dof, imodel.khi2, (z-zsys)*CLIGHT)
+            zmap[ii,ij] = z
+        
+        # Could now compute flux-weighted redshift
 
     if opts.plot:
         import matplotlib.pyplot as P
 
         fig = P.figure(figsize=(12,6))
 
-        title = "%s [%s]" % (cube.e3d_data_header.get('OBJECT','Unknown'),
-                             cube.e3d_data_header.get('FILENAME','Unknown'))
+        title = "%s [%s]" % (obj, filename)
         ax = fig.add_subplot(1,2,1, title=title,
                              xlabel='I [spx]', ylabel='J [spx]')
         ax.imshow(ima, vmin=fsmin, vmax=fgmax, extent=(-7.5,7.5,-7.5,7.5))
@@ -174,7 +343,32 @@ if __name__ == '__main__':
         ax1.plot(lbda, skySpec, 'r-', label='Sky')
         ax1.axvspan(lmin,lmax,fc='0.9',ec='0.8', label='_')
         ax1.legend()
-        ax2.plot(lbda, resSpec, 'g-', label='Galaxy')
+        lgal, = ax2.plot(lbda, resSpec, 'g-', label='Galaxy')
         ax2.legend()
+        ax2.set_xlim(lbda[0],lbda[-1])
+        ax2.set_autoscale_on(False)
+
+        if not opts.nofit:
+            #ax2.plot(x, model.eval(model.flatparam)*norm + bkg, 'b-')
+            ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
+            addRedshiftedLines(ax2, zsys)
+            lgal.set_label("z=%.5f" % zsys) # Add redshift
+            ax2.legend()
+
+        if makeMap:
+            fig2 = P.figure(figsize=(6,6))
+            axv = fig2.add_subplot(1,1,1, title=title,
+                                   xlabel='I [spx]', ylabel='J [spx]')
+            # Velocity map
+            vmap = (zmap - zsys)*CLIGHT # Convert redshift to velocity
+            vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
+            imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
+                             extent=(-7.5,7.5,-7.5,7.5))
+            cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
+            cbv.set_label('Velocity [km/s]')
+            # Intensity contours
+            axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
+                        extent=(-7.5,7.5,-7.5,7.5))
 
         P.show()
+
