@@ -194,6 +194,10 @@ if __name__ == '__main__':
         raise ValueError("Unknown channel '%s'" % X)
     if opts.out is None:
         opts.out = "%s_%c.fits" % (obj,X)
+        if opts.plot:
+            figname = "%s_%c.png" % (obj,X)
+        else:
+            figname = os.path.splitext(opts.out)[0]+'.png'
     if opts.range=='auto':
         ranges = {'B':(3700,4100),    # Around [OII] and Balmer at z=0.01-0.03
                   'R':(6400,6800)}    # Around Halpha at z=0.01-0.03
@@ -244,12 +248,12 @@ if __name__ == '__main__':
 
         # Convert array to spectrum on a restricted range
         if X=='B':
-            g = (3700<=lbda) & (lbda<=4100)
+            g = (3700<=lbda) & (lbda<=4100) # OII from z=1 to 1.1
             l0 = lbda[g][resSpec[g].argmax()]
             print "Fit [OII] doublet in %.0f,%.0f A" % (l0-50,l0+50)
             g = ((l0-50)<=lbda) & (lbda<=(l0+50))
         elif X=='R':
-            g = (6560<=lbda) & (lbda<=7100)
+            g = (6560<=lbda) & (lbda<=7200) # Ha from z=1 to 1.1
             l0 = lbda[g][resSpec[g].argmax()]
             print "Fit [NII],Ha complex in %.0f,%.0f A" % (l0-100,l0+100)
             g = ((l0-100)<=lbda) & (lbda<=(l0+100))
@@ -333,9 +337,9 @@ if __name__ == '__main__':
         ax.imshow(ima, vmin=fsmin, vmax=fgmax, extent=(-7.5,7.5,-7.5,7.5))
         ax.plot(jsky-7,isky-7,'rs')
         ax.plot(jgal-7,igal-7,'bo')
-        for i,j,no in zip(cube.i,cube.j,cube.no):
-            ax.text(i-7,j-7,str(no), size='x-small',
-                    horizontalalignment='center', verticalalignment='center')
+        #for i,j,no in zip(cube.i,cube.j,cube.no):
+        #    ax.text(i-7,j-7,str(no), size='x-small',
+        #            horizontalalignment='center', verticalalignment='center')
 
         ax1 = fig.add_subplot(2,2,2, xlabel="Wavelength [A]")
         ax2 = fig.add_subplot(2,2,4, xlabel="Wavelength [A]", sharex=ax1)
@@ -370,5 +374,7 @@ if __name__ == '__main__':
             axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
                         extent=(-7.5,7.5,-7.5,7.5))
 
+        print "Saving figure in", figname
+        fig.savefig(figname)
         P.show()
 
