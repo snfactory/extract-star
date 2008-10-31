@@ -7,6 +7,8 @@
 ## $Id$
 ##############################################################################
 
+"""Extract host galaxy spectrum from reference cube."""
+
 __version__ = "$Id$"
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 
@@ -15,7 +17,7 @@ import numpy as N
 from matplotlib.mlab import prctile
 import pyfits
 import optparse
-import scipy as S
+import os
 
 CLIGHT = 299792.458
 
@@ -58,7 +60,10 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
     hdulist = pyfits.HDUList([phdu])
     # Add extension(s) if any
     for i,key in enumerate(kwargs):
-        ima = pyfits.ImageHDU(kwargs[key], header=phdu.header, name=key.upper())
+        ima = pyfits.ImageHDU(kwargs[key], name=key.upper())
+        ima.header.update('CRVAL1', phdu.header['CRVAL1'])
+        ima.header.update('CDELT1', phdu.header['CDELT1'])
+        ima.header.update('CRPIX1', phdu.header['CRPIX1'])
         hdulist.append(ima)
     hdulist.writeto(outname, clobber=True)
 
@@ -119,6 +124,15 @@ class LinesNIIHa:
 
         return val
 
+
+def errorband(ax, x, y, dy, color='b', alpha=0.3, label='_nolegend_'):
+
+    #xp,yp = M.poly_between(x, y-dy, y+dy) # matplotlib.mlab
+    xp = N.concatenate((x,x[::-1]))
+    yp = N.concatenate(((y+dy),(y-dy)[::-1]))
+    poly = ax.fill(xp, yp, fc=color, ec=color, alpha=alpha,
+                   zorder=2, label=label)
+    return poly
 
 def addRedshiftedLines(ax, z):
 
@@ -193,11 +207,9 @@ if __name__ == '__main__':
     if X not in ('B','R'):
         raise ValueError("Unknown channel '%s'" % X)
     if opts.out is None:
-        opts.out = "%s_%c.fits" % (obj,X)
-        if opts.plot:
-            figname = "%s_%c.png" % (obj,X)
-        else:
-            figname = os.path.splitext(opts.out)[0]+'.png'
+        path,name = os.path.split(cubename)
+        opts.out = "host_" + name     # Includes extension .fits
+    figname = os.path.splitext(opts.out)[0]+'.png'
     if opts.range=='auto':
         ranges = {'B':(3700,4100),    # Around [OII] and Balmer at z=0.01-0.03
                   'R':(6400,6800)}    # Around Halpha at z=0.01-0.03
@@ -220,12 +232,12 @@ if __name__ == '__main__':
     # Sky region
     skyIdx = (fsmin<=ima) & (ima<=fsmax)
     isky,jsky = skyIdx.nonzero()
-    print "Sky [%.0f%%-%.0f%%]: %.2f,%.2f (%d spx)" % \
+    print "Sky [%.0f%%-%.0f%%]: %g,%g (%d spx)" % \
         (csmin,csmax,fsmin,fsmax,len(isky))
     # Galaxy region
     galIdx = (fgmin<=ima) & (ima<=fgmax)
     igal,jgal = galIdx.nonzero()
-    print "Gal [%.0f%%-%.0f%%]: %.2f,%.2f (%d spx)" % \
+    print "Gal [%.0f%%-%.0f%%]: %g,%g (%d spx)" % \
         (cgmin,cgmax,fgmin,fgmax,len(igal))
 
     lbda = cube.lbda
@@ -248,12 +260,12 @@ if __name__ == '__main__':
 
         # Convert array to spectrum on a restricted range
         if X=='B':
-            g = (3700<=lbda) & (lbda<=4100) # OII from z=1 to 1.1
+            g = (3700<=lbda) & (lbda<=4200) # OII from 1+z=1 to 1.13
             l0 = lbda[g][resSpec[g].argmax()]
             print "Fit [OII] doublet in %.0f,%.0f A" % (l0-50,l0+50)
             g = ((l0-50)<=lbda) & (lbda<=(l0+50))
         elif X=='R':
-            g = (6560<=lbda) & (lbda<=7200) # Ha from z=1 to 1.1
+            g = (6560<=lbda) & (lbda<=7400) # Ha from 1+z=1 to 1.13
             l0 = lbda[g][resSpec[g].argmax()]
             print "Fit [NII],Ha complex in %.0f,%.0f A" % (l0-100,l0+100)
             g = ((l0-100)<=lbda) & (lbda<=(l0+100))
@@ -265,16 +277,12 @@ if __name__ == '__main__':
         v = resVar[g] / norm**2
         spec = pySNIFS.spectrum(data=y, var=v, start=x[0], step=cube.lstep)
 
-        # TODO:
-        # 1. estimate of redshift by looking at max in [6560,7100]
-        # 2. restrict range to max +/- 100
-
         if X=='B':                      # [OII] doublet
             funcs = [ LinesOII.name, ]
             # 1+z,sigma,I1,I2,bkgnd(d=1)
             zp1 = x[resSpec[g].argmax()] / LinesOII.l2
             params = [ [zp1, 3, 0.5, 0.5, 0, 0] ]
-            bounds = [ [[1.0,1.1],[2,5],[0,1],[0,1],[None,None],[None,None]]]
+            bounds = [ [[1.0,1.13],[2,5],[0,1],[0,1],[None,None],[None,None]]]
             myfunc = {LinesOII.name:LinesOII}
 
         elif X=='R':                    # [NII]+Halpha complex
@@ -282,7 +290,7 @@ if __name__ == '__main__':
             # 1+z,sigma,I(Ha),I([NII]),bkgnd(d=1)
             zp1 = x[resSpec[g].argmax()] / LinesNIIHa.lHa
             params = [ [zp1, 4, 1, 0.5, 0, 0] ]
-            bounds = [ [[1.0,1.1],[2,5],[0.1,2],[0,1],[None,None],[None,None]]]
+            bounds = [ [[1.0,1.13],[2,5],[0.1,2],[0,1],[None,None],[None,None]]]
             myfunc = {LinesNIIHa.name:LinesNIIHa}
 
         print "Initial guess:", params
@@ -335,19 +343,20 @@ if __name__ == '__main__':
         ax = fig.add_subplot(1,2,1, title=title,
                              xlabel='I [spx]', ylabel='J [spx]')
         ax.imshow(ima, vmin=fsmin, vmax=fgmax, extent=(-7.5,7.5,-7.5,7.5))
-        ax.plot(jsky-7,isky-7,'rs')
-        ax.plot(jgal-7,igal-7,'bo')
+        ax.plot(jsky-7,isky-7,'rs', ms=3)
+        ax.plot(jgal-7,igal-7,'bo', ms=3)
         #for i,j,no in zip(cube.i,cube.j,cube.no):
         #    ax.text(i-7,j-7,str(no), size='x-small',
         #            horizontalalignment='center', verticalalignment='center')
 
-        ax1 = fig.add_subplot(2,2,2, xlabel="Wavelength [A]")
+        ax1 = fig.add_subplot(2,2,2)
         ax2 = fig.add_subplot(2,2,4, xlabel="Wavelength [A]", sharex=ax1)
         ax1.plot(lbda, galSpec, 'b-', label='Galaxy+sky')
         ax1.plot(lbda, skySpec, 'r-', label='Sky')
         ax1.axvspan(lmin,lmax,fc='0.9',ec='0.8', label='_')
         ax1.legend()
         lgal, = ax2.plot(lbda, resSpec, 'g-', label='Galaxy')
+        errorband(ax2, lbda, resSpec, N.sqrt(resVar), color='g')
         ax2.legend()
         ax2.set_xlim(lbda[0],lbda[-1])
         ax2.set_autoscale_on(False)
