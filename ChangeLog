@@ -1,3 +1,8 @@
+2008-11-03  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/extract_z.py: split lines + background, add
+	correlation matrix plot, store results in keywords.
+
 2008-10-31  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_z.py: extract redshift on galaxy

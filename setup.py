@@ -56,7 +56,9 @@ def main():
                         'libExtractStar'],
           package_dir={'':'lib'},
           scripts=[os.path.join('apps','extract_star','extract_star.py'),
-                   os.path.join('apps','extract_star','extract_host.py')],
+                   os.path.join('apps','extract_star','extract_host.py'),
+                   os.path.join('apps','extract_star','extract_z.py'),
+                   ],
           )
 
 if __name__ == "__main__":

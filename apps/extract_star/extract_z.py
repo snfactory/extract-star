@@ -12,6 +12,7 @@
 __version__ = "$Id$"
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 
+import pyfits
 from pySnurp import Spectrum
 from pySNIFS import spectrum as SNIFS_spectrum
 import pySNIFS_fit
@@ -22,61 +23,135 @@ import os
 
 CLIGHT = 299792.458
 
+def find_max(lbda, flux, lrange):
+
+    lmin,lmax = lrange
+    g = (lmin<=lbda) & (lbda<=lmax)
+
+    return lbda[g][flux[g].argmax()]
+
+
+class LinesBackground:
+    """Polynomial background."""
+
+    name = "LinesBackground"
+
+    def __init__(self, params, cube):
+
+        self.deg,self.lmin,self.lmax = params
+        self.npar_ind = 0
+        self.npar_cor = int(self.deg+1)
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.l = N.reshape(cube.lbda,cube.data.shape)
+        self.x = (self.l - self.lmin)/(self.lmax - self.lmin)
+        self.parnames = [ 'b%d' % i for i in range(self.npar_cor) ]
+
+    def comp(self, param):
+
+        self.param = param
+        # val = a0 + a1*x + a2*x**2 + ...
+        val = self.param[-1]
+        for par in self.param[-2::-1]:
+            val = val*self.x + par
+        return val
+
+    def deriv(self, param):
+
+        self.param = param
+        # val = a0 + a1*x + a2*x**2 + ...
+        grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
+        for i in range(self.npar_cor):
+            grad[i] = self.x**i
+        return grad
+
+
 class LinesOII:
-    """[OII] doublet is described by 2 independant gaussians +
-    background"""
+    """[OII] doublet is described by 2 independant gaussians"""
 
     name = "LinesOII"
     l1 = 3726.03                        # [OII] doublet
     l2 = 3728.73
+    parnames = ['1+z','sigma','[OII]1','[OII]2']
 
     def __init__(self, cube):
 
         self.npar_ind = 0
-        self.npar_cor = 6               # 1+z,sigma,I1,I2,bkgnd(d=1)
+        self.npar_cor = len(self.parnames) # 1+z,sigma,I1,I2
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.l = N.reshape(cube.lbda,cube.data.shape)
 
     def comp(self, param):
-        """[OII] (2G) + bkgnd(polyn(d=1))"""
 
-        self.param = param
-        zp1,s,i1,i2,b0,b1 = param
+        self.param = zp1,s,i1,i2 = param
         val = i1 * N.exp(-0.5*( (self.l - self.l1*zp1)/s )**2) + \
               i2 * N.exp(-0.5*( (self.l - self.l2*zp1)/s )**2)
-        val+= b0 + (self.l/self.l1 - 1)*b1 # Background
-
         return val
+
+    def deriv(self, param):
+
+        self.param = zp1,s,i1,i2 = param
+        d1 = (self.l - self.l1*zp1) / s
+        d2 = (self.l - self.l2*zp1) / s
+        g1 = N.exp(-0.5*d1**2)
+        g2 = N.exp(-0.5*d2**2)
+        # val = i1*g1(zp1,s) + i2*g2(zp1,s)
+        grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
+        grad[0] = i1*g1*self.l1*d1/s + i2*g2*self.l2*d2/s  # dval/dzp1
+        grad[1] = i1*g1*d1**2/s + i2*g2*d2**2/s            # dval/ds
+        grad[2] = g1                                       # dval/di1
+        grad[3] = g2                                       # dval/di2
+
+        return grad
 
 
 class LinesNIIHa:
-    """[NII]+Halpha complex is described by 1 gaussian for Ha + 2 correlated
-    gaussians for [NII] + background"""
+    """[NII],Halpha complex is described by 1 gaussian for Ha + 2
+    correlated gaussians for [NII]."""
 
     name = "LinesNIIHa"
     lHa = 6562.80                       # Halpha
-    lNII1 = 6547.96                     # [NII]
-    lNII2 = 6583.34                     # [NII]
-    rNII = 0.340                        # [NII]1/[NII]2
+    lNII1 = 6547.96                     # [NII]1
+    lNII2 = 6583.34                     # [NII]2
+    rNII = 0.340                        # i[NII]1/i[NII]2
+    parnames = ['1+z','sigma','Halpha','[NII]']
 
     def __init__(self, cube):
 
         self.npar_ind = 0
-        self.npar_cor = 6               # 1+z,sigma,I(Ha),I([NII]),bkgnd(d=1)
+        self.npar_cor = len(self.parnames) # 1+z,sigma,I(Ha),I([NII])
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.l = N.reshape(cube.lbda,cube.data.shape)
 
     def comp(self, param):
-        """Halpha(G1) + [NII](G2,G3) + bkgnd(polyn(d=1))"""
+        """Halpha(G1) + [NII](G2,G3)"""
 
-        self.param = param
-        zp1,s,iH,iN,b0,b1 = param
+        self.param = zp1,s,iH,iN = param
         val = iH * N.exp(-0.5*( (self.l - self.lHa*zp1)/s )**2) # Halpha
         val+= ( N.exp(-0.5*( (self.l - self.lNII1*zp1)/s )**2) * self.rNII +
                 N.exp(-0.5*( (self.l - self.lNII2*zp1)/s )**2) ) * iN # [NII]
-        val+= b0 + (self.l/self.lHa - 1)*b1   # Background
-
         return val
+
+    def deriv(self, param):
+
+        self.param = zp1,s,iH,iN = param
+        dH = (self.l - self.lHa*zp1) / s
+        d1 = (self.l - self.lNII1*zp1) / s
+        d2 = (self.l - self.lNII2*zp1) / s
+        gH = N.exp(-0.5*dH**2)
+        g1 = N.exp(-0.5*d1**2)
+        g2 = N.exp(-0.5*d2**2)
+        # val = iH*gH(zp1,s) + iN*(r*g1(zp1,s) + g2(zp1,s))
+        grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
+        grad[0] = iH * gH * self.lHa*dH/s + \
+            iN * ( g1 * self.lNII1*d1/s * self.rNII + 
+                   g2 * self.lNII2*d2/s ) # dval/dzp1
+        grad[1] = iH * gH * dH**2/s + \
+            iN * ( g1 * d1**2/s * self.rNII + 
+                   g2 * d2**2/s )         # dval/ds
+        grad[2] = gH                      # dval/diH
+        grad[3] = g1*self.rNII + g2       # dval/diN
+
+        return grad
 
 
 def errorband(ax, x, y, dy, color='b', alpha=0.3, label='_nolegend_'):
@@ -121,6 +196,20 @@ def addRedshiftedLines(ax, z):
                         verticalalignment='center',
                         rotation='vertical')
 
+def plot_correlation(ax, corr, parnames=None):
+
+    im = ax.imshow(N.absolute(corr), 
+                   norm=P.matplotlib.colors.LogNorm(),
+                   origin='upper')
+    if parnames:                # [['a','b'],['c','d'],...]
+        names = reduce(lambda x,y:x+y, parnames) # ['a','b','c','d'...]
+        names = [''] + names + ['']                # ???
+        ax.set_xticklabels(names, rotation=45, size='smaller')
+        ax.set_yticklabels(names, rotation=45, size='smaller')
+    fig = ax.get_figure()
+    cb = fig.colorbar(im, ax=ax, orientation='horizontal')
+    cb.set_label("Correlation matrix")
+    
 
 if __name__ == '__main__':
 
@@ -145,25 +234,26 @@ if __name__ == '__main__':
 
     lbda = s.x
     resSpec = s.y
-    assert s.hasVar, "Input spectrum has no variance extension."
+    assert s.varname, "Input spectrum has no variance extension."
     resVar = s.v
 
     X = s.readKey('CHANNEL')[0].upper() # B or R
     obj = s.readKey('OBJECT', 'Unknown')
     filename = s.readKey('FILENAME', 'Unknown')
     flxunits = s.readKey('FLXUNITS', 'counts')
+    print "Exposure %s: %s" % (filename, obj)
 
     # Convert array to pySNIFS.spectrum on a restricted range
     if X=='B':
-        g = (3700<=lbda) & (lbda<=4200) # OII from 1+z=1 to 1.13
-        l0 = lbda[g][resSpec[g].argmax()]
-        print "Fit [OII] doublet in %.0f,%.0f A" % (l0-50,l0+50)
-        g = ((l0-50)<=lbda) & (lbda<=(l0+50))
+        l0 = find_max(lbda, resSpec, (3700,4200)) # OII from 1+z=1 to 1.13
+        print "Fit [OII] doublet around %.0f A (%.0f A window)" % (l0,100)
+        lmin,lmax = l0-50,l0+50
+        g = (lmin<=lbda) & (lbda<=lmax)
     elif X=='R':
-        g = (6560<=lbda) & (lbda<=7400) # Ha from 1+z=1 to 1.13
-        l0 = lbda[g][resSpec[g].argmax()]
-        print "Fit [NII],Ha complex in %.0f,%.0f A" % (l0-100,l0+100)
-        g = ((l0-100)<=lbda) & (lbda<=(l0+100))
+        l0 = find_max(lbda, resSpec, (6560,7400)) # Ha from 1+z=1 to 1.13
+        print "Fit [NII],Ha complex around %.0f A (%.0f A window)" % (l0,200)
+        lmin,lmax = l0-100,l0+100
+        g = (lmin<=lbda) & (lbda<=lmax)
 
     x = lbda[g]
     bkg = N.median(resSpec[g])
@@ -173,36 +263,61 @@ if __name__ == '__main__':
     spec = SNIFS_spectrum(data=y, var=v, start=x[0], step=s.step)
 
     if X=='B':                      # [OII] doublet
-        funcs = [ LinesOII.name, ]
-        # 1+z,sigma,I1,I2,bkgnd(d=1)
+        funcs = [ LinesOII.name, 
+                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+        # 1+z,sigma,I1,I2 + bkgnd(d=1)
         zp1 = x[resSpec[g].argmax()] / LinesOII.l2
-        params = [ [zp1, 3, 0.5, 0.5, 0, 0] ]
-        bounds = [ [[1.0,1.13],[2,5],[0,1],[0,1],[None,None],[None,None]]]
-        myfunc = {LinesOII.name:LinesOII}
+        params = [ [zp1, 3, 0.5, 0.5], [0, 0] ]
+        bounds = [ [[1.0,1.13],[2,5],[0,1],[0,1]],
+                   [[None,None]]*2] # No constraints on background
+        myfunc = {LinesOII.name:LinesOII, 
+                  LinesBackground.name:LinesBackground}
 
     elif X=='R':                    # [NII]+Halpha complex
-        funcs = [ LinesNIIHa.name, ]
-        # 1+z,sigma,I(Ha),I([NII]),bkgnd(d=1)
+        funcs = [ LinesNIIHa.name, 
+                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+        # 1+z,sigma,IHa,I[NII] + bkgnd(d=1)
         zp1 = x[resSpec[g].argmax()] / LinesNIIHa.lHa
-        params = [ [zp1, 4, 1, 0.5, 0, 0] ]
-        bounds = [ [[1.0,1.13],[2,5],[0.1,2],[0,1],[None,None],[None,None]]]
-        myfunc = {LinesNIIHa.name:LinesNIIHa}
-
-    print "Initial guess:", params
+        params = [ [zp1, 4, 1, 0.5], [0, 0] ]
+        bounds = [ [[1.0,1.13],[2,5],[0.1,2],[0,1]],
+                   [[None,None]]*2] # No constraints on background
+        myfunc = {LinesNIIHa.name:LinesNIIHa, 
+                  LinesBackground.name:LinesBackground}
 
     # Actual fit
     model = pySNIFS_fit.model(data=spec, func=funcs,
                               param=params, bounds=bounds, myfunc=myfunc)
-    model.fit(msge=False, deriv=False)
+
+    model.fit(msge=False)
     model.khi2 *= model.dof             # True Chi2
 
+    parnames = [ model.func[i].parnames for i in range(len(funcs)) ]
+    print "Adjusted parameters:", parnames
+    print "Initial guess:", params
     print "Adjusted parameters:", model.fitpar
     print "Chi2 (DoF=%d): %.2f" % (model.dof, model.khi2)
+    
+    # Error computation
+    hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=2)
+    cov = N.linalg.inv(hess)            # Covariance matrix
+    err = N.sqrt(cov.diagonal())
+    corr = cov/(err * err[:,N.newaxis]) # Correlation matrix
 
-    #z = model.fitpar[0]/6562.80 - 1
+    # Could now compute detection level: flux(Ha) in units of sig(flux).
+
     zsys = model.fitpar[0] - 1
-    print "Estimated redshift: %.5f (%.2f km/s), Sigma: %f A" % \
-        (zsys,zsys*CLIGHT,model.fitpar[1])
+    dzsys = err[0]
+    print "Estimated redshift: %.5f +/- %.1g (%.1f +/- %.1f km/s)" % \
+        (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+    print "Sigma: %.2f +/- %.2f A" % (model.fitpar[1],err[1])
+
+    # Store results in input spectra (awkward way...)
+    hdu = pyfits.open(specname, mode='update')
+    hdu[0].header.update('CVSEXTZ',__version__)
+    hdu[0].header.update('REDSHIFT',zsys,"extract_z redshift")
+    hdu[0].header.update('DREDSHIF',dzsys,"extract_z error on redshift")
+    hdu[0].header.update('LREDSHIF',funcs[0],"extract_z lines")
+    hdu.close()
 
     makeMap = False and not opts.nofit
     if makeMap:
@@ -230,21 +345,22 @@ if __name__ == '__main__':
 
         # Could now compute flux-weighted redshift
 
-    if opts.plot:
+    if opts.plot or os.environ.has_key('PYSHOW'):
         import matplotlib.pyplot as P
 
         fig = P.figure(figsize=(12,4))
         fig.subplots_adjust(left=0.075, right=0.95)
 
         title = "%s [%s]" % (obj, filename)
-        ax1 = fig.add_subplot(1,1.5,1, title=title,
+        ax1 = fig.add_subplot(1,2,1, title=title,
                               xlabel='Wavelength [A]',
                               ylabel='Flux [%s]' % flxunits)
-        ax2 = fig.add_subplot(1,3,3, 
+        ax2 = fig.add_subplot(1,4,3, 
                               xlabel='Wavelength [A]')
 
         # Galaxy spectrum
-        lgal, = ax1.plot(lbda, resSpec, 'g-', label="z=%.5f" % zsys)
+        lgal, = ax1.plot(lbda, resSpec, 'g-', 
+                         label="z=%.5f +/- %.1g" % (zsys,dzsys))
         #ax1.plot(x, model.evalfit()*norm + bkg, 'r-')
         addRedshiftedLines(ax1, zsys)
         ax1.set_xlim(lbda[0],lbda[-1])
@@ -257,6 +373,12 @@ if __name__ == '__main__':
         ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
         addRedshiftedLines(ax2, zsys)
         ax2.set_xlim(x[0],x[-1])
+
+        sig = N.median(N.sqrt(resVar[g]))
+
+        # Correlation matrix
+        ax3 = fig.add_subplot(1,4,4)
+        plot_correlation(ax3, corr, parnames=parnames)
 
         if makeMap:
             fig2 = P.figure(figsize=(6,6))
@@ -273,8 +395,8 @@ if __name__ == '__main__':
             axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
                         extent=(-7.5,7.5,-7.5,7.5))
 
-    print "Saving figure in", figname
-    fig.savefig(figname)
-
-    if os.environ.has_key('PYSHOW'):
-        P.show()
+        if opts.plot:
+            print "Saving figure in", figname
+            fig.savefig(figname)
+        else:                   # PYSHOW
+            P.show()
