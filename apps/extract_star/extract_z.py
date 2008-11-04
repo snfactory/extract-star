@@ -207,14 +207,14 @@ def plot_correlation(ax, corr, parnames=None):
     im = ax.imshow(N.absolute(corr), 
                    norm=P.matplotlib.colors.LogNorm(),
                    origin='upper')
-    if parnames:                # [['a','b'],['c','d'],...]
-        names = reduce(lambda x,y:x+y, parnames) # ['a','b','c','d'...]
-        names = [''] + names + ['']                # ???
-        ax.set_xticklabels(names, rotation=45, size='smaller')
-        ax.set_yticklabels(names, rotation=45, size='smaller')
+    if parnames:
+        ax.set_xticks(range(len(parnames))) # Set the nb of ticks
+        ax.set_xticklabels(parnames, rotation=45, size='smaller')
+        ax.set_yticks(range(len(parnames)))
+        ax.set_yticklabels(parnames, rotation=45, size='smaller')
     fig = ax.get_figure()
     cb = fig.colorbar(im, ax=ax, orientation='horizontal')
-    cb.set_label("Correlation matrix")
+    cb.set_label("|Correlation matrix|")
     
 
 if __name__ == '__main__':
@@ -295,6 +295,7 @@ if __name__ == '__main__':
                               param=params, bounds=bounds, myfunc=myfunc)
 
     parnames = [ model.func[i].parnames for i in range(len(funcs)) ]
+    flatparnames = reduce(lambda x,y:x+y, parnames)
     print "Adjusted parameters:", parnames
     print "Initial guess:", params
 
@@ -304,16 +305,18 @@ if __name__ == '__main__':
     print "Status: %d, Chi2 (DoF=%d): %f" % \
           (model.status, model.dof, model.khi2)
     
-    # Error computation
-    hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=5)
-    cov = N.linalg.inv(hess)            # Covariance matrix
+    # Quadratic errors, including correlations (tested against Minuit)
+    hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=3)
+    cov = 2 * N.linalg.inv(hess)        # Covariance matrix (for chi2-fit)
     dfitpar = N.sqrt(cov.diagonal())
-    corr = cov/(dfitpar * dfitpar[:,N.newaxis]) # Correlation matrix
+    corr = cov/N.outer(dfitpar,dfitpar) # Correlation matrix
 
     print "Adjusted parameters (including normalization):"
-    for par,val,dval in zip(reduce(lambda x,y:x+y, parnames),
-                            model.fitpar, dfitpar):
+    for par,val,dval in zip(flatparnames, model.fitpar, dfitpar):
         print "  %s = %f +/- %f" % (par,val,dval)
+
+    #print "Correlation matrix:"
+    #print N.array2string(corr, 79, 3)
 
     # Detection level: flux(Ha) in units of sig(flux).
 
@@ -391,7 +394,7 @@ if __name__ == '__main__':
 
         # Correlation matrix
         ax3 = fig.add_subplot(1,4,4)
-        plot_correlation(ax3, corr, parnames=parnames)
+        plot_correlation(ax3, corr, parnames=flatparnames)
 
         if makeMap:
             fig2 = P.figure(figsize=(6,6))
@@ -411,5 +414,5 @@ if __name__ == '__main__':
         if opts.plot:
             print "Saving figure in", figname
             fig.savefig(figname)
-        else:                   # PYSHOW
+        if os.environ.has_key('PYSHOW'):
             P.show()
