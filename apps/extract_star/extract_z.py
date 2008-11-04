@@ -43,7 +43,7 @@ class LinesBackground:
         self.npar_cor = int(self.deg+1)
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.l = N.reshape(cube.lbda,cube.data.shape)
-        self.x = (self.l - self.lmin)/(self.lmax - self.lmin)
+        self.x = (2*self.l - (self.lmin+self.lmax))/(self.lmax - self.lmin)
         self.parnames = [ 'b%d' % i for i in range(self.npar_cor) ]
 
     def comp(self, param):
@@ -153,6 +153,12 @@ class LinesNIIHa:
 
         return grad
 
+    def flux(self, par):
+        """Flux (and error) of Halpha line."""
+
+        # par: 0:1+z, 1:sigma, 2:Halpha, 3:[NII]
+        f = N.sqrt(2*N.pi)*par[1] * (par[2] + par[3]*(1+self.rNII))
+        return f
 
 def errorband(ax, x, y, dy, color='b', alpha=0.3, label='_nolegend_'):
     """Plot errorband between y-dy and y+dy."""
@@ -288,35 +294,42 @@ if __name__ == '__main__':
     model = pySNIFS_fit.model(data=spec, func=funcs,
                               param=params, bounds=bounds, myfunc=myfunc)
 
-    model.fit(msge=False)
-    model.khi2 *= model.dof             # True Chi2
-
     parnames = [ model.func[i].parnames for i in range(len(funcs)) ]
     print "Adjusted parameters:", parnames
     print "Initial guess:", params
-    print "Adjusted parameters:", model.fitpar
-    print "Chi2 (DoF=%d): %.2f" % (model.dof, model.khi2)
+
+    model.fit(save=True, msge=False)
+    model.khi2 *= model.dof             # True Chi2
+
+    print "Status: %d, Chi2 (DoF=%d): %f" % \
+          (model.status, model.dof, model.khi2)
     
     # Error computation
-    hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=2)
+    hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=5)
     cov = N.linalg.inv(hess)            # Covariance matrix
-    err = N.sqrt(cov.diagonal())
-    corr = cov/(err * err[:,N.newaxis]) # Correlation matrix
+    dfitpar = N.sqrt(cov.diagonal())
+    corr = cov/(dfitpar * dfitpar[:,N.newaxis]) # Correlation matrix
 
-    # Could now compute detection level: flux(Ha) in units of sig(flux).
+    print "Adjusted parameters (including normalization):"
+    for par,val,dval in zip(reduce(lambda x,y:x+y, parnames),
+                            model.fitpar, dfitpar):
+        print "  %s = %f +/- %f" % (par,val,dval)
+
+    # Detection level: flux(Ha) in units of sig(flux).
 
     zsys = model.fitpar[0] - 1
-    dzsys = err[0]
-    print "Estimated redshift: %.5f +/- %.1g (%.1f +/- %.1f km/s)" % \
+    dzsys = dfitpar[0]
+    print "Estimated redshift: %f +/- %f (%.1f +/- %.1f km/s)" % \
         (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
-    print "Sigma: %.2f +/- %.2f A" % (model.fitpar[1],err[1])
+    print "Sigma: %.2f +/- %.2f A" % (model.fitpar[1],dfitpar[1])
 
     # Store results in input spectra (awkward way...)
     hdu = pyfits.open(specname, mode='update')
     hdu[0].header.update('CVSEXTZ',__version__)
-    hdu[0].header.update('REDSHIFT',zsys,"extract_z redshift")
-    hdu[0].header.update('DREDSHIF',dzsys,"extract_z error on redshift")
-    hdu[0].header.update('LREDSHIF',funcs[0],"extract_z lines")
+    hdu[0].header.update('EXTZ_Z',zsys,"extract_z redshift")
+    hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
+    hdu[0].header.update('EXTZ_K2',model.khi2,"extract_z chi2")
+    hdu[0].header.update('EXTZ_L',funcs[0],"extract_z lines")
     hdu.close()
 
     makeMap = False and not opts.nofit
