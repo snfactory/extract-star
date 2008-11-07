@@ -41,32 +41,97 @@ def atmosphericIndex(lbda, P=616., T=2.):
     return n
 
 
-def read_PT(hdr, update=False):
+def read_PT(hdr):
     """Read pressure and temperature from hdr, and check value consistency."""
 
     pressure = hdr.get('PRESSURE', S.nan)
-    temp = hdr.get('TEMP', S.nan)
-
     if not 550<pressure<650:        # Non-std pressure
-        if update:
-            print "WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
-                  (pressure, MK_pressure)
-            hdr.update('PRESSURE',MK_pressure,"Default MaunaKea pressure [mbar]")
+        print "WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
+              (pressure, MK_pressure)
+        if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
+            hdr['PRESSURE'] = MK_pressure
+        else:                           # True pyfits header, add comment
+            hdr.update('PRESSURE',MK_pressure,"Default MK pressure [mbar]")
         pressure = MK_pressure
+
+    temp = hdr.get('TEMP', S.nan)
     if not -20<temp<20:             # Non-std temperature
-        if update:
-            print "WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
-                  (temp, MK_temp)
-            hdr.update('TEMP', MK_temp, "Default MaunaKea temperature [C]")
+        print "WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
+              (temp, MK_temp)
+        if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
+            hdr['TEMP'] = MK_temp
+        else:                           # True pyfits header, add comment
+            hdr.update('TEMP', MK_temp, "Default MK temperature [C]")
         temp = MK_temp
 
     return pressure,temp
 
 
+def read_parangle(hdr):
+    """Read or estimate parallactic angle [degree] from header keywords."""
+
+    parang = hdr.get('PARANG', S.nan)
+    if S.isfinite(parang):              # PARANG keyword is available
+        return parang
+
+    # PARANG keyword is absent, estimate it from LATITUDE,HA,DEC
+    print "WARNING: cannot read PARANG keyword, estimate it from header"
+    
+    from math import sin,cos,pi,sqrt,acos,atan2
+
+    d2r = pi/180.                       # Degree to Radians
+    # DTCS latitude is probably not the most precise one (see fit_ADR.py)
+    phi = hdr['LATITUDE']*d2r           # Latitude [rad]
+    sinphi = sin(phi)
+    cosphi = cos(phi)
+    try:
+        ha = hdr['HAMID']               # Hour angle (format: 04:04:52.72)
+    except:
+        ha = hdr['HA']                  # Hour angle (format: 04:04:52.72)
+    try:
+        dec = hdr['TELDEC']             # Declination (format 08:23:19.20)
+    except:
+        dec = hdr['DEC']                # Declination (format 08:23:19.20)
+    # We neglect position offset (see
+    # https://projects.lbl.gov/mantis/view.php?id=280 note 773) since offset
+    # keywords are not universal...
+
+    def dec_deg(dec):
+        """Convert DEC string (DD:MM:SS.SS) to degrees."""
+        l = [ float(x) for x in dec.split(':') ]
+        return l[0] + l[1]/60. + l[2]/3600.
+
+    ha  = dec_deg(ha)*15*d2r            # Hour angle [rad]
+    dec = dec_deg(dec)*d2r              # Declination [rad]
+    sinha = sin(ha)
+    cosha = cos(ha)
+    sindec = sin(dec)
+    cosdec = cos(dec)
+
+    # Zenithal angle (to be compared to dec_deg(hdr['ZD']))
+    cosdz = sindec*sinphi + cosphi*cosdec*cosha
+    sindz = sqrt(1. - cosdz**2)
+
+    # Parallactic angle (to be compared to hdr['PARANG'])
+    sineta = sinha*cosphi / sindz
+    coseta = ( cosdec*sinphi - sindec*cosphi*cosha ) / sindz
+    eta = atan2(sineta,coseta)          # [rad]
+
+    parang = eta/d2r                    # [deg]
+    print "  Estimated parallactic angle: %.2f deg" % parang
+    if isinstance(hdr, dict):           # pySNIFS.SNIFS_cube.e3d_data_header
+        hdr['PARANG'] = parang
+    else:                               # True pyfits header, add comment
+        hdr.update('PARANG',parang,"Parallactic angle [deg]")
+
+    return parang
+
+
 class ADR_model:
 
     def __init__(self, pressure=616., temp=2., **kwargs):
-        """ADR_model(pressure, temp, [lref=, delta=, theta=])."""
+        """ADR_model(pressure, temp,
+        [lref=, delta=, theta=, airmass=, parangle=])."""
 
         if not 550<pressure<650 and not not -20<temp<20:
             raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
@@ -77,40 +142,48 @@ class ADR_model:
             self.set_ref(lref=kwargs['lref'])
         else:
             self.set_ref()
-        if 'delta' in kwargs and 'theta' in kwargs:
-            self.set_param(delta=kwargs['delta'],theta=kwargs['theta'])
+        if 'airmass' in kwargs and 'parangle' in kwargs:
+            self.set_param(kwargs['airmass'], kwargs['parangle'], obs=True)
+        elif 'delta' in kwargs and 'theta' in kwargs:
+            self.set_param(kwargs['delta'],kwargs['theta'])
 
     def __str__(self):
 
-        s = "ADR: P=%.0f mbar, T=%.0fC" % (self.P,self.T)
-        if hasattr(self, 'lref'):
-            s += ", ref.lambda=%.0fA" % self.lref
+        s = "ADR [ref:%.0fA]: P=%.0f mbar, T=%.0fC" % \
+            (self.lref,self.P,self.T)
         if hasattr(self, 'delta') and hasattr(self, 'theta'):
-            s += ", delta=%.2f, theta=%.1f deg" % \
-                 (self.delta,self.theta/S.pi*180)
+            s += ", airmass=%.2f, parangle=%.1f deg" % \
+                 (self.get_airmass(),self.get_parangle())
 
         return s
 
     def set_ref(self, lref=5000.):
 
-        self.lref = lref
+        self.lref = lref                # [Angstrom]
         self.nref = atmosphericIndex(self.lref, P=self.P, T=self.T)
 
-    def set_param(self, delta, theta):
+    def set_param(self, p1, p2, obs=False):
 
-        self.delta = delta
-        self.theta = theta
+        if obs:                         # p1 = airmass, p2 = parangle [deg]
+            self.delta = S.tan(S.arccos(1./p1))
+            self.theta = p2*S.pi/180
+        else:                           # p1 = delta, p2 = theta [rad]
+            self.delta = p1
+            self.theta = p2
 
     def refract(self, x, y, lbda, backward=False, unit=1.):
+        """Return refracted position at wavelength lbda from reference
+        position x,y (in units of unit in arcsec)."""
 
         if not hasattr(self, 'delta'):
-            raise AttributeError("ADR parameters 'delta' and 'theta' are not set.")
+            raise AttributeError("ADR parameters 'delta' and 'theta' "
+                                 "are not set.")
 
         x0 = S.atleast_1d(x)            # (npos,)
         y0 = S.atleast_1d(y)
-        assert len(x)==len(y), "Incompatible x and y vectors."
+        npos = len(x0)
+        assert len(x0)==len(y0), "Incompatible x and y vectors." 
         lbda = S.atleast_1d(lbda)       # (nlbda,)
-        npos = len(x)
         nlbda = len(lbda)
 
         dz = (self.nref - atmosphericIndex(lbda, P=self.P, T=self.T)) * \
@@ -131,9 +204,16 @@ class ADR_model:
 
         return S.squeeze(out)
 
-# PSF classes ================================================================
+    def get_airmass(self):
+        return 1/S.cos(S.arctan(self.delta))
 
-def eval_poly(coeffs, x):
+    def get_parangle(self):
+        return self.theta/S.pi*180      # Parangle in deg.
+
+
+# Polynomial utilities ======================================================
+
+def polyEval(coeffs, x):
     """Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention for
     polynomial coeffs: [c0,c1...,cn] (opposite to S.polyfit)."""
 
@@ -147,11 +227,62 @@ def eval_poly(coeffs, x):
         
     return y
 
+def polyConvMatrix(n, trans=(0,1)):
+    """Return the upper triangular matrix (i,k) * b**k * a**(i-k), that
+    converts polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
+    ...) in polynomial coeffs for x (P = a0 + a1*x + a2*x**2 +
+    ...). Therefore, (a,b)=(0,1) gives identity."""
+
+    a,b = trans
+    m = S.zeros((n,n), dtype='d')
+    for r in range(n):
+        for c in range(r,n):
+            m[r,c] = S.comb(c,r) * b**r * a**(c-r)
+    return m
+
+def polyConvert(coeffs, trans=(0,1), backward=False):
+    """Converts polynomial coeffs for x (P = a0 + a1*x + a2*x**2 + ...) in
+    polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
+    ...). Therefore, (a,b)=(0,1) makes nothing. If backward, makes the
+    opposite transformation."""
+
+    a,b = trans
+    if not backward:
+        a = -float(a)/float(b)
+        b = 1/float(b)
+    return S.dot(polyConvMatrix(len(coeffs), (a,b)),coeffs)
+
+def polyfit_clip(x, y, deg, clip=3, nitermax=10):
+    """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
+    polynomial coeffs w/ same convention as S.polyfit: [cn,...,c1,c0]."""
+    
+    good = S.ones(y.shape, dtype='bool')
+    niter = 0
+    while True:
+        niter += 1
+        coeffs = S.polyfit(x[good], y[good], deg)
+        old = good
+        if clip:
+            dy = S.polyval(coeffs, x) - y
+            good = S.absolute(dy) < clip*S.std(dy)
+        if (good==old).all(): break     # No more changes, stop there
+        if niter > nitermax:            # Max. # of iter, stop there
+            print_msg("polyfit_clip reached max. # of iterations: " \
+                      "deg=%d, clip=%.2f x %f, %d px removed" % \
+                      (deg, clip, S.std(dy), len((~old).nonzero()[0])), 2)
+            break
+        if y[good].size <= deg+1:
+            raise ValueError("polyfit_clip: Not enough points left (%d) " \
+                             "for degree %d" % (y[good].size,deg))
+    return coeffs
+
+# PSF classes ================================================================
+
 class ExposurePSF:
     """
     Empirical PSF 3D function used by the L{model} class.
     """
-    
+
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
         @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
@@ -165,10 +296,16 @@ class ExposurePSF:
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
         
-        self.npar_cor = 7 + self.alphaDeg + self.ellDeg # PSF parameters
+        self.npar_cor = 7 + self.ellDeg + self.alphaDeg # PSF parameters
         self.npar_ind = 1               # Intensity parameters per slice
         self.nslice = cube.nslice
         self.npar = self.npar_cor + self.npar_ind*self.nslice
+
+        # Name of PSF parameters
+        self.parnames = ['delta','theta','x0','y0','PA'] + \
+                        ['e%d' % i for i in range(self.ellDeg+1)] + \
+                        ['a%d' % i for i in range(self.alphaDeg+1)] + \
+                        ['i%02d' % (i+1) for i in range(self.nslice)]
 
         if coords is None:
             self.nlens = cube.nlens
@@ -183,6 +320,15 @@ class ExposurePSF:
             self.x = S.resize(x, (self.nslice,self.nlens)) # nslice,nlens
             self.y = S.resize(y, (self.nslice,self.nlens))
         self.l = S.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
+        if self.nslice > 1:
+            self.lmin = cube.lbda[0]
+            self.lmax = cube.lbda[-1]
+            lrel = ( 2*cube.lbda - (self.lmin + self.lmax) ) / \
+                   ( self.lmax - self.lmin )
+            self.lrel = S.resize(lrel, (self.nlens,self.nslice)).T
+        else:
+            self.lmin,self.lmax = -1,+1
+            self.lrel = self.l
 
         # ADR in spaxels (nslice,nlens)
         if hasattr(cube,'e3d_data_header'): # Read from cube if possible
@@ -228,9 +374,8 @@ class ExposurePSF:
         ellCoeffs   = self.param[5:6+self.ellDeg]        
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
-        lbda_rel = self.l / self.lbda_ref - 1 # nslice,nlens
-        ell = eval_poly(ellCoeffs, lbda_rel)
-        alpha = eval_poly(alphaCoeffs, lbda_rel)
+        ell = polyEval(ellCoeffs, self.lrel) # nslice,nlens
+        alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
         s1,s0,b1,b0,e1,e0 = self.corrCoeffs
@@ -280,9 +425,8 @@ class ExposurePSF:
         ellCoeffs   = self.param[5:6+self.ellDeg]                
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
-        lbda_rel = self.l / self.lbda_ref - 1
-        ell = eval_poly(ellCoeffs, lbda_rel)
-        alpha = eval_poly(alphaCoeffs, lbda_rel)
+        ell = polyEval(ellCoeffs, self.lrel)
+        alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
         s1,s0,b1,b0,e1,e0 = self.corrCoeffs
@@ -312,9 +456,9 @@ class ExposurePSF:
         grad[1] = delta*self.ADR_coeff*(sintheta*grad[3] + costheta*grad[2])
         grad[4] = -tmp   * dx*dy        # dPSF/dPA
         for i in xrange(self.ellDeg + 1):
-            grad[5+i] = -tmp/2 * dy2 * lbda_rel**i
+            grad[5+i] = -tmp/2 * dy2 * self.lrel**i
         for i in xrange(self.alphaDeg + 1):
-            grad[6+self.ellDeg+i] = da0 * lbda_rel**i
+            grad[6+self.ellDeg+i] = da0 * self.lrel**i
         grad[:self.npar_cor] *= self.param[S.newaxis,self.npar_cor:,S.newaxis]
         grad[self.npar_cor] = moffat + eta*gaussian # dPSF/dI
 
@@ -323,8 +467,8 @@ class ExposurePSF:
     def _HWHM_fn(self, r, alphaCoeffs, lbda):
         """Half-width at half maximum function (=0 at HWHM)."""
 
-        lbda_rel = lbda/self.lbda_ref - 1
-        alpha = eval_poly(alphaCoeffs, lbda_rel)
+        lrel = ( 2*lbda - (self.lmin+self.lmax) ) / ( self.lmax-self.lmin )
+        alpha = polyEval(alphaCoeffs, lrel)
         s1,s0,b1,b0,e1,e0 = self.corrCoeffs
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha

@@ -654,7 +654,7 @@ class model:
 
     def res_eval(self, param=None):
         """Evaluate model residuals with current parameters stored in
-        flatparam."""
+        param (or flatparam)."""
         return self.data.data - self.eval(param)
 
     def evalfit(self):
@@ -740,7 +740,7 @@ class model:
         self.fitpar = S.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
-        self.dof = self.data.nlens*self.data.nslice - self.flatparam.size
+        self.dof = self.data.nlens*self.data.nslice - self.nparam
         self.khi2 = self.objfun(param=self.fitpar) / self.dof
 
         if disp:
@@ -764,7 +764,7 @@ class model:
         self.fitpar = S.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
-        self.dof = self.data.nlens*self.data.nslice - self.flatparam.size
+        self.dof = self.data.nlens*self.data.nslice - self.nparam
         self.khi2 = f / self.dof
 
         if disp:
@@ -773,17 +773,22 @@ class model:
             self.flatparam = self.fitpar.copy()
 
     def param_error(self,param=None):
+        """Actually returns covariance matrix computed from hessian."""
+        
         if param is None:
             param = self.fitpar
-        jac = self.objgrad
-        hess = lambda param: approx_deriv(jac,param,order=2)
         try:
-            cov = S.linalg.inv(hess(param))
+            # Hessian is 2nd-order derivative matrix, numerically estimated
+            # from 1st-order derivative vector. Non-fitted elements (lb=ub)
+            # should be removed prior to inversion.
+            hess = approx_deriv(self.objgrad,param)
+            cov = 2 * S.linalg.inv(hess)
             return cov
         except:
             return numpy.zeros((len(param),len(param)),'d')
  
     def unflat_param(self,param):
+        
         if S.size(param) != S.size(self.param):
             raise ValueError, "Parameter list does not have the right size."
         newparam = []

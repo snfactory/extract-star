@@ -1,7 +1,18 @@
-2008-11-04  Yannick Copin  <ycopin@lyopc469>
+2008-11-07  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
-	* apps/extract_star/extract_z.py: covariance matrix is *twice* the
-	invert of hessian for chi2-fit.
+	* apps/extract_star/extract_star.py: use polynoms of (2*lbda -
+	(lmin+lmax))/(lmax-lmin) internally to decrease covariance between
+	coefficients. Keyword coeffs are converted to polynom of
+	lbda/5000A-1 to ease inter-channel comparison.
+
+	* lib/libExtractStar.py (polyConvert): polynomial utility to
+	convert P(x) to P~(x~:=a+b*x).
+
+2008-11-05  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_z.py: 
+	* apps/extract_star/extract_star.py: covariance matrix is *twice*
+	the invert of hessian for chi2-fit.
 
 2008-11-03  Yannick Copin  <ycopin@lyopc469>
 
