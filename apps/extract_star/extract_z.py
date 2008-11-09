@@ -46,6 +46,9 @@ class LinesBackground:
         self.x = (2*self.l - (self.lmin+self.lmax))/(self.lmax - self.lmin)
         self.parnames = [ 'b%d' % i for i in range(self.npar_cor) ]
 
+    def __str__(self):
+        return "background [deg=%d]" % self.deg
+
     def comp(self, param):
 
         self.param = param
@@ -79,6 +82,9 @@ class LinesOII:
         self.npar_cor = len(self.parnames) # 1+z,sigma,I1,I2
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.l = N.reshape(cube.lbda,cube.data.shape)
+
+    def __str__(self):
+        return "[OII] doublet"
 
     def comp(self, param):
 
@@ -122,6 +128,9 @@ class LinesNIIHa:
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.l = N.reshape(cube.lbda,cube.data.shape)
 
+    def __str__(self):
+        return "[NII],Ha complex"
+
     def comp(self, param):
         """Halpha(G1) + [NII](G2,G3)"""
 
@@ -153,12 +162,24 @@ class LinesNIIHa:
 
         return grad
 
-    def flux(self, par):
+    def flux(self, par, cov=None):
         """Flux (and error) of Halpha line."""
 
         # par: 0:1+z, 1:sigma, 2:Halpha, 3:[NII]
         f = N.sqrt(2*N.pi)*par[1] * (par[2] + par[3]*(1+self.rNII))
-        return f
+        if cov is not None:
+            # Compute jacobian of f
+            j = N.empty(3, dtype='d')
+            j[0] = (par[2] + par[3]*(1+self.rNII))
+            j[1] = par[1]
+            j[2] = par[1] * (1+self.rNII)
+            j *= N.sqrt(2*N.pi)
+            c = cov[1:4,1:4]    # Select proper submatrix
+            df = N.sqrt(N.dot(j, N.dot(c,j)))
+            return f,df
+        else:
+            return f
+
 
 def errorband(ax, x, y, dy, color='b', alpha=0.3, label='_nolegend_'):
     """Plot errorband between y-dy and y+dy."""
@@ -247,7 +268,7 @@ if __name__ == '__main__':
     obj = s.readKey('OBJECT', 'Unknown')
     filename = s.readKey('FILENAME', 'Unknown')
     flxunits = s.readKey('FLXUNITS', 'counts')
-    print "Exposure %s: %s" % (filename, obj)
+    print "%s: %s" % (obj, filename)
 
     # Convert array to pySNIFS.spectrum on a restricted range
     if X=='B':
@@ -268,7 +289,7 @@ if __name__ == '__main__':
     v = resVar[g] / norm**2
     spec = SNIFS_spectrum(data=y, var=v, start=x[0], step=s.step)
 
-    if X=='B':                      # [OII] doublet
+    if X=='B':                      # [OII] doublet + background
         funcs = [ LinesOII.name, 
                   '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
         # 1+z,sigma,I1,I2 + bkgnd(d=1)
@@ -279,7 +300,7 @@ if __name__ == '__main__':
         myfunc = {LinesOII.name:LinesOII, 
                   LinesBackground.name:LinesBackground}
 
-    elif X=='R':                    # [NII]+Halpha complex
+    elif X=='R':                    # [NII]+Halpha complex + background
         funcs = [ LinesNIIHa.name, 
                   '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
         # 1+z,sigma,IHa,I[NII] + bkgnd(d=1)
@@ -308,7 +329,10 @@ if __name__ == '__main__':
     # Quadratic errors, including correlations (tested against Minuit)
     hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=3)
     cov = 2 * N.linalg.inv(hess)        # Covariance matrix (for chi2-fit)
-    dfitpar = N.sqrt(cov.diagonal())
+    diag = cov.diagonal()
+    if (diag<0).any():          # Error in fit
+        model.status = 1
+    dfitpar = N.sqrt(diag)
     corr = cov/N.outer(dfitpar,dfitpar) # Correlation matrix
 
     print "Adjusted parameters (including normalization):"
@@ -318,22 +342,30 @@ if __name__ == '__main__':
     #print "Correlation matrix:"
     #print N.array2string(corr, 79, 3)
 
-    # Detection level: flux(Ha) in units of sig(flux).
-
+    # Mean redshift
     zsys = model.fitpar[0] - 1
     dzsys = dfitpar[0]
     print "Estimated redshift: %f +/- %f (%.1f +/- %.1f km/s)" % \
         (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
     print "Sigma: %.2f +/- %.2f A" % (model.fitpar[1],dfitpar[1])
 
-    # Store results in input spectra (awkward way...)
-    hdu = pyfits.open(specname, mode='update')
-    hdu[0].header.update('CVSEXTZ',__version__)
-    hdu[0].header.update('EXTZ_Z',zsys,"extract_z redshift")
-    hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
-    hdu[0].header.update('EXTZ_K2',model.khi2,"extract_z chi2")
-    hdu[0].header.update('EXTZ_L',funcs[0],"extract_z lines")
-    hdu.close()
+    # Detection level: flux(Ha) in units of sig(flux).
+    func = model.func[0]
+    f,df = func.flux(model.fitpar[:func.npar_cor],
+                     cov=cov[:func.npar_cor,:func.npar_cor])
+    nsig = f/df
+    print "Detection level: %.1f-sigma (flux: %f +/- %f)" % (nsig, f, df)
+
+    # Store results in input spectra (awkward way, but pySnurp is too dumb...)
+    if model.status==0:
+        hdu = pyfits.open(specname, mode='update')
+        hdu[0].header.update('CVSEXTZ',__version__)
+        hdu[0].header.update('EXTZ_Z',zsys,"extract_z redshift")
+        hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
+        hdu[0].header.update('EXTZ_K2',model.khi2,"extract_z chi2")
+        hdu[0].header.update('EXTZ_NS',nsig,"extract_z detection level")
+        hdu[0].header.update('EXTZ_L',funcs[0],"extract_z lines")
+        hdu.close()
 
     makeMap = False and not opts.nofit
     if makeMap:
@@ -364,7 +396,7 @@ if __name__ == '__main__':
     if opts.plot or os.environ.has_key('PYSHOW'):
         import matplotlib.pyplot as P
 
-        fig = P.figure(figsize=(12,4))
+        fig = P.figure(figsize=(12,5))
         fig.subplots_adjust(left=0.075, right=0.95)
 
         title = "%s [%s]" % (obj, filename)
@@ -377,24 +409,28 @@ if __name__ == '__main__':
         # Galaxy spectrum
         lgal, = ax1.plot(lbda, resSpec, 'g-', 
                          label="z=%.5f +/- %.1g" % (zsys,dzsys))
-        #ax1.plot(x, model.evalfit()*norm + bkg, 'r-')
-        addRedshiftedLines(ax1, zsys)
-        ax1.set_xlim(lbda[0],lbda[-1])
+        if model.status==0:
+            #ax1.plot(x, model.evalfit()*norm + bkg, 'r-')
+            addRedshiftedLines(ax1, zsys)
         ax1.legend()
+        ax1.set_xlim(lbda[0],lbda[-1])
 
         # Zoom on adjusted line
         ax2.plot(x, resSpec[g], 'g-')
         errorband(ax2, x, resSpec[g], N.sqrt(resVar[g]), color='g', alpha=0.3)
-        #ax2.plot(x, model.eval(model.flatparam)*norm + bkg, 'm-')
-        ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
-        addRedshiftedLines(ax2, zsys)
+        if model.status==0:
+            ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
+            addRedshiftedLines(ax2, zsys)
+            ax2.text(0.1,0.9, "%.1f sigma" % nsig,
+                     transform=ax2.transAxes)
+        else:
+            ax2.plot(x, model.eval(model.flatparam)*norm + bkg, 'm-')
         ax2.set_xlim(x[0],x[-1])
 
-        sig = N.median(N.sqrt(resVar[g]))
-
         # Correlation matrix
-        ax3 = fig.add_subplot(1,4,4)
-        plot_correlation(ax3, corr, parnames=flatparnames)
+        if model.status==0:
+            ax3 = fig.add_subplot(1,4,4)
+            plot_correlation(ax3, corr, parnames=flatparnames)
 
         if makeMap:
             fig2 = P.figure(figsize=(6,6))
