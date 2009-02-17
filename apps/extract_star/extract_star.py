@@ -152,11 +152,12 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         return cube.lbda,Spec,Var       # Nothing else to be done
 
     # Reconstruct background and subtract it from cube
-    bkgnd = 0
-    var_bkgnd = 0
-    for d in xrange(1,npar_sky+1):      # Loop over sky components
-        bkgnd += (Z[:,:,d].T * Spec[:,d]).T
-        var_bkgnd += (Z[:,:,d].T**2 * Var[:,d]).T
+    bkgnd = S.zeros_like(cube.data)
+    var_bkgnd = S.zeros_like(cube.var)
+    if npar_sky:
+        for d in xrange(1,npar_sky+1):      # Loop over sky components
+            bkgnd += (Z[:,:,d].T * Spec[:,d]).T
+            var_bkgnd += (Z[:,:,d].T**2 * Var[:,d]).T
     subData = cube.data - bkgnd         # Bkgnd subtraction (nslice,nlens)
     subVar = cube.var.copy()
     good = cube.var>0
@@ -636,9 +637,9 @@ if __name__ == "__main__":
                       help="Aperture radius for non-PSF extraction " \
                       "[%default sigma]", default=5.)
     parser.add_option("-p", "--plot", action='store_true',
-                      help="Plot flag (syn. '--graph=png')")
+                      help="Plot flag (= '-g pylab')")
     parser.add_option("-g", "--graph", type="string",
-                      help="Graphic output format ('eps', 'png' or 'pylab')")
+                      help="Graphic output format (eps,pdf,png,pylab)")
     parser.add_option("-v", "--verbosity", type="int",
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
@@ -658,7 +659,7 @@ if __name__ == "__main__":
     if opts.graph:
         opts.plot = True
     elif opts.plot:
-        opts.graph = 'png'
+        opts.graph = 'pylab'
 
     opts.method = opts.method.lower()
     if opts.method not in methods:
@@ -1022,17 +1023,9 @@ if __name__ == "__main__":
         print "Producing output figures [%s]..." % opts.graph
 
         import matplotlib
-        if opts.graph=='png':
-            matplotlib.use('Agg')
-        elif opts.graph=='eps':
-            matplotlib.use('PS')
-        else:
-            opts.graph = 'pylab'
-        import pylab
-
-        if opts.graph=='pylab':
-            plot1 = plot2 = plot3 = plot4 = plot6 = plot7 = plot8 = plot5 = ''
-        else:
+        backends = {'png':'Agg','eps':'PS','pdf':'PDF','svg':'SVG'}
+        if opts.graph.lower() in backends:
+            matplotlib.use(backends[opts.graph.lower()])
             basename = os.path.splitext(opts.out)[0]
             plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
             plot2 = os.path.extsep.join((basename+"_fit1", opts.graph))
@@ -1042,6 +1035,10 @@ if __name__ == "__main__":
             plot7 = os.path.extsep.join((basename+"_fit5", opts.graph))
             plot8 = os.path.extsep.join((basename+"_fit6", opts.graph))
             plot5 = os.path.extsep.join((basename+"_fit7", opts.graph))
+        else:
+            opts.graph = 'pylab'
+            plot1 = plot2 = plot3 = plot4 = plot6 = plot7 = plot8 = plot5 = ''
+        import pylab
 
         # Plot of the star and sky spectra -----------------------------------
 
@@ -1218,9 +1215,9 @@ if __name__ == "__main__":
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,),(yc,),'k+')
         ax4c.add_patch(matplotlib.patches.Circle((xref0,yref0),radius=rmax,
-                                                 ec='0.8',fc=None))
+                                                 ec='0.8',fc='None'))
         ax4c.add_patch(matplotlib.patches.Rectangle((-7.5,-7.5),15,15,
-                                                 ec='0.8',lw=2,fc=None)) # FoV
+                                                 ec='0.8',lw=2,fc='None')) # FoV
         ax4c.text(0.03, 0.85,
                   'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1fdeg' % \
                   (xc, yc, airmass, parangle),
@@ -1330,6 +1327,19 @@ if __name__ == "__main__":
             dy = y - y0
             return S.sqrt(dx**2 + ell*dy**2 + 2*q*dx*dy)
         
+        def radialbin(r,f, binsize=20):
+            rbins = S.sort(r)[::20]
+            ibins = S.digitize(r, rbins)
+            ib = S.arange(len(rbins)+1) # Bin index
+            rb  = S.array([ r[ibins==b].mean() for b in ib ]) # Mean radius
+            fb  = S.array([ f[ibins==b].mean() for b in ib ]) # Mean data
+            # Error on bin mean quantities
+            #snb = S.sqrt([ len(r[ibins==b]) for b in ib ]) # sqrt(nb of points)
+            #drb = S.array([ r[ibins==b].std()/n for b,n in zip(ib,snb) ])
+            #ddb = S.array([ cube.data[i][ibins==b].std()/n 
+            #                for b,n in zip(ib,snb) ])
+            return rb,fb
+
         for i in xrange(nslice):        # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1)
             # Use adjusted elliptical radius instead of plain radius
@@ -1338,11 +1348,11 @@ if __name__ == "__main__":
             r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
             rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
                              fit_ell[i], fitpar[4])
-            ax.plot(r, cube.data[i], 'b.')
+            ax.plot(r, cube.data[i], 'b,')
             ax.plot(rfit, cube_fit.data[i], 'r,')
-            ax.plot(rfit, psf[i], 'g,')
             if skyDeg >= 0:
-                ax.plot(rfit, bkg[i],'c,')
+                ax.plot(rfit, psf[i]-bkg[i], 'g,') # PSF alone
+                ax.plot(rfit, bkg[i],'y,')         # Sky
             ax.semilogy()
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
@@ -1355,6 +1365,12 @@ if __name__ == "__main__":
             ax.axis([0, rfit.max()*1.1, 
                      cube.data[i][cube.data[i]>0].min()/1.2,
                      cube.data[i].max()*1.2])
+
+            # Binned values
+            rb,db = radialbin(r, cube.data[i])
+            ax.plot(rb, db, 'co')
+            rfb,fb = radialbin(rfit, cube_fit.data[i])
+            ax.plot(rfb, fb, 'mo')
 
         # Radial Chi2 plot (not activated by default)
         if False:
@@ -1404,7 +1420,7 @@ if __name__ == "__main__":
             if opts.method != 'psf':
                 ax.add_patch(matplotlib.patches.Circle((xfit[i],yfit[i]),
                                                        radius/SpaxelSize,
-                                                       fc=None, ec='y', lw=2))
+                                                       fc='None', ec='y', lw=2))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
