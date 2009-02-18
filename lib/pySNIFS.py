@@ -110,7 +110,7 @@ class spectrum:
                          data_fits[0].header.get('CDELT1')
                 self.step = data_fits[0].header.get('CDELT1')
                 self.start = data_fits[0].header.get('CRVAL1')
-        else:
+        else:                   # data_file is None
             if x is None:
                 # Case for a regularly sampled spectrum
 
@@ -128,7 +128,7 @@ class spectrum:
                               'is not taken into account and the ' \
                               'spectrum data is zet to zeros(nx)'
                                             
-                else:
+                else:           # One of start,step,nx is None
                     if data is None:
                         if nx is None:
                             raise ValueError('Not enough parameters to fill '
@@ -147,7 +147,7 @@ class spectrum:
                             self.step = 1
                         self.x = self.start + num.arange(nx)*self.step
                         
-                    else:
+                    else:       # data is not None
                         self.data = data
                         self.len = len(data)
                         if var is not None:
@@ -279,20 +279,19 @@ class spectrum:
                        desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS' and desc[0][0:5] != 'CRVAL' and \
                        desc[0][0:5] != 'CDELT' and desc[0][0:5] != 'CRPIX':
                     hdu.header.update(desc[0],desc[1])
+
+        hdulist = pyfits.HDUList()
+        hdulist.append(hdu)
+
         if self.has_var:
-            hdu_var = pyfits.ImageHDU()
-            hdu_var.data = num.array(self.var)
+            hdu_var = pyfits.ImageHDU(self.var, name='VARIANCE')
             hdu_var.header.update('NAXIS', 1)
             hdu_var.header.update('NAXIS1', self.len,after='NAXIS')
             hdu_var.header.update('CRVAL1', self.start)
             hdu_var.header.update('CDELT1', self.step)
-            
-        hdulist = pyfits.HDUList()
-        hdulist.append(hdu)
-        if self.has_var:
             hdulist.append(hdu_var)
-        hdulist.writeto(fits_file, clobber=True) # Overwrite
 
+        hdulist.writeto(fits_file, clobber=True) # Overwrite
 
 
 class spec_list:

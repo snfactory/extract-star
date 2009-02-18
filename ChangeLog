@@ -1,5 +1,11 @@
 2009-02-17  Yannick Copin  <ycopin@lbl.gov>
 
+	* apps/extract_star/extract_star.py: new option '-V/--variance' to
+	store variance spectrum as extension to signal spectrum.
+
+	* lib/pySNIFS.py (spectrum.WR_fits_file): variance extension if
+	any is named 'VARIANCE'.
+
 	* apps/extract_star/extract_star.py: add binned points in radial
 	plot.
 

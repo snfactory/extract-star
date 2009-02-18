@@ -615,12 +615,16 @@ if __name__ == "__main__":
             "[-o outSpec.fits -s outSky.fits]"
 
     parser = optparse.OptionParser(usage, version=__version__)
+
     parser.add_option("-i", "--in", type="string", dest="input",
                       help="Input datacube (euro3d format)")
     parser.add_option("-o", "--out", type="string",
                       help="Output star spectrum")
     parser.add_option("-s", "--sky", type="string",
                       help="Output sky spectrum")
+    parser.add_option("-V", "--variance", action='store_true',
+                      help="Store variance spectrum in extension")
+
     parser.add_option("-S", "--skyDeg", type="int", dest="skyDeg",
                       help="Sky polynomial background degree [%default]",
                       default=0)
@@ -630,12 +634,14 @@ if __name__ == "__main__":
     parser.add_option("-E", "--ellDeg", type="int",
                       help="Ellipticity polynomial degree [%default]",
                       default=0)    
+
     parser.add_option("-m", "--method", type="string",
                       help="Extraction method ['%default']",
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
                       "[%default sigma]", default=5.)
+
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag (= '-g pylab')")
     parser.add_option("-g", "--graph", type="string",
@@ -647,6 +653,7 @@ if __name__ == "__main__":
                       help="Save 2D adjustment results in file.")
     parser.add_option("-F", "--File", type="string",
                       help="Save 3D adjustment results in file.")
+
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (no final 3D fit).")
     parser.add_option("--keepmodel", action='store_true',
@@ -983,24 +990,36 @@ if __name__ == "__main__":
 
     if not opts.out:
         opts.out = 'spec_%s.fits' % (channel)
-        print "WARNING: saving output source spectrum to %s" % opts.out
+        print "Saving output source spectrum to '%s'" % opts.out
 
-    star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
-    star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
-    star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
-    star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
+    if not opts.variance:
+        star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
+        star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
+        star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
+        star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
+    else:                       # Store variance as extension to signal
+        star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
+                                     start=lbda[0],step=step)
+        star_spec.WR_fits_file(opts.out, header_list=inhdr.items())
 
     # Save sky spectrum/spectra ==============================================
 
     if skyDeg >= 0:
         if not opts.sky:
             opts.sky = 'sky_%s.fits' % (channel)
-            print "WARNING: saving output sky spectrum to %s" % opts.sky
+            print "Saving output sky spectrum to '%s'" % opts.sky
 
-        sky_spec = pySNIFS.spectrum(data=bkg_spec.data,start=lbda[0],step=step)
-        sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
-        sky_var = pySNIFS.spectrum(data=bkg_spec.var,start=lbda[0],step=step)
-        sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+        if not opts.variance:
+            sky_spec = pySNIFS.spectrum(data=bkg_spec.data,
+                                        start=lbda[0],step=step)
+            sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+            sky_var = pySNIFS.spectrum(data=bkg_spec.var,
+                                       start=lbda[0],step=step)
+            sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+        else:
+            sky_spec = pySNIFS.spectrum(data=bkg_spec.data, var=bkg_spec.var,
+                                        start=lbda[0],step=step)
+            sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
 
     # Save 3D adjusted parameter file ========================================
     
