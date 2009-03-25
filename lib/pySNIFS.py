@@ -172,7 +172,7 @@ class spectrum:
                 # Case for a not regularly sampled spectrum
                 self.start = None
                 self.step = None
-                 self.len = len(x)
+                self.len = len(x)
                 if data is None:
                         self.data = num.zeros(len(x))
                         self.var = num.zeros(len(x))
