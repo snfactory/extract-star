@@ -409,7 +409,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             if (diag>0).all():
                 errorpar = S.concatenate(([0.,0.], S.sqrt(diag)))
             else:                       # Some negative diagonal elements!
-                print "WARNING: negative cov. diag. elements in metaslice %d" % (i+1)
+                print "WARNING: negative cov. diag. elements " \
+                    "in metaslice %d" % (i+1)
                 model_star.khi2 *= -1   # To be discarded
                 errorpar = S.zeros(len(error_mat.T))
         else:
@@ -588,9 +589,9 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_PARAN',adr.get_parangle(), 'Effective parangle [deg]')
     hdr.update('ES_XC',   x0,         'xc @lbdaRef [spx]')
     hdr.update('ES_YC',   y0,         'yc @lbdaRef [spx]')
-    hdr.update('ES_PA',   param[4]/S.pi*180, 'Position angle [deg]')
+    hdr.update('ES_XY',   param[4],   'XY coeff.')
     for i in xrange(opts.ellDeg + 1):
-        hdr.update('ES_E%i' % i, c_ell[i], 'Ellipticity coeff. e%d' % i)
+        hdr.update('ES_E%i' % i, c_ell[i], 'Y2 coeff. e%d' % i)
     for i in xrange(opts.alphaDeg + 1):
         hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
     if opts.supernova:
@@ -816,7 +817,7 @@ if __name__ == "__main__":
     print_msg("  Reference position guess [%.0fA]: %.2f x %.2f spx" % \
               (lref,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
-              (delta0, theta0/S.pi*180), 1)
+              (delta0, S.degrees(theta0)), 1)
 
     # 3) Other parameters
     PA       = S.median(PA_vec[good])
@@ -1267,7 +1268,7 @@ if __name__ == "__main__":
         # d = cov.diagonal()
         # err_ell   = S.sqrt(libES.polyEval(d[5:6+ellDeg],lbda_rel))
         # err_alpha = S.sqrt(libES.polyEval(d[6+ellDeg:npar_psf],lbda_rel))
-        err_PA    = errorpar[4]
+        err_PA = errorpar[4]
 
         def plot_conf_interval(ax, x, y, dy):
             ax.plot(x, y, 'g', label="Fit 3D")
@@ -1284,10 +1285,31 @@ if __name__ == "__main__":
                                 ylabel=r'$\alpha$ [spx]')
         ax6b = fig6.add_subplot(4, 1, 3,
                                 xticklabels=[],
-                                ylabel=u'1/q²')
+                                ylabel=u'y² coeff.')
         ax6c = fig6.add_subplot(4, 1, 4,
                                 xlabel=u"Wavelength [Å]",
-                                ylabel=u'PA [°]')
+                                ylabel=u'xy coeff.')
+
+        # WARNING: the so-called PA parameter is not the PA of the
+        # adjusted ellipse, but half the x*y coefficient. Similarly,
+        # ell is not the ellipticity, but the y**2 coefficient: x2 +
+        # ell*y2 + 2*PA*x*y + ... = 0. One should use quadEllipse for
+        # conversion, and use full covariance matrix to compute
+        # associated errors.
+        # Since 
+        # rell2 = (x-x0)**2 + ell*(y-y0)**2 + 2*q*(x-x0)*(y-y0)
+        #       = x2 + 2q*x*y + ell*y2 - 2x*(x0 + q*y0) - 2y*(ell*y0 + q*x0)
+        #         + x02 +ell*y02 +2*q*x0*y0
+        #       = a*x2 + 2b*x*y * c*y2 + 2d*x + 2f*y + g
+        # with a=1, b=q, c=ell, d=-(x0 + q*y0), f=-(ell*y0 + q*x0), 
+        # and g=x0**2 + ell*y0**2 + 2*q*x0*y0
+        # so one should compute:
+        # elldata = S.array([ quadEllipse(1, q, ell,
+        #                                 -(x0 + q*y0), -(ell*y0 + q*x0),
+        #                                 x0**2 + ell*y0**2 + 2*q*x0*y0 - 1) 
+        #                     for x0,y0,ell,q in 
+        #                     zip(xfit,yfit,fit_ell,[fitpar[4]]*nslice)])
+        # and associated errors.
 
         ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6],
                       fmt='b.', ecolor='b', label="Fit 2D")
@@ -1327,17 +1349,15 @@ if __name__ == "__main__":
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6b.transAxes, fontsize='small')
 
-        ax6c.errorbar(cube.lbda[good], PA_vec[good]/S.pi*180,
-                      error_mat[good,4]/S.pi*180, fmt='b.', ecolor='b')
+        ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], 
+                      fmt='b.', ecolor='b')
         if bad.any():
-            ax6c.plot(cube.lbda[bad],PA_vec[bad]/S.pi*180,'r.')
-        ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA/S.pi*180]*2, 'k--')
+            ax6c.plot(cube.lbda[bad],PA_vec[bad],'r.')
+        ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA]*2, 'k--')
         plot_conf_interval(ax6c, S.asarray([cube.lbda[0],cube.lbda[-1]]),
-                           S.asarray([fitpar[4]/S.pi*180]*2),
-                           S.asarray([err_PA/S.pi*180]*2))
+                           S.ones(2)*fitpar[4], S.ones(2)*err_PA)
         ax6c.text(0.03, 0.1,
-                  u'Guess: PA=%4.2f°  Fit: PA=%4.2f°' % \
-                  (PA/S.pi*180,fitpar[4]/S.pi*180),
+                  u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (PA,fitpar[4]),
                   transform=ax6c.transAxes, fontsize='small')
 
         # Plot of the radial profile -----------------------------------------

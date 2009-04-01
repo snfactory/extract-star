@@ -1,3 +1,12 @@
+2009-03-31  Yannick Copin  <ycopin@lbl.gov>
+
+	* apps/extract_star/extract_star.py: the so-called PA parameter of
+	the PSF is not the PA of the adjusted ellipse, but half the x*y
+	coefficient. Similarly, ell is not the ellipticity, but the y**2
+	coefficient: x2 + ell*y2 + 2*PA*x*y + ... = 0. One should use
+	quadEllipse for conversion, and use full covariance matrix to
+	compute and plot associated errors.
+
 2009-03-24  Yannick Copin  <ycopin@lbl.gov>
 
 	* apps/extract_star/extract_star.py: plot updates.

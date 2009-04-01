@@ -17,6 +17,8 @@ import scipy as S
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]
 
+DEG2RAD = S.pi/180
+
 def atmosphericIndex(lbda, P=616., T=2.):
     """Compute atmospheric refractive index: lbda in angstrom, P
     in mbar, T in C. Relative humidity effect is neglected.
@@ -166,7 +168,7 @@ class ADR_model:
 
         if obs:                         # p1 = airmass, p2 = parangle [deg]
             self.delta = S.tan(S.arccos(1./p1))
-            self.theta = p2*S.pi/180
+            self.theta = p2*DEG2RAD
         else:                           # p1 = delta, p2 = theta [rad]
             self.delta = p1
             self.theta = p2
@@ -208,7 +210,7 @@ class ADR_model:
         return 1/S.cos(S.arctan(self.delta))
 
     def get_parangle(self):
-        return self.theta/S.pi*180      # Parangle in deg.
+        return self.theta/DEG2RAD       # Parangle in deg.
 
 
 # Polynomial utilities ======================================================
@@ -276,18 +278,59 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
                              "for degree %d" % (y[good].size,deg))
     return coeffs
 
+# Ellipse utilities ==============================
+
+def quadEllipse(a,b,c,d,f,g):
+    """Ellipse elements (center, semi-axes and PA) from the general
+    quadratic curve a*x2 + 2b*x*y + c*y2 + 2d*x + 2f*y + g = 0.
+
+    http://mathworld.wolfram.com/Ellipse.html"""
+
+    D = S.linalg.det([[a,b,d],[b,c,f],[d,f,g]])
+    J = S.linalg.det([[a,b],[b,c]])
+    I = a+c
+    if not (D!=0 and J>0 and D/I<0):
+        #raise ValueError("Input quadratic curve does not correspond to "
+        #                 "an ellipse: D=%f!=0, J=%f>0, D/I=%f<0" % (D,J,D/I))
+        return 0,0,0,0,0
+    #elif a==c and b==0:
+    #    raise ValueError("Input quadratic curve correspond to a circle")
+
+    b2mac = b**2 - a*c
+    # Center of the ellipse
+    x0 = (c*d - b*f) / b2mac
+    y0 = (a*f - b*d) / b2mac
+    # Semi-axes lengthes
+    ap = S.sqrt( 2*(a*f**2 + c*d**2 + g*b**2 - 2*b*d*f - a*c*g) /
+                 (b2mac * (S.sqrt((a-c)**2 + 4*b**2) - (a+c))) )
+    bp = S.sqrt( 2*(a*f**2 + c*d**2 + g*b**2 - 2*b*d*f - a*c*g) /
+                 (b2mac * (-S.sqrt((a-c)**2 + 4*b**2) - (a+c))) )
+    # Position angle
+    if b==0:
+        phi = 0
+    else:
+        phi = S.tan((a-c)/(2*b))/2
+    if a>c:
+        phi += S.pi/2
+
+    return x0,y0,ap,bp,phi
+
 # PSF classes ================================================================
 
 class ExposurePSF:
     """
     Empirical PSF 3D function used by the L{model} class.
+
+    Note that the so-called PA parameter is not the PA of the adjusted
+    ellipse, but half the x*y coefficient. Similarly, ell is not the
+    ellipticity, but the y**2 coefficient: x2 + ell*y2 + 2*PA*x*y + ... = 0.
+    See quadEllipse for conversion.
     """
 
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
         @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
-                       reference wavelength and polynomial degree of alpha). A
-                       list of three numbers.
+                       reference wavelength and polynomial degrees). 
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         @param coords: if not None, should be (x,y).
         """
@@ -324,7 +367,7 @@ class ExposurePSF:
             self.lmin = cube.lbda[0]
             self.lmax = cube.lbda[-1]
             lrel = ( 2*cube.lbda - (self.lmin + self.lmax) ) / \
-                   ( self.lmax - self.lmin )
+                   ( self.lmax - self.lmin ) # From -1 to +1
             self.lrel = S.resize(lrel, (self.nlens,self.nslice)).T
         else:
             self.lmin,self.lmax = -1,+1
