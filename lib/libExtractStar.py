@@ -246,7 +246,12 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
     """Converts polynomial coeffs for x (P = a0 + a1*x + a2*x**2 + ...) in
     polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
     ...). Therefore, (a,b)=(0,1) makes nothing. If backward, makes the
-    opposite transformation."""
+    opposite transformation.
+
+    Note: backward transformation could be done using more general
+    polynomial composition polyval, but forward transformation is a
+    long standing issue in the general case (functional decomposition
+    of univariate polynomial)."""
 
     a,b = trans
     if not backward:

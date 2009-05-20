@@ -1,3 +1,17 @@
+2009-05-20  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/extract_star.py (setPSF3Dconstraints): new
+	expert option '--psf3Dconstraints' to specify constraints on PSF
+	parameters during 3D-fit. Each parameter (0=delta, 1=theta,
+	2,3=position, 4=PA, 5...6+ellDeg=ellipticity coeffs and
+	7+ellDeg...8+ellDeg+alphaDeg=alpha coeffs) can be constrained
+	individually strictly (e.g. '0:1' to force delta to 1) or loosely
+	(e.g. '2:-1,1' to constrain x-position within +/-1). Note that
+	constraints on polynomial coeffs have to be expressed as function
+	of lr := (2*lambda - (lmin+lmax))/(lmax-lmin), while the coeffs
+	stored in header keywords are for polynoms of lr := lambda/lref -
+	1.
+
 2009-03-31  Yannick Copin  <ycopin@lbl.gov>
 
 	* apps/extract_star/extract_star.py: the so-called PA parameter of

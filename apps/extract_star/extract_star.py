@@ -15,6 +15,12 @@ This version replaces the double gaussian PSF profile by an ad-hoc PSF profile
 Todo:
 
 * replace meta-slice centroid-based initial guess by gaussian-fit.
+* one could use Aitchison (or "additive log-ratio") transform to
+  enforce the normalization constraint on alphas (see
+  http://thread.gmane.org/gmane.comp.python.scientific.user/16180/focus=16187
+  or ) or Multinomial logit (see
+  http://en.wikipedia.org/wiki/Multinomial_logit and
+  http://thread.gmane.org/gmane.comp.python.scientific.user/20318/focus=20320)
 
 Polynomial approximation
 ========================
@@ -319,7 +325,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
     print_msg("  Adjusted parameters: [delta=0],[theta=0],xc,yc,PA,ell,alpha,I,"
-              "%d bkgndCoeffs" % (skyDeg and npar_sky or 0),2)
+              "%d bkgndCoeffs" % (skyDeg and npar_sky or 0), 2)
 
     for i in xrange(cube.nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
@@ -594,8 +600,6 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
         hdr.update('ES_E%i' % i, c_ell[i], 'Y2 coeff. e%d' % i)
     for i in xrange(opts.alphaDeg + 1):
         hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
-    if opts.supernova:
-        hdr.update('ES_SNMOD',opts.supernova,'Supernova mode')
     hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
         hdr.update('ES_APRAD', opts.radius, 'Aperture radius [sigma]')
@@ -603,6 +607,43 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
     if opts.skyDeg >= 0:
         hdr.update('ES_SFLUX',sflux,  'Sum of the sky flux')
     hdr.update('SEEING', seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
+    if opts.supernova:
+        hdr.update('ES_SNMOD', opts.supernova, 'Supernova mode')
+    if opts.psf3Dconstraints:
+        for i,constraint in enumerate(opts.psf3Dconstraints):
+            hdr.update('ES_BND%d' % i+1, constraint, "Constraint on 3D-PSF")
+
+
+def setPSF3Dconstraints(psfConstraints, params, bounds):
+    """Decipher psf3Dconstraints=[constraint] option and set initial
+    guess params and/or bounds bounds accordingly. Each constraint is
+    a string 'n:val' (strict constraint) or 'n:val1,val2' (loose
+    constraint), for n=0 (delta), 1 (theta), 2,3 (position), 4 (PA),
+    5...6+ellDeg (ellipticity polynomial coefficients) and
+    7+ellDeg...8+ellDeg+alphaDeg (alpha polynomial coefficients)."""
+
+    for psfConstraint in psfConstraints:
+        try:
+            n,constraintStr = psfConstraint.split(':')
+            n = int(n)
+            vals = map(float, constraintStr.split(','))
+            assert len(vals) in (1,2)
+        except ValueError, AssertionError:
+            print "WARNING: Cannot decipher constraint '%s', discarded" % \
+                psfConstraint
+            continue
+        else:
+            if len(vals)==1:  # Strict constraint: param = val
+                val = vals[0]
+                params[n] = val
+                bounds[n] = [val,val]
+                print "WARNING: Forcing PSF param[%d] to %f" % (n,val)
+            else:               # Loose constraint: vmin <= param <= vmax
+                vmin,vmax = sorted(vals)
+                params[n] = min(max(params[n],vmin),vmax)
+                bounds[n] = [vmin,vmax]
+                print "WARNING: Constraining PSF param[%d] in %f,%f" % \
+                    (n,vmin,vmax)
 
 
 # ########## MAIN ##############################
@@ -660,6 +701,8 @@ if __name__ == "__main__":
                       help="SN mode (no final 3D fit).")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slice model in 3D-cube.")
+    parser.add_option("--psf3Dconstraints", type='string', action='append',
+                      help="Constraints on PSF parameters (n:val,[val]).")
 
     opts,args = parser.parse_args()
     if not opts.input:
@@ -853,6 +896,9 @@ if __name__ == "__main__":
         b1 += [[0, None]] + [[None, None]]*alphaDeg # a0 > 0
     b1 += [[0, None]]*nslice            # Intensities
 
+    if opts.psf3Dconstraints:   # Read and set constraints from option
+        setPSF3Dconstraints(opts.psf3Dconstraints, p1, b1)
+
     func = [ '%s;%f,%f,%f,%f' % \
              (psfFn.name,SpaxelSize,lref,alphaDeg,ellDeg) ] # PSF
     param = [p1]
@@ -958,11 +1004,11 @@ if __name__ == "__main__":
         bkg_spec.data /= full_cube.nlens
         bkg_spec.var  /= full_cube.nlens
 
-    # Creating a standard SNIFS cube with the adjusted data We cannot
-    # directly use data_model.evalfit() because 1. we want to keep psf
-    # and bkg separated; 2. cube_fit will always have 225 spx,
-    # data_model.evalfit() might have less.  But in the end, psf+bkg
-    # ~= data_model.evalfit()
+    # Creating a standard SNIFS cube with the adjusted data
+    # We cannot directly use data_model.evalfit() because 1. we want
+    # to keep psf and bkg separated; 2. cube_fit will always have 225
+    # spx, data_model.evalfit() might have less.  But in the end,
+    # psf+bkg ~= data_model.evalfit()
     cube_fit = pySNIFS.SNIFS_cube(lbda=cube.lbda) # Always 225 spx
     cube_fit.x = cube_fit.i - 7     # x in spaxel 
     cube_fit.y = cube_fit.j - 7     # y in spaxel
@@ -1000,7 +1046,9 @@ if __name__ == "__main__":
         star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
         star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
         star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
-        star_var.WR_fits_file('var_'+opts.out,header_list=inhdr.items())
+        path,name = os.path.split(opts.out)
+        outname = os.path.join(path,'var_'+name)
+        star_var.WR_fits_file(outname,header_list=inhdr.items())
     else:                       # Store variance as extension to signal
         star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
                                      start=lbda[0],step=step)
@@ -1019,7 +1067,9 @@ if __name__ == "__main__":
             sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
             sky_var = pySNIFS.spectrum(data=bkg_spec.var,
                                        start=lbda[0],step=step)
-            sky_var.WR_fits_file('var_'+opts.sky,header_list=inhdr.items())
+            path,name = os.path.split(opts.sky)
+            outname = os.path.join(path,'var_'+name)
+            sky_var.WR_fits_file(outname,header_list=inhdr.items())
         else:
             sky_spec = pySNIFS.spectrum(data=bkg_spec.data, var=bkg_spec.var,
                                         start=lbda[0],step=step)
