@@ -611,7 +611,7 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
         hdr.update('ES_SNMOD', opts.supernova, 'Supernova mode')
     if opts.psf3Dconstraints:
         for i,constraint in enumerate(opts.psf3Dconstraints):
-            hdr.update('ES_BND%d' % i+1, constraint, "Constraint on 3D-PSF")
+            hdr.update('ES_BND%d' % (i+1), constraint, "Constraint on 3D-PSF")
 
 
 def setPSF3Dconstraints(psfConstraints, params, bounds):
