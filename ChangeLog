@@ -1,3 +1,9 @@
+2009-06-10  Yannick Copin  <ycopin@lbl.gov>
+
+	* apps/extract_star/extract_star.py: aperture radius (option
+	'-r/--radius') for aperture-based methods can be specified in
+	arcsec or in seeing sigmas. Plot updates.
+
 2009-05-20  Yannick Copin  <ycopin@lyopc469>
 
 	* apps/extract_star/extract_star.py (setPSF3Dconstraints): new

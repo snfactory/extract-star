@@ -602,7 +602,7 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
         hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
     hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
-        hdr.update('ES_APRAD', opts.radius, 'Aperture radius [sigma]')
+        hdr.update('ES_APRAD', opts.radius, 'Aperture radius [arcsec or sigma]')
     hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
     if opts.skyDeg >= 0:
         hdr.update('ES_SFLUX',sflux,  'Sum of the sky flux')
@@ -683,7 +683,8 @@ if __name__ == "__main__":
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
-                      "[%default sigma]", default=5.)
+                          "(>0: in arcsec, <0: in seeing sigma) " \
+                      "[%default]", default=-5.)
 
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag (= '-g pylab')")
@@ -975,9 +976,13 @@ if __name__ == "__main__":
         radius = None
         method = 'psf'
     else:
-        radius = opts.radius * seeing/2.355 # Aperture radius [arcsec]
-        method = '%s r=%.1f sigma=%.2f"' % \
-                 (opts.method, opts.radius, radius)
+        if opts.radius < 0:     # Aperture radius [sigma]
+            radius = -opts.radius * seeing/2.355 # [arcsec]
+            method = '%s r=%.1f sigma=%.2f"' % \
+                (opts.method, -opts.radius, radius)
+        else:                   # Aperture radius [arcsec]
+            radius = opts.radius # [arcsec]
+            method = '%s r=%.2f"' % (opts.method, radius)
     print "Extracting the spectrum [method=%s]..." % method
     if skyDeg < 0:
         print "WARNING: no background adjusted"
@@ -1130,7 +1135,7 @@ if __name__ == "__main__":
         axS.text(0.95,0.8, os.path.basename(opts.input), fontsize='small',
                  horizontalalignment='right', transform=axS.transAxes)
 
-        axN.plot(star_spec.x, star_spec.data/S.sqrt(star_var.data), 'b')
+        axN.plot(star_spec.x, star_spec.data/S.sqrt(var[:,0]), 'b')
 
         if skyDeg >= 0:
             axB.plot(bkg_spec.x, bkg_spec.data, 'g')
@@ -1156,15 +1161,17 @@ if __name__ == "__main__":
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97)
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
+        fmin = 0
         for i in xrange(nslice):        # Loop over meta-slices
             data = cube.data[i,:]
             fit = mod[i,:]
-            fmin = min(data.min(),fit.min()) - max(data.max(),fit.max())/1e4
+            #fmin = min(data.min(),fit.min()) - max(data.max(),fit.max())/1e4
             ax = fig2.add_subplot(nrow, ncol, i+1, 
                                   xlim=(0,len(data)),
                                   yscale='log')
             ax.plot(data - fmin, 'b-', lw=2)  # Signal
             ax.plot(fit - fmin, 'r-')         # Model
+            ax.set_autoscale_on(False)
             if skyDeg >= 0:
                 ax.plot(psf[i,:] - fmin, 'g-') # PSF alone
                 ax.plot(bkg[i,:] - fmin, 'y-') # Background
@@ -1438,6 +1445,7 @@ if __name__ == "__main__":
             #dfb = S.array([ f[ibins==b].std()/n for b,n in zip(ib,snb) ])
             return rb,fb
 
+        fmin = 0
         for i in xrange(nslice):        # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1, yscale='log')
             # Use adjusted elliptical radius instead of plain radius
@@ -1446,10 +1454,11 @@ if __name__ == "__main__":
             r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
             rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
                              fit_ell[i], fitpar[4])
-            fmin = min(cube.data[i].min(),cube_fit.data[i].min()) - \
-                max(cube.data[i].max(),cube_fit.data[i].max())/1e4
+            #fmin = min(cube.data[i].min(),cube_fit.data[i].min()) - \
+            #    max(cube.data[i].max(),cube_fit.data[i].max())/1e4
             ax.plot(r, cube.data[i] - fmin, 'b,')             # Data
             ax.plot(rfit, cube_fit.data[i] - fmin, 'r.',ms=1) # Model
+            ax.set_autoscale_on(False)
             if skyDeg >= 0:
                 ax.plot(rfit, psf[i] - fmin,'g.',ms=1) # PSF alone
                 ax.plot(rfit, bkg[i] - fmin,'y.',ms=1) # Sky
@@ -1461,9 +1470,9 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
                 ax.set_ylabel("Flux + cte", fontsize=8)
-            ax.axis([0, rfit.max()*1.1, 
-                     cube.data[i][cube.data[i]>0].min()/1.2,
-                     cube.data[i].max()*1.2])
+            # ax.axis([0, rfit.max()*1.1, 
+            #          cube.data[i][cube.data[i]>0].min()/1.2,
+            #          cube.data[i].max()*1.2])
 
             # Binned values
             rb,db = radialbin(r, cube.data[i])
