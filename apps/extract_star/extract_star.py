@@ -860,8 +860,9 @@ if __name__ == "__main__":
             raise ValueError('Not enough points for initial guesses')
     print_msg("  Reference position guess [%.0fA]: %.2f x %.2f spx" % \
               (lref,xc,yc), 1)
-    print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
-              (delta0, S.degrees(theta0)), 1)
+# FIXME: Chokes with snprod on CCALI
+#    print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
+#              (delta0, S.degrees(theta0)), 1)
 
     # 3) Other parameters
     PA       = S.median(PA_vec[good])
