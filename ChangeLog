@@ -1,3 +1,12 @@
+2009-11-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/e3dto3d.py: convertor from SNIFS Euro3D cubes to
+	NAXIS=3 FITS cubes.
+
+	* lib/pySNIFS.py (SNIFS_cube.WR_3d_fits): data cube is stored in
+	primary extension, while variance is stored in 1st ('VARIANCE')
+	extension. Euro3D cube header is propagated in output file.
+
 2009-06-29  Yannick Copin  <ycopin@lbl.gov>
 
 	* apps/extract_star/extract_star.py: remove call to S.degrees(),

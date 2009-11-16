@@ -398,9 +398,11 @@ if __name__ == '__main__':
 
         fig = P.figure(figsize=(12,5))
         fig.subplots_adjust(left=0.075, right=0.95)
-
         title = "%s [%s]" % (obj, filename)
-        ax1 = fig.add_subplot(1,2,1, title=title,
+        fig.text(0.5,0.94, title,
+                 fontsize='large', horizontalalignment='center')
+
+        ax1 = fig.add_subplot(1,2,1, 
                               xlabel='Wavelength [A]',
                               ylabel='Flux [%s]' % flxunits)
         ax2 = fig.add_subplot(1,4,3, 
@@ -421,8 +423,10 @@ if __name__ == '__main__':
         if model.status==0:
             ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
             addRedshiftedLines(ax2, zsys)
-            ax2.text(0.1,0.9, "%.1f sigma" % nsig,
-                     transform=ax2.transAxes)
+            ax2.text(0.1,0.9,
+                     "Chi2=%.1f (DoF=%d)\nDetection: %.1f sigma" % \
+                     (model.khi2, model.dof, nsig),
+                     transform=ax2.transAxes, fontsize='smaller')
         else:
             ax2.plot(x, model.eval(model.flatparam)*norm + bkg, 'm-')
         ax2.set_xlim(x[0],x[-1])

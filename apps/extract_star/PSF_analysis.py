@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 ##############################################################################
-## Filename:      psf_analysis.py
+## Filename:      PSF_analysis.py
 ## Version:       $Revision$
 ## Description:   Standard star spectrum extraction
 ## Author:        $Author$
@@ -22,9 +22,7 @@ import pySNIFS
 import pySNIFS_fit
 
 import scipy as S
-from scipy import stats
 from scipy import linalg as L
-from scipy import interpolate as I
 from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
@@ -158,7 +156,7 @@ def read_PT(hdr, update=False):
 def estimate_parangle(hdr):
     """Estimate parallactic angle [degree] from header keywords."""
 
-    from math import sin,cos,pi,sqrt,acos,atan2
+    from math import sin,cos,pi,sqrt,atan2
 
     d2r = pi/180.                       # Degree to Radians
     # DTCS latitude is probably not the most precise one (see fit_ADR.py)
@@ -199,21 +197,6 @@ def estimate_parangle(hdr):
     eta = atan2(sineta,coseta)          # [rad]
 
     return eta/d2r                      # [deg]
-
-
-def eval_poly(coeffs, x):
-    """Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention for
-    polynomial coeffs: [c0,c1...,cn] (opposite to S.polyfit).."""
-
-    if S.isscalar(x):
-        y = 0                           # Faster on scalar
-        for i,c in enumerate(coeffs):
-            # Incremental computation of x**i is only slightly faster
-            y += c * x**i
-    else:                               # Faster on arrays
-        y = S.polyval(coeffs[::-1], x)  # Beware coeffs order!
-        
-    return y
 
 
 def eval_poly(coeffs, x):

@@ -57,16 +57,28 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
         phdu.header.update('CRPIX1', hdr['CRPIX3'], after='CDELT1')
     hdulist = pyfits.HDUList([phdu])
     # Add extension(s) if any
-    for i,key in enumerate(kwargs):
-        ima = pyfits.ImageHDU(kwargs[key], name=key.upper())
-        ima.header.update('CRVAL1', phdu.header['CRVAL1'])
-        ima.header.update('CDELT1', phdu.header['CDELT1'])
-        ima.header.update('CRPIX1', phdu.header['CRPIX1'])
-        hdulist.append(ima)
+    for key,val in kwargs.iteritems():
+        if isinstance(val,N.ndarray):   # Add extension
+            assert val.shape == y.shape
+            ima = pyfits.ImageHDU(val, name=key.upper())
+            ima.header.update('CRVAL1', phdu.header['CRVAL1'])
+            ima.header.update('CDELT1', phdu.header['CDELT1'])
+            ima.header.update('CRPIX1', phdu.header['CRPIX1'])
+            hdulist.append(ima)
+        else:                           # Add keyword
+            try:
+                value,comment = val     # (value,comment)
+            except:
+                value,comment = val,None
+            phdu.header.update(key.upper(), value, comment=comment)
     hdulist.writeto(outname, clobber=True)
 
 
 def comp_histo(a, **kwargs):
+    """Return plot-ready histogram (h,l), with Freedman-Diaconis' choice for
+    optimal bin width if not fixed.
+
+    See http://en.wikipedia.org/wiki/Histogram"""
 
     if 'bins' in kwargs:
         try:
@@ -81,11 +93,10 @@ def comp_histo(a, **kwargs):
         else:
             vmin,vmax = a.min(),a.max()
         # Freedman-Diaconis' choice for optimal bin width
-        # (see http://en.wikipedia.org/wiki/Histogram)
         q1,q3 = prctile(a, p=(25.,75.))
         h = 2 * (q3-q1) / len(a)**(1./3.)
         nbins = round( (vmax-vmin)/h )
-        print "Using Freedman-Diaconis histogram: nbins=%d" % nbins
+        print "Freedman-Diaconis optimal bin width: nbins=%d" % nbins
         h,l = N.histogram(a, bins=nbins, **kwargs)
 
     h = N.concatenate((h,[h[-1]]))  # Complete h
@@ -112,13 +123,38 @@ def fill_hist(ax, x,y, **kwargs):
     return fl
         
 
+def medAbsDev(x, scale=1.4826, median=False):
+    """Compute median absolute deviation, scaled by scale (1.4826 for normal
+    distribution). Also returns median if median.
+
+    See http://en.wikipedia.org/wiki/Median_absolute_deviation"""
+
+    assert x.ndim == 1
+    med = N.median(x)
+    mad = N.median(N.absolute(x - med)) * scale
+    if median:
+        return med,mad
+    else:
+        return mad
+
+def medMedAbs(x, scale=1.1926):
+    """Compute med(med(|x_i - x_j)) as an alternatives to the MAD.
+
+    See Rousseeuw & Croux (1993)
+    (ftp://ftp.win.ua.ac.be/pub/preprints/93/Altmed93.pdf)"""
+
+    assert x.ndim == 1
+    meds = [ N.median(N.absolute(x - xx)) for xx in x ]
+    return N.median(meds) * scale
+
+
 if __name__ == '__main__':
 
-    usage = "usage: [PYSHOW=1] %prog [options] e3d_galaxy.fits"
+    usage = "usage: [PYSHOW=1] %prog [options] e3dcube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-o", "--out", type="string",
-                      help="Output host spectrum [object_X.fits]")
+                      help="Output host spectrum [host_/e3dcube/.fits]")
     parser.add_option("-r", "--range", type="string",
                       help="Reconstructed image wavelength range [%default]",
                       default='auto')
@@ -165,13 +201,19 @@ if __name__ == '__main__':
 
     print "%s: %s [%s]" % (cubename, obj, filename)
 
-    # Image reconstruction
+    # Image reconstruction (summation)
     print "Reconstructed image: %.1f,%.1f" % (lmin,lmax)
     ima = cube.slice2d([lmin,lmax]) # May includes NaN's
+    var = cube.slice2d([lmin,lmax], var=True)
 
     # Selection on flux
-    fsmin,fsmax,fgmin,fgmax = prctile(ima[N.isfinite(ima)], 
-                                      p=(csmin,csmax,cgmin,cgmax))
+    fsmin,fsmax,med,fgmin,fgmax = prctile(ima[N.isfinite(ima)], 
+                                          p=(csmin,csmax,50.,cgmin,cgmax))
+
+    # Some statistics
+    #mad = medAbsDev(ima[N.isfinite(ima)])
+    #mma = medMedAbs(ima[N.isfinite(ima)])
+    #print "Median=%g, MAD=%g, MMA=%g" % (med,mad,mma)
 
     # Sky region
     skyIdx = (fsmin<=ima) & (ima<=fsmax)
@@ -183,6 +225,14 @@ if __name__ == '__main__':
     igal,jgal = galIdx.nonzero()
     print "Gal [%.0f%%-%.0f%%]: %g,%g (%d spx)" % \
         (cgmin,cgmax,fgmin,fgmax,len(igal))
+
+    # *Mean* detection level
+    f = ima[galIdx].mean() - ima[skyIdx].mean()
+    #df = N.sqrt( var[galIdx].mean()/len(var[galIdx]) + \
+    #             var[skyIdx].mean()/len(var[skyIdx]) )
+    df = N.sqrt( var[galIdx].mean() + var[skyIdx].mean() )
+    nsig = f/df                         # Detection level averaged over px
+    print "Detection level: %.1f-sigma (%g,%g)" % (nsig, f, df)
 
     lbda = cube.lbda
     skySpec,skyVar = sumSpectra(cube, skyIdx) # Sky spectrum
@@ -196,15 +246,21 @@ if __name__ == '__main__':
         cubeHdr = pyfits.getheader(cubename, extname='E3D_DATA')
     else: 
         cubeHdr = pyfits.getheader(cubename, 0)
-    dumpSpectrum(opts.out, resSpec, hdr=cubeHdr, variance=resVar)
+    dumpSpectrum(opts.out, resSpec, hdr=cubeHdr,
+                 variance=resVar,
+                 CVSEXTH=__version__,
+                 EXTHSMIN=(csmin,'extract_host min sky percentile'),
+                 EXTHSMAX=(csmax,'extract_host max sky percentile'),
+                 EXTHGMIN=(cgmin,'extract_host min gal percentile'),
+                 EXTHGMAX=(cgmax,'extract_host min gal percentile'),
+                 EXTH_NS=(nsig, "extract_host detection level"))
 
     if opts.plot:
         import matplotlib.pyplot as P
 
         fig = P.figure(figsize=(12,6))
 
-        title = "%s [%s]" % (obj, filename)
-        ax = fig.add_subplot(1,2,1, title=title,
+        ax = fig.add_subplot(1,2,1, title="%s [%s]" % (obj, filename),
                              xlabel='I [spx]', ylabel='J [spx]')
         ax.imshow(ima, vmin=fsmin, vmax=fgmax, extent=(-7.5,7.5,-7.5,7.5))
         ax.plot(jsky-7,isky-7,'rs', ms=3)
@@ -213,7 +269,8 @@ if __name__ == '__main__':
         #    ax.text(i-7,j-7,str(no), size='x-small',
         #            horizontalalignment='center', verticalalignment='center')
 
-        ax0 = fig.add_subplot(3,2,2)
+        ax0 = fig.add_subplot(3,2,2,
+                              title="Detection: %.1f-sigma" % nsig)
         ax1 = fig.add_subplot(3,2,4)
         ax2 = fig.add_subplot(3,2,6, xlabel="Wavelength [A]", sharex=ax1)
 
@@ -221,17 +278,25 @@ if __name__ == '__main__':
         fx = ima[N.isfinite(ima)]
         h,l = comp_histo(fx)
         ax0.plot(l,h, color='g', ls='steps', label='_')
-        fill_hist(ax0, l, h, fc='g', alpha=0.3)
-        ax0.axvspan(fsmin,fsmax,fc='r', alpha=0.3) # Sky
-        ax0.axvspan(fgmin,fgmax,fc='b', alpha=0.3) # Galaxy
+        fill_hist(ax0, l, h, fc='g', alpha=0.3, label='_')
+        ax0.axvspan(fsmin,fsmax,fc='r', alpha=0.3,
+                    label='Sky [%.0f-%.0f%%]' % (csmin,csmax)) # Sky
+        ax0.axvspan(fgmin,fgmax,fc='b', alpha=0.3,
+                    label='Galaxy [%.0f-%.0f%%]' % (cgmin,cgmax)) # Galaxy
+        ax0.axvline(med, c='k', ls='-', label='Median')
+        ax0.legend(loc='upper right')
+        #ax0.axvline(med-mad, c='k', ls='--', label='_')
+        #ax0.axvline(med+mad, c='k', ls='--', label='_')
+        #ax0.axvline(med-mma, c='k', ls=':', label='_')
+        #ax0.axvline(med+mma, c='k', ls=':', label='_')
 
         # Galaxy+sky and sky spectra
-        ax1.plot(lbda, galSpec, 'b-', label='Galaxy+sky')
+        ax1.plot(lbda, galSpec, 'b-', label='Galaxy')
         ax1.plot(lbda, skySpec, 'r-', label='Sky')
         ax1.axvspan(lmin,lmax,fc='0.9',ec='0.8', label='_')
         ax1.legend()
         # Galaxy spectrum
-        lgal, = ax2.plot(lbda, resSpec, 'g-', label='Galaxy')
+        lgal, = ax2.plot(lbda, resSpec, 'g-', label='Galaxy - sky')
         ax2.legend()
         ax2.set_xlim(lbda[0],lbda[-1])
         ax2.set_autoscale_on(False)

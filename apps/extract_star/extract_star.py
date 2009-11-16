@@ -1350,7 +1350,7 @@ if __name__ == "__main__":
         # WARNING: the so-called PA parameter is not the PA of the
         # adjusted ellipse, but half the x*y coefficient. Similarly,
         # ell is not the ellipticity, but the y**2 coefficient: x2 +
-        # ell*y2 + 2*PA*x*y + ... = 0. One should use quadEllipse for
+        # ell*y2 + 2*PA*x*y + ... = 1. One should use quadEllipse for
         # conversion, and use full covariance matrix to compute
         # associated errors.
         # Since 

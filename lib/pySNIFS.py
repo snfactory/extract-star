@@ -254,10 +254,10 @@ class spectrum:
             return num.argmin((self.x - x)**2,axis=-1)
 
                         
-    def WR_fits_file(self,fits_file,header_list=None):
+    def WR_fits_file(self,filename,header_list=None):
         """
         Write the spectrum in a fits file.
-        @param fits_file: Name of the output fits file
+        @param filename: Name of the output fits file
         @param header_list: List of 2 elements lists containing the name and value of the header to be
             saved. If set to None, only the mandatory fits header will be stored.
         """
@@ -291,7 +291,7 @@ class spectrum:
             hdu_var.header.update('CDELT1', self.step)
             hdulist.append(hdu_var)
 
-        hdulist.writeto(fits_file, clobber=True) # Overwrite
+        hdulist.writeto(filename, clobber=True) # Overwrite
 
 
 class spec_list:
@@ -301,7 +301,7 @@ class spec_list:
                 raise TypeError('The list elements must be pySNIFS.spectrum objects')
         self.list = slist
         
-    def WR_fits_file(self,fits_file,header_list=None):
+    def WR_fits_file(self,filename,header_list=None):
                 
         hdulist = pyfits.HDUList()
         hdu = pyfits.PrimaryHDU()
@@ -330,7 +330,7 @@ class spec_list:
                 hdu_var.header.update('CRVAL1', s.start)
                 hdu_var.header.update('CDELT1', s.step)
                 hdulist.append(hdu_var)
-        hdulist.writeto(fits_file, clobber=True) # Overwrite
+        hdulist.writeto(filename, clobber=True) # Overwrite
 
 ########################## Image #######################################
 
@@ -947,10 +947,10 @@ class SNIFS_cube:
 
         return(ind)
 
-    def WR_e3d_file(self,fits_file):
+    def WR_e3d_file(self, filename):
         """
         Write the datacube as a euro3d fits file.
-        @param fits_file: Name of the output file
+        @param filename: Name of the output file
         """
         if not self.from_e3d_file:
             raise NotImplementedError("Writing e3d file from scratch not yet implemented")
@@ -964,28 +964,32 @@ class SNIFS_cube:
         xpos_list = self.x.tolist()
         ypos_list = self.y.tolist()
         WR_e3d_file(data_list,var_list,no_list,start_list,self.lstep,
-                    xpos_list,ypos_list, fits_file, self.e3d_data_header,
+                    xpos_list,ypos_list, filename, self.e3d_data_header,
                     self.e3d_grp_hdu,self.e3d_extra_hdu_list,nslice=self.nslice)
 
-    def WR_3d_fits(self,fits_file,header=None,mode='w+'):
+    def WR_3d_fits(self, filename, header=None, mode='w+'):
         """
-        Write the datacube in a 3D fits file.
-        @param file_name: name of the fits file
-        @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
+        Write the datacube in a NAXIS=3 FITS file.
+        @param filename: name of the output FITS file
+        @param mode: writing mode. If w+, the file is overwritten. Otherwise the writing will fail. 
         """
-        hdulist = pyfits.HDUList()
-        hdu0 = pyfits.PrimaryHDU()
-        if header!=None:
-            for h in header:
-                hdu0.header.update(h,header[h])
-        hdulist = pyfits.HDUList()
-        hdulist.append(hdu0)
+        if header is None:
+            header = self.e3d_data_header.copy()
+            for h in self.e3d_data_header:
+                if h in ('XTENSION','BITPIX','GCOUNT','PCOUNT','TFIELDS',
+                         'EXTNAME','TFORM','TUNIT','TDISP',
+                         'CTYPES','CRVALS','CDELTS','CRPIXS') or \
+                         h[:5] in ('NAXIS','TTYPE'):
+                    del header[h]
 
-        data3D = num.array([ self.slice2d(i,coord='p')
-                             for i in xrange(self.nslice) ])
-        hdu_data = pyfits.ImageHDU()
-        hdu_data.data = data3D
-        stepx = stepy = self.spxSize
+        hdulist = pyfits.HDUList()
+
+        hdu_data = pyfits.PrimaryHDU()
+        hdu_data.data = num.array([ self.slice2d(i,coord='p')
+                                    for i in xrange(self.nslice) ])
+        for h in header:
+            hdu_data.header.update(h,header[h])
+        stepx  = stepy  = self.spxSize
         startx = starty = -7*self.spxSize
         hdu_data.header.update('CRVAL1', startx)
         hdu_data.header.update('CRVAL2', starty)
@@ -996,15 +1000,12 @@ class SNIFS_cube:
         hdu_data.header.update('CRPIX1', 1)
         hdu_data.header.update('CRPIX2', 1)
         hdu_data.header.update('CRPIX3', 1)
-        if header!=None:
-            for h in header:
-                hdu_data.header.update(h,header[h])
         hdulist.append(hdu_data)
+
         if self.var is not None:
-            hdu_var = pyfits.ImageHDU()
-            var3D = num.array([ self.slice2d(i,coord='p',var=True)
-                                for i in xrange(self.nslice) ])
-            hdu_var.data = var3D
+            hdu_var = pyfits.ImageHDU(name='VARIANCE')
+            hdu_var.data = num.array([ self.slice2d(i,coord='p',var=True)
+                                       for i in xrange(self.nslice) ])
             hdu_var.header.update('CRVAL1', startx)
             hdu_var.header.update('CRVAL2', starty)
             hdu_var.header.update('CRVAL3', self.lstart)
@@ -1016,7 +1017,7 @@ class SNIFS_cube:
             hdu_var.header.update('CRPIX3', 1)
             hdulist.append(hdu_var)
             
-        hdulist.writeto(fits_file,clobber=(mode=='w+'))
+        hdulist.writeto(filename,clobber=(mode=='w+'))
 
         
 #####################     SNIFS masks     ########################
@@ -1113,7 +1114,7 @@ class SNIFS_mask:
             raise ValueError('lens #%d not present in mask'%no)
         x,y = self.get_spec_lens(no)
         x = num.array(x)[num.argsort(y)]
-        y = num.array(sort(y))
+        y = num.sort(y)
         tck = I.splrep(y,x,s=0)
         return I.splev(yy,tck)
 
@@ -1250,7 +1251,9 @@ def fit_poly(y,n,deg,x=None):
         #l = len(y)      
     return poly
 
-def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,fits_file,data_header,grp_hdu,extra_hdu_list,nslice=None):
+def WR_e3d_file(data_list, var_list, no_list,
+                start_list, step, xpos_list, ypos_list,
+                filename, data_header, grp_hdu, extra_hdu_list, nslice=None):
     """
     Write a data cube as a euro3d file on disk.
        @param data_list: List of the spectra of the datacube
@@ -1260,7 +1263,7 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
        @param step: Wavelength step of the datacube
        @param xpos_list: List of the x position of each spaxel of the datacube
        @param ypos_list: List of the x position of each spaxel of the datacube
-       @param fits_file: Output fits file to be written on disk
+       @param filename: Output fits file to be written on disk
        @param data_header: data header of the new e3d file. All the standards e3d
            headers containing information on the data themselves will be overwritten. Only the non standard
            will be copied from this parameter.
@@ -1334,7 +1337,7 @@ def WR_e3d_file(data_list,var_list,no_list,start_list,step,xpos_list,ypos_list,f
     pri_hdu.header.update('E3D_ADC',pyfits.FALSE)
     pri_hdu.header.update('E3D_VERS','1.0')
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
-    hdu_list.writeto(fits_file, clobber=True) # Overwrite
+    hdu_list.writeto(filename, clobber=True) # Overwrite
 
     os.environ['NUMERIX'] = 'numpy'
     reload(pyfits)
@@ -1382,12 +1385,12 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
 
 def comp_cdg(ima):
     ima = num.abs(ima).astype('d')
-    x,y = indices(shape(ima))
+    x,y = num.indices(num.shape(ima))
     norm = ima.sum()
     xc = (ima*x).sum()/norm
     yc = (ima*y).sum()/norm
-    sx = sqrt(((ima*(x-xc)**2)).sum()/norm)
-    sy = sqrt(((ima*(y-yc)**2)).sum()/norm)
+    sx = num.sqrt(((ima*(x-xc)**2)).sum()/norm)
+    sy = num.sqrt(((ima*(y-yc)**2)).sum()/norm)
 
     return xc,yc,sx,sy
 

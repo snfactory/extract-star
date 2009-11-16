@@ -5,7 +5,7 @@
 ## Description:   pySNIFS setup script
 ## Author:        Yannick Copin <ycopin@ipnl.in2p3.fr>
 ## Created at:    Thu Apr 13 13:47:49 2006
-## Modified at:   Wed Oct 22 13:11:49 2008
+## Modified at:   Fri Nov 13 15:47:08 2009
 ## Modified by:   Yannick Copin <ycopin@ipnl.in2p3.fr>
 ######################################################################
 
@@ -58,6 +58,7 @@ def main():
           scripts=[os.path.join('apps','extract_star','extract_star.py'),
                    os.path.join('apps','extract_star','extract_host.py'),
                    os.path.join('apps','extract_star','extract_z.py'),
+                   os.path.join('apps','extract_star','e3dto3d.py'),
                    ],
           )
 

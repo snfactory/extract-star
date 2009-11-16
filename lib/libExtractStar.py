@@ -20,25 +20,31 @@ MK_temp = 2.                            # Default temperature [C]
 DEG2RAD = S.pi/180
 
 def atmosphericIndex(lbda, P=616., T=2.):
-    """Compute atmospheric refractive index: lbda in angstrom, P
-    in mbar, T in C. Relative humidity effect is neglected.
+    """Compute atmospheric refractive index: lbda in angstrom, P in mbar, T in
+    C. Relative humidity effect is neglected. From Fillipenko, 1982 (from
+    Edlen 1953).
 
-    Cohen & Cromer 1988 (PASP, 100, 1582) give P = 456 mmHg = 608 mbar and T =
-    2C for Mauna Kea. However, SNIFS observations show an average recorded
-    pression of 616 mbar.
+    Cohen & Cromer 1988 (PASP, 100, 1582) give P=456 mmHg=608 mbar and T=2C
+    for Mauna Kea. However, SNIFS observations show an average recorded
+    pression of 616 mbar and temperature of 2C (see
+    https://projects.lbl.gov/mantis/view.php?id=1341).
 
-    Further note that typical water abundances on Mauna Kea are close enough
-    to zero not to significantly impact these calculations.
-    """
+    The difference between sea-level and MK refractive index is ~1e-4. The
+    index fluctuations with typical P,T MK-variations (+/-5mbar, +/-5C) is +/-
+    ~3e-6. Water vapor contribution is around ~1e-10.
+
+    See also Peck & Reeder (1972, J.Opt.Soc.Am., 62, 958) and 
+    http://emtoolbox.nist.gov/Wavelength/Documentation.asp"""
 
     # Sea-level (P=760 mmHg, T=15C)
     iml2 = 1/(lbda*1e-4)**2             # lambda in microns
     n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
 
-    # (P,T) correction
-    P *= 0.75006168                     # Convert P to mmHg: *= 760./1013.25
-    n = 1 + (n-1) * P * \
-        ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
+    if P is not None and T is not None:
+        # (P,T) correction
+        P *= 0.75006168                 # Convert P to mmHg: *= 760./1013.25
+        n = 1 + (n-1) * P * \
+            ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
     
     return n
 
@@ -79,7 +85,7 @@ def read_parangle(hdr):
     # PARANG keyword is absent, estimate it from LATITUDE,HA,DEC
     print "WARNING: cannot read PARANG keyword, estimate it from header"
     
-    from math import sin,cos,pi,sqrt,acos,atan2
+    from math import sin,cos,pi,sqrt,atan2
 
     d2r = pi/180.                       # Degree to Radians
     # DTCS latitude is probably not the most precise one (see fit_ADR.py)
@@ -88,11 +94,11 @@ def read_parangle(hdr):
     cosphi = cos(phi)
     try:
         ha = hdr['HAMID']               # Hour angle (format: 04:04:52.72)
-    except:
+    except KeyError:
         ha = hdr['HA']                  # Hour angle (format: 04:04:52.72)
     try:
         dec = hdr['TELDEC']             # Declination (format 08:23:19.20)
-    except:
+    except KeyError:
         dec = hdr['DEC']                # Declination (format 08:23:19.20)
     # We neglect position offset (see
     # https://projects.lbl.gov/mantis/view.php?id=280 note 773) since offset
@@ -287,7 +293,7 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
 
 def quadEllipse(a,b,c,d,f,g):
     """Ellipse elements (center, semi-axes and PA) from the general
-    quadratic curve a*x2 + 2b*x*y + c*y2 + 2d*x + 2f*y + g = 0.
+    quadratic curve a*x2 + 2*b*x*y + c*y2 + 2*d*x + 2*f*y + g = 0.
 
     http://mathworld.wolfram.com/Ellipse.html"""
 
@@ -297,9 +303,10 @@ def quadEllipse(a,b,c,d,f,g):
     if not (D!=0 and J>0 and D/I<0):
         #raise ValueError("Input quadratic curve does not correspond to "
         #                 "an ellipse: D=%f!=0, J=%f>0, D/I=%f<0" % (D,J,D/I))
-        return 0,0,0,0,0
-    #elif a==c and b==0:
-    #    raise ValueError("Input quadratic curve correspond to a circle")
+        return 0,0,-1,-1,0
+    elif a==c and b==0:
+        #raise ValueError("Input quadratic curve correspond to a circle")
+        pass
 
     b2mac = b**2 - a*c
     # Center of the ellipse
@@ -320,6 +327,18 @@ def quadEllipse(a,b,c,d,f,g):
 
     return x0,y0,ap,bp,phi
 
+def flatAndPA(cy2, c2xy):
+    """Return flattening q=b/a and position angle PA [deg] for ellipse defined
+    by x**2 + cy2*y**2 + 2*c2xy*x*y = 1.
+    """
+
+    x0,y0,a,b,phi = quadEllipse(1,c2xy,cy2,0,0,-1)
+    assert a>0 and b>0, "Input equation does not correspond to an ellipse"
+    q = b/a                             # Flattening
+    pa = phi/DEG2RAD                    # From rad to deg
+
+    return q,pa
+
 # PSF classes ================================================================
 
 class ExposurePSF:
@@ -329,7 +348,7 @@ class ExposurePSF:
     Note that the so-called PA parameter is not the PA of the adjusted
     ellipse, but half the x*y coefficient. Similarly, ell is not the
     ellipticity, but the y**2 coefficient: x2 + ell*y2 + 2*PA*x*y + ... = 0.
-    See quadEllipse for conversion.
+    See quadEllipse/flatAndPA for conversion.
     """
 
     def __init__(self, psf_ctes, cube, coords=None):
@@ -434,6 +453,7 @@ class ExposurePSF:
         # Gaussian + Moffat
         dx = self.x - x0
         dy = self.y - y0
+        # CAUTION: ell & PA are not the true ellipticity and position angle!
         r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
         gaussian = S.exp(-r2/2/sigma**2)
         moffat = (1 + r2/alpha**2)**(-beta)
@@ -548,6 +568,3 @@ class Short_ExposurePSF(ExposurePSF):
 
     name = 'short'
     corrCoeffs = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
-
-
-
