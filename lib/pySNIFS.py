@@ -12,8 +12,6 @@ import os
 import numpy as num
 from scipy import interpolate as I
 from scipy.ndimage import filters as F
-
-os.environ['NUMERIX'] = 'numpy'
 import pyfits
 
 __author__ = '$Author$'
@@ -26,7 +24,7 @@ class spectrum:
     """
     1D spectrum class.
     """
-    def __init__(self,data_file=None,var_file=None,no=None,num_array=True,x=None,data=None,var=None,start=None,step=None,nx=None):
+    def __init__(self,data_file=None,var_file=None,no=None,x=None,data=None,var=None,start=None,step=None,nx=None):
         """
         Initiating the class.
         @param data_file: fits file from which the data are read. It can be a
@@ -48,13 +46,10 @@ class spectrum:
         @param nx: number of data point. It is usefull when the user want to
             create an array of zero data. otherwise, this value is the size of
             the data array.
-        @param num_array: flag to say if the data are stored in numarray or in
-            numeric.
         @group parameters used when the spectrum is read from a fits spectrum
             or a euro3d datacube: data_file,var_file,no
         @group parameters used when the spectrum is not read from a file:
                x,data,var,start,step,nx
-        @group parameters used in both cases: num_array
         """
         self.file = file
         if data_file is not None:
@@ -452,7 +447,7 @@ class SNIFS_cube:
 
     spxSize = 0.43                      # Spx size in arcsec
     
-    def __init__(self,e3d_file=None,fits3d_file=None,slices=None,lbda=None,num_array=True,threshold=1e20,nodata=False):
+    def __init__(self,e3d_file=None,fits3d_file=None,slices=None,lbda=None,threshold=1e20,nodata=False):
         """
         Initiating the class.
         @warning: If the spectra in the datacube do not have the same lengthes, they will be truncated
@@ -464,7 +459,6 @@ class SNIFS_cube:
             In this last case, the slices will be coadded by stacks of lstep size.
         @param lbda: Array of lambdas if the datacube is created from scratch...
             This case is not really implemented yet...
-        @param num_array: Flag to chose between numarray or numeric array formats
         @param threshold: In the variance image, pixels where variance is not available for some reason are
             set to an arbitrarily high value. As this values seems to change from one version to another of
             the processing pipeline, we allow to pass it as the threshold parameter.
@@ -605,20 +599,20 @@ class SNIFS_cube:
                 # coords X,Y
                 self.i = num.round(self.x / self.spxSize).astype('i') + 7
                 self.j = num.round(self.y / self.spxSize).astype('i') + 7
-            if not num_array:
-                if not nodata:
-                    self.data = num.array(self.data,'f')
-                    if var is not None:
-                        self.var = num.array(self.var,'f')
-                else:
-                    self.data = None
-                    self.var = None
-                self.lbda = num.array(self.lbda)
-                self.x = num.array(self.x)
-                self.y = num.array(self.y)
-                self.i = num.array(self.i)
-                self.j = num.array(self.j)
-                self.no = num.array(self.no)
+#            if not num_array:
+#                if not nodata:
+#                    self.data = num.array(self.data,'f')
+#                    if var is not None:
+#                        self.var = num.array(self.var,'f')
+#                else:
+#                    self.data = None
+#                    self.var = None
+#                self.lbda = num.array(self.lbda)
+#                self.x = num.array(self.x)
+#                self.y = num.array(self.y)
+#                self.i = num.array(self.i)
+#                self.j = num.array(self.j)
+#                self.no = num.array(self.no)
                 
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
@@ -704,20 +698,20 @@ class SNIFS_cube:
             self.y = self.y[ind]
             self.no = self.no[ind]
  
-            if not num_array:
-                if not nodata:
-                    self.data = num.array(self.data,'f')
-                    if var is not None:
-                        self.var = num.array(self.var,'f')
-                else:
-                    self.data = None
-                    self.var = None
-                self.lbda = num.array(self.lbda)
-                self.x = num.array(self.x)
-                self.y = num.array(self.y)
-                self.i = num.array(self.i)
-                self.j = num.array(self.j)
-                self.no = num.array(self.no)
+#            if not num_array:
+#                if not nodata:
+#                    self.data = num.array(self.data,'f')
+#                    if var is not None:
+#                        self.var = num.array(self.var,'f')
+#                else:
+#                    self.data = None
+#                    self.var = None
+#                self.lbda = num.array(self.lbda)
+#                self.x = num.array(self.x)
+#                self.y = num.array(self.y)
+#                self.i = num.array(self.i)
+#                self.j = num.array(self.j)
+#                self.no = num.array(self.no)
                 
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
@@ -748,22 +742,13 @@ class SNIFS_cube:
                 x = (i-7)*self.spxSize
                 y = (j-7)*self.spxSize
                 no = num.arange(1,self.nlens+1).reshape(15,15).T.ravel()
-                if num_array:
-                    self.data = data
-                    self.x = x
-                    self.y = y
-                    self.i = i
-                    self.j = j
-                    self.no = no
-                    self.lbda = lbda  
-                else:
-                    self.data = num.array(data,'f')
-                    self.x = num.array(x)
-                    self.y = num.array(y)
-                    self.i = num.array(i)
-                    self.j = num.array(j)
-                    self.no = num.array(no)
-                    self.lbda = num.array(lbda)  
+                self.data = num.array(data,'f')
+                self.x = num.array(x)
+                self.y = num.array(y)
+                self.i = num.array(i)
+                self.j = num.array(j)
+                self.no = num.array(no)
+                self.lbda = num.array(lbda)  
                 self.var = None
           
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):
@@ -897,14 +882,13 @@ class SNIFS_cube:
                     else:
                         raise IndexError("Index list out of range")
                         
-    def get_spec(self,no,num_array=True):
+    def get_spec(self,no):
         """
         Extract the spectrum corresponding to lenslet no and return it as a pySNIFS.spectrum object
         @param no: lenslet number of the spectrum to be extracted
-        @param num_array: Flag to chose between numarray or numeric array format
         """
         spec = spectrum(x=self.lbda,data=self.spec(no),
-                        var=self.spec(no,var=True),num_array=num_array)
+                        var=self.spec(no,var=True))
         
         if hasattr(self,'lstep'):
             spec.step = self.lstep
@@ -1276,12 +1260,12 @@ def WR_e3d_file(data_list, var_list, no_list,
     
     pri_hdu = pyfits.PrimaryHDU()
     hdulist = pyfits.HDUList([pri_hdu,grp_hdu]+extra_hdu_list)
-    hdulist.writeto('tmp_hdu.fits',clobber=True)
-    os.environ['NUMERIX'] = 'numarray'
-    reload(pyfits)
-    hdulist = pyfits.open('tmp_hdu.fits')
-    grp_hdu = hdulist[1]
-    extra_hdu_list = hdulist[2:]
+#    hdulist.writeto('tmp_hdu.fits',clobber=True)
+#    os.environ['NUMERIX'] = 'numarray'
+#    reload(pyfits)
+#    hdulist = pyfits.open('tmp_hdu.fits')
+#    grp_hdu = hdulist[1]
+#    extra_hdu_list = hdulist[2:]
     
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
@@ -1302,20 +1286,20 @@ def WR_e3d_file(data_list, var_list, no_list,
     col_list.append(pyfits.Column(name='GROUP_N',format='J',array=group_n))
     col_list.append(pyfits.Column(name='SPAX_ID',format='1A1',array=spax_id))
     if nslice==None:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='PE()',
+        col_list.append(pyfits.Column(name='DATA_SPE',format='PD()',
                                       array=data_list))
         col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',
                                       array=[[0 for i in d] for d in data_list]))
         if var_list is not None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='PE()',
+            col_list.append(pyfits.Column(name='STAT_SPE',format='PD()',
                                           array=var_list))
     else:
-        col_list.append(pyfits.Column(name='DATA_SPE',format='%dE()'%nslice,
+        col_list.append(pyfits.Column(name='DATA_SPE',format='%dD()'%nslice,
                                       array=data_list))
         col_list.append(pyfits.Column(name='QUAL_SPE',format='%dJ'%nslice,
                                       array=[[0 for i in d] for d in data_list]))
         if var_list is not None:
-            col_list.append(pyfits.Column(name='STAT_SPE',format='%dE()'%nslice,
+            col_list.append(pyfits.Column(name='STAT_SPE',format='%dD()'%nslice,
                                           array=var_list))
         
     tb_hdu = pyfits.new_table(col_list)
@@ -1324,12 +1308,12 @@ def WR_e3d_file(data_list, var_list, no_list,
     tb_hdu.header.update('CDELTS',step)
     tb_hdu.header.update('CRPIXS',1)
     tb_hdu.header.update('EXTNAME','E3D_DATA')
-
+    
     for desc in data_header:
         if desc not in ('XTENSION','BITPIX','GCOUNT','PCOUNT','TFIELDS',
                         'EXTNAME','TFORM','TUNIT','TDISP',
                         'CTYPES','CRVALS','CDELTS','CRPIXS') and \
-                        desc[:5] not in ('NAXIS','TTYPE'):
+                        desc[:5] not in ('NAXIS','TTYPE','TFORM'):
             tb_hdu.header.update(desc,data_header[desc])
 
     pri_hdu = pyfits.PrimaryHDU()
@@ -1339,8 +1323,8 @@ def WR_e3d_file(data_list, var_list, no_list,
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
     hdu_list.writeto(filename, clobber=True) # Overwrite
 
-    os.environ['NUMERIX'] = 'numpy'
-    reload(pyfits)
+#    os.environ['NUMERIX'] = 'numpy'
+#    reload(pyfits)
         
 def gaus_array(ima_shape,center,sigma,I,pa=None):
     """

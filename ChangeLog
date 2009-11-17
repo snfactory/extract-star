@@ -1,3 +1,10 @@
+2009-11-17  Kerstin Paech  <paech@physik.uni-bonn.der>
+        * removed the numarray/numpy switch
+
+        * Fixed Mantis issue 1331 https://projects.lbl.gov/mantis/view.php?id=1331 :
+          pySNIFS produced corrupt e3d-fits-files for a certain class of input-fits
+          files due to mismatch between header and data formats.
+
 2009-11-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/e3dto3d.py: convertor from SNIFS Euro3D cubes to
