@@ -599,20 +599,6 @@ class SNIFS_cube:
                 # coords X,Y
                 self.i = num.round(self.x / self.spxSize).astype('i') + 7
                 self.j = num.round(self.y / self.spxSize).astype('i') + 7
-#            if not num_array:
-#                if not nodata:
-#                    self.data = num.array(self.data,'f')
-#                    if var is not None:
-#                        self.var = num.array(self.var,'f')
-#                else:
-#                    self.data = None
-#                    self.var = None
-#                self.lbda = num.array(self.lbda)
-#                self.x = num.array(self.x)
-#                self.y = num.array(self.y)
-#                self.i = num.array(self.i)
-#                self.j = num.array(self.j)
-#                self.no = num.array(self.no)
                 
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
@@ -698,21 +684,6 @@ class SNIFS_cube:
             self.y = self.y[ind]
             self.no = self.no[ind]
  
-#            if not num_array:
-#                if not nodata:
-#                    self.data = num.array(self.data,'f')
-#                    if var is not None:
-#                        self.var = num.array(self.var,'f')
-#                else:
-#                    self.data = None
-#                    self.var = None
-#                self.lbda = num.array(self.lbda)
-#                self.x = num.array(self.x)
-#                self.y = num.array(self.y)
-#                self.i = num.array(self.i)
-#                self.j = num.array(self.j)
-#                self.no = num.array(self.no)
-                
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
             self.nlens = len(self.x)
@@ -1260,12 +1231,6 @@ def WR_e3d_file(data_list, var_list, no_list,
     
     pri_hdu = pyfits.PrimaryHDU()
     hdulist = pyfits.HDUList([pri_hdu,grp_hdu]+extra_hdu_list)
-#    hdulist.writeto('tmp_hdu.fits',clobber=True)
-#    os.environ['NUMERIX'] = 'numarray'
-#    reload(pyfits)
-#    hdulist = pyfits.open('tmp_hdu.fits')
-#    grp_hdu = hdulist[1]
-#    extra_hdu_list = hdulist[2:]
     
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
@@ -1323,9 +1288,6 @@ def WR_e3d_file(data_list, var_list, no_list,
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
     hdu_list.writeto(filename, clobber=True) # Overwrite
 
-#    os.environ['NUMERIX'] = 'numpy'
-#    reload(pyfits)
-        
 def gaus_array(ima_shape,center,sigma,I,pa=None):
     """
     Return a 1D or 2D array containing a gaussian.
