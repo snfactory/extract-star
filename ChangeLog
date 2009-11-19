@@ -1,9 +1,19 @@
+2009-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: update to handle new 3D FITS
+	file. WARNING: the source extraction proceeds correctly, but some
+	plots are wrong...
+
+	* lib/pySNIFS.py (SNIFS_cube.__init__): update reading SNIFS_cube
+	from a 3D FITS file using new convention (signal in primary
+	extension, variance in 'VARIANCE' extension).
+
 2009-11-17  Kerstin Paech  <paech@physik.uni-bonn.der>
 	
 	* lib/pySNIFS.py: removed the numarray/numpy switch. Fixed Mantis
-	  issue #1331: pySNIFS produced corrupt e3d-fits-files for a
-	  certain class of input-fits files due to mismatch between header
-	  and data formats.
+	issue #1331: pySNIFS produced corrupt e3d-fits-files for a certain
+	class of input-fits files due to mismatch between header and data
+	formats.
 
 2009-11-13  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 

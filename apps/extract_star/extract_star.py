@@ -415,7 +415,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             if (diag>0).all():
                 errorpar = S.concatenate(([0.,0.], S.sqrt(diag)))
             else:                       # Some negative diagonal elements!
-                print "WARNING: negative cov. diag. elements " \
+                print "WARNING: negative covariance diagonal elements " \
                     "in metaslice %d" % (i+1)
                 model_star.khi2 *= -1   # To be discarded
                 errorpar = S.zeros(len(error_mat.T))
@@ -707,7 +707,10 @@ if __name__ == "__main__":
 
     opts,args = parser.parse_args()
     if not opts.input:
-        parser.error("No input datacube specified.")
+        if args:
+            opts.input = args[0]
+        else:
+            parser.error("No input datacube specified.")
 
     if opts.graph:
         opts.plot = True
@@ -730,15 +733,17 @@ if __name__ == "__main__":
 
     # The pySNIFS e3d_data_header dictionary is not enough for later
     # updates in fill_hdr, which requires a *true* pyfits header.
-    inhdr = pyfits.getheader(opts.input, 1) # 1st extension
 
-    # Test if input cube is Euro3D or plain NAXIS=3.
-    isE3D = (inhdr['NAXIS'] != 3)
-    if isE3D:
+    try:                                # Try to read a Euro3D cube
+        inhdr = pyfits.getheader(opts.input, 1) # 1st extension
         full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
-    else:
+        isE3D = True
+    except ValueError:                  # Try to read a 3D FITS cube
+        inhdr = pyfits.getheader(opts.input, 0) # Primary extension
         full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
+        isE3D = False
     step = full_cube.lstep
+
     print_msg("Cube %s [%s]: %d slices [%.2f-%.2f], %d spaxels" % \
               (os.path.basename(opts.input), isE3D and 'E3D' or '3D',
                full_cube.nslice,

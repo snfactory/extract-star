@@ -7,8 +7,6 @@
 ## $Id$
 ######################################################################
 
-import os
-
 import numpy as num
 from scipy import interpolate as I
 from scipy.ndimage import filters as F
@@ -607,7 +605,12 @@ class SNIFS_cube:
         elif fits3d_file is not None:
             
             fits3d_cube = pyfits.open(fits3d_file)
-            gen_header = dict(fits3d_cube[1].header.items())
+            # Get keywords from primary header
+            gen_header = dict(fits3d_cube[0].header.items())
+            if gen_header['NAXIS'] != 3:
+                raise ValueError("Invalid 3D file: NAXIS=%d != 3" % \
+                                 gen_header['NAXIS'])
+
             self.e3d_data_header = gen_header # Not really e3d_data_header...
             nslice = gen_header['NAXIS3']
             nx = gen_header['NAXIS1']
@@ -618,16 +621,19 @@ class SNIFS_cube:
             stepx = gen_header['CDELT1']
             stepy = gen_header['CDELT2']
             stepl = gen_header['CDELT3']
-            if gen_header['NAXIS'] != 3:
-                raise ValueError("Invalid 3D file: NAXIS!=3")
             self.fits3d_file = fits3d_file
             self.lstep = stepl
-            if (len(fits3d_cube)==3) and (num.shape(fits3d_cube[0])==num.shape(fits3d_cube[1])):
-                var = num.reshape(fits3d_cube[2].data[:,:,::-1],(nslice,nx*ny))
+
+            lbda = num.arange(nslice)*stepl + startl
+            data = num.reshape(fits3d_cube[0].data[:,:,::-1],(nslice,nx*ny))
+            if 'VARIANCE' in [ h.name for h in fits3d_cube ]:
+                assert fits3d_cube[0].data.shape == \
+                       fits3d_cube['VARIANCE'].data.shape, \
+                       "Variance and primary extensions have different shapes"
+                var = num.reshape(fits3d_cube['VARIANCE'].data[:,:,::-1],
+                                  (nslice,nx*ny))
             else:
                 var = None
-            data = num.reshape(fits3d_cube[1].data[:,:,::-1],(nslice,nx*ny))
-            lbda = num.arange(nslice)*stepl + startl
 
             if l is not None:
                 lmin,lmax = max([0,l[0]]),min([nslice-1,l[1]])
@@ -640,7 +646,8 @@ class SNIFS_cube:
                 lstep = 1
 
             if lmax-lmin < lstep:
-                raise ValueError('Slice step incompatible with requested slices interval')
+                raise ValueError('Slice step incompatible with ' \
+                                 'requested slices interval')
 
             if not s:
                 if not nodata:
@@ -653,13 +660,15 @@ class SNIFS_cube:
                 self.lbda = lbda
             else:
                 if not nodata:
-                    self.data = F.uniform_filter(num.array(data,'d'),(lstep,1)) \
-                                [lmin + lstep/2: \
-                                 lmax +lstep/2:lstep]
+                    self.data = F.uniform_filter(num.array(data,'d'),
+                                                 (lstep,1))[lmin + lstep/2:
+                                                            lmax +lstep/2:
+                                                            lstep]
                     if var is not None:
-                        self.var = F.uniform_filter(num.array(var,'d'),(lstep,1)) \
-                                   [lmin + lstep/2: \
-                                    lmax+lstep/2:lstep]/lstep
+                        self.var = F.uniform_filter(num.array(var,'d'),
+                                                    (lstep,1))[lmin + lstep/2:
+                                                               lmax+lstep/2:
+                                                               lstep] / lstep
                 else:
                     self.data = None
                     self.var = None
@@ -689,7 +698,8 @@ class SNIFS_cube:
             self.nlens = len(self.x)
             
         else:
-            # If neither euro3d nor fits3d file is given, we create an SNIFS cube from  
+            # If neither euro3d nor fits3d file is given, we create an SNIFS
+            # cube from
             self.from_e3d_file = False
             self.nlens = 225
             if lbda is None:
