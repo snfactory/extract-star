@@ -1,3 +1,6 @@
+2009-12-01  Stephen Bailey <stephen.bailey@in2p3.fr>
+    * Removed numarray from cube_explorer.py and convert_3DPSF.py
+
 2009-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: update to handle new 3D FITS

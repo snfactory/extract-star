@@ -1237,7 +1237,6 @@ def WR_e3d_file(data_list, var_list, no_list,
        @param nslice: number of wavelengthes slices in the datacube. If not given, all the spectra of the datacube may have
                       different lengthes
     """
-    ## We need to convert the hdus given in parameters in numarray pyfits hdus.
     
     pri_hdu = pyfits.PrimaryHDU()
     hdulist = pyfits.HDUList([pri_hdu,grp_hdu]+extra_hdu_list)

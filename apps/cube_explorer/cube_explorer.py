@@ -2,7 +2,7 @@
 import os
 import sys
 import pylab
-import numarray
+import numpy
 import pyfits
 import scipy
 from scipy import optimize,size,Float64
@@ -67,8 +67,8 @@ class graph_interact:
         self.slice = transpose(cube.slice2d([0,cube.nslice-1],coord='p'))
         self.sl_med = scipy.median(ravel(self.slice))
         self.sl_mdisp = sqrt(scipy.median((ravel(self.slice)-self.sl_med)**2))
-        self.sl_mean = scipy.mean(numarray.compress(1-isnan(self.slice),self.slice))
-        self.sl_disp = scipy.std(numarray.compress(1-isnan(self.slice),self.slice))
+        self.sl_mean = scipy.mean(numpy.compress(1-isnan(self.slice),self.slice))
+        self.sl_disp = scipy.std(numpy.compress(1-isnan(self.slice),self.slice))
         vmin = self.sl_med + self.lcut0*self.sl_disp
         vmax = self.sl_med + self.hcut0*self.sl_disp
         ax0.imshow(self.slice,interpolation='nearest',aspect='preserve',vmin=vmin,vmax=vmax,cmap=pylab.cm.hot,origin='lower')
@@ -174,8 +174,8 @@ class graph_interact:
             self.slice = transpose(self.cube.slice2d(ind,coord='p'))
             self.sl_med = scipy.median(ravel(self.slice))
             self.sl_mdisp = sqrt(scipy.median((ravel(self.slice)-self.sl_med)**2))
-            self.sl_mean = scipy.mean(numarray.compress(1-isnan(self.slice),self.slice))
-            self.sl_disp = scipy.std(numarray.compress(1-isnan(self.slice),self.slice))
+            self.sl_mean = scipy.mean(numpy.compress(1-isnan(self.slice),self.slice))
+            self.sl_disp = scipy.std(numpy.compress(1-isnan(self.slice),self.slice))
         if self.hcut0 < self.lcut0: self.lcut0 = self.hcut0
         vmin = self.sl_med + self.lcut0*self.sl_mdisp
         vmax = self.sl_med + self.hcut0*self.sl_mdisp
@@ -219,7 +219,7 @@ class graph_interact:
 
     def update_sl_stat(self,ind):
 	"""Calculate the statistics of the slice(s) selected and print it"""
-        lbda = numarray.array(self.cube.lbda)[ind]
+        lbda = numpy.array(self.cube.lbda)[ind]
         self.text['mean1'].set_text('%8.2f'%self.sl_mean)
         self.text['sigma1'].set_text('%8.2f'%self.sl_disp)
         self.text['median1'].set_text('%8.2f'%self.sl_med)
@@ -313,5 +313,5 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
     hist.x = bin_array
     hist.len = len(bin_array)
     if cumul:
-        hist.data = numarray.array([float(sum(hist.data[0:i+1])) for i in arange(hist.len)])/float(sum(hist.data))
+        hist.data = numpy.array([float(sum(hist.data[0:i+1])) for i in arange(hist.len)])/float(sum(hist.data))
     return hist

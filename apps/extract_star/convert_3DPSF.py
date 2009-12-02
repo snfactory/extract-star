@@ -46,8 +46,6 @@ def crop_PSF(psf, center=(15,15), hsize=(7,7), wrange=None):
 
     if wrange is not None:
         lmin,lmax = wrange
-        # CAUTION: IFU is based upon numarray, we need to translate good to an
-        # numarray-compatible array
         good = ((psf.lbda>=lmin) & (psf.lbda<=lmax)).nonzero()[0].tolist()
         psf.lbda = psf.lbda[good]
         psf.signal = psf.signal[good]
