@@ -15,7 +15,7 @@ This version replaces the double gaussian PSF profile by an ad-hoc PSF profile
 Todo:
 
 * replace meta-slice centroid-based initial guess by gaussian-fit.
-* one could use Aitchison (or "additive log-ratio") transform to
+* one could use Aitchison (or 'additive log-ratio') transform to
   enforce the normalization constraint on alphas (see
   http://thread.gmane.org/gmane.comp.python.scientific.user/16180/focus=16187
   or ) or Multinomial logit (see
@@ -49,6 +49,13 @@ from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
 LbdaRef = 5000.                         # Use constant ref. for easy comparison
+
+# Non-default colors
+blue='#0066CC'
+red='#CC0033'
+green='#009966'
+orange='#FF9900'
+purple='#FF00FF'
 
 # Definitions ================================================================
 
@@ -655,7 +662,7 @@ if __name__ == "__main__":
     methods = ('psf','aperture','optimal')
 
     usage = "usage: [%prog] [options] -i inE3D.fits " \
-            "[-o outSpec.fits -s outSky.fits]"
+            "[-o outSpec.fits -s outSky.fits [...] ]"
 
     parser = optparse.OptionParser(usage, version=__version__)
 
@@ -668,7 +675,7 @@ if __name__ == "__main__":
     parser.add_option("-V", "--variance", action='store_true',
                       help="Store variance spectrum in extension")
 
-    parser.add_option("-S", "--skyDeg", type="int", dest="skyDeg",
+    parser.add_option("-S", "--skyDeg", type="int",
                       help="Sky polynomial background degree [%default]",
                       default=0)
     parser.add_option("-A", "--alphaDeg", type="int",
@@ -676,7 +683,7 @@ if __name__ == "__main__":
                       default=2)
     parser.add_option("-E", "--ellDeg", type="int",
                       help="Ellipticity polynomial degree [%default]",
-                      default=0)    
+                      default=2)    
 
     parser.add_option("-m", "--method", type="string",
                       help="Extraction method ['%default']",
@@ -693,6 +700,7 @@ if __name__ == "__main__":
     parser.add_option("-v", "--verbosity", type="int",
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
+
     parser.add_option("-f", "--file", type="string",
                       help="Save 2D adjustment results in file.")
     parser.add_option("-F", "--File", type="string",
@@ -727,7 +735,7 @@ if __name__ == "__main__":
         if opts.sky:
             print "WARNING: cannot extract sky spectrum in no-sky mode."
 
-    # Input datacube =========================================================
+    # Input datacube ===========================================================
 
     print "Opening datacube %s" % opts.input
 
@@ -763,18 +771,23 @@ if __name__ == "__main__":
     skyDeg   = opts.skyDeg
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
 
-    # Select the PSF (short or long)
-    psfFn = (efftime > 12.) and \
-            libES.Long_ExposurePSF or \
-            libES.Short_ExposurePSF
+    # Select the PSF (short or long, red or blue)
+    if (efftime > 12.) and (channel.startswith('B')):
+        psfFn = libES.long_blue_exposure_psf
+    if (efftime > 12.) and (channel.startswith('R')):
+        psfFn = libES.long_red_exposure_psf
+    if (efftime < 12.) and (channel.startswith('B')):
+        psfFn = libES.short_blue_exposure_psf
+    if (efftime < 12.) and (channel.startswith('R')):
+        psfFn = libES.short_red_exposure_psf
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
 
     # Meta-slice definition (min,max,step [px])
-    if channel == 'B':
+    if channel.startswith('B'):
         slices=[10, 900, 65]
-    elif channel == 'R':
+    elif channel.startswith('R'):
         slices=[10, 1500, 130]
     else:
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
@@ -798,7 +811,7 @@ if __name__ == "__main__":
     cube.data /= norm
     cube.var /= norm**2
 
-    # Computing guess parameters from slice by slice 2D fit ==================
+    # Computing guess parameters from slice by slice 2D fit ====================
 
     print "Slice-by-slice 2D-fitting..."
     param_arr,khi2_vec,error_mat = fit_slices(cube, psfFn, skyDeg=skyDeg)
@@ -812,14 +825,14 @@ if __name__ == "__main__":
     if skyDeg >= 0:
         sky_vec = param_arr[8:]
 
-    # Save 2D adjusted parameter file ========================================
+    # Save 2D adjusted parameter file ==========================================
     
     if opts.file:
         print "Producing 2D adjusted parameter file [%s]..." % opts.file        
         create_2D_log_file(opts.file,obj,airmass,efftime,
                            cube,param_arr,khi2_vec,error_mat)
 
-    # 3D model fitting =======================================================
+    # 3D model fitting =========================================================
     
     print "Datacube 3D-fitting..."
 
@@ -830,7 +843,7 @@ if __name__ == "__main__":
     lbda_rel = ( 2*cube.lbda - (lmin+lmax) ) / ( lmax-lmin )
     lref = (lmin + lmax)/2
 
-    # 2) Reference position
+    # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position
     adr = libES.ADR_model(pressure, temp, lref=lref,
@@ -868,7 +881,7 @@ if __name__ == "__main__":
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
               (delta0, theta0/S.pi*180), 1) # S.degrees() from python-2.5 only
 
-    # 3) Other parameters
+    # 2) Other parameters
     PA       = S.median(PA_vec[good])
     polEll   = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
     polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
@@ -925,7 +938,7 @@ if __name__ == "__main__":
     print_msg("  Initial guess [Intensities]: %s" % \
               p1[npar_psf:npar_psf+nslice], 3)
     if skyDeg >= 0:
-        print_msg("  Initial guess [Background]: %s" % p2, 3)
+        print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
 
     # Instanciating the model class and perform the fit
     data_model = pySNIFS_fit.model(data=cube, func=func,
@@ -1088,11 +1101,11 @@ if __name__ == "__main__":
     # Save 3D adjusted parameter file ========================================
     
     if opts.File:
-        print "Producing 3D adjusted parameter file '%s'..." % opts.File
+        print "Producing 3D adjusted parameter file [%s]..." % opts.File
         create_3D_log_file(opts.File,obj,airmass,efftime,
                            cube,cube_fit,fitpar,khi2,errorpar,lmin,lmax)
     
-    # Save adjusted PSF ==============================
+    # Save adjusted PSF ========================================================
 
     if opts.keepmodel:
         path,name = os.path.split(opts.out)
@@ -1105,29 +1118,31 @@ if __name__ == "__main__":
     if opts.plot:
         print "Producing output figures [%s]..." % opts.graph
 
-        import matplotlib
+        import matplotlib as M
         backends = {'png':'Agg','eps':'PS','pdf':'PDF','svg':'SVG'}
         if opts.graph.lower() in backends:
-            matplotlib.use(backends[opts.graph.lower()])
+            M.use(backends[opts.graph.lower()])
             basename = os.path.splitext(opts.out)[0]
             plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
             plot2 = os.path.extsep.join((basename+"_fit1", opts.graph))
             plot3 = os.path.extsep.join((basename+"_fit2", opts.graph))
             plot4 = os.path.extsep.join((basename+"_fit3", opts.graph))
-            plot6 = os.path.extsep.join((basename+"_fit4", opts.graph))
-            plot7 = os.path.extsep.join((basename+"_fit5", opts.graph))
-            plot8 = os.path.extsep.join((basename+"_fit6", opts.graph))
-            plot5 = os.path.extsep.join((basename+"_fit7", opts.graph))
+            plot5 = os.path.extsep.join((basename+"_fit4", opts.graph))
+            plot6 = os.path.extsep.join((basename+"_fit5", opts.graph))
+            plot7 = os.path.extsep.join((basename+"_fit6", opts.graph))
+            plot8 = os.path.extsep.join((basename+"_fit7", opts.graph))
         else:
             opts.graph = 'pylab'
-            plot1 = plot2 = plot3 = plot4 = plot6 = plot7 = plot8 = plot5 = ''
+            plot1 = plot2 = plot3 = plot4 = plot5 = plot6 = plot7 = plot8 = ''
         import pylab
 
         # Plot of the star and sky spectra -----------------------------------
 
         print_msg("Producing spectra plot %s..." % plot1, 1)
 
-        fig1 = pylab.figure()
+        fig1 = pylab.figure(figsize=(12,8))
+        fig1.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+        
         if skyDeg >= 0:
             axS = fig1.add_subplot(3, 1, 1)
             axB = fig1.add_subplot(3, 1, 2)
@@ -1136,18 +1151,18 @@ if __name__ == "__main__":
             axS = fig1.add_subplot(2, 1, 1)
             axN = fig1.add_subplot(2, 1, 2)
 
-        axS.plot(star_spec.x, star_spec.data, 'b')
+        axS.plot(star_spec.x, star_spec.data, blue)
         axS.text(0.95,0.8, os.path.basename(opts.input), fontsize='small',
                  horizontalalignment='right', transform=axS.transAxes)
 
-        axN.plot(star_spec.x, star_spec.data/S.sqrt(var[:,0]), 'b')
+        axN.plot(star_spec.x, star_spec.data/S.sqrt(var[:,0]), blue)
 
         if skyDeg >= 0:
-            axB.plot(bkg_spec.x, bkg_spec.data, 'g')
+            axB.plot(bkg_spec.x, bkg_spec.data, green)
             axB.set(title=u"Background spectrum (per arcsec²)",
                     xlim=(bkg_spec.x[0],bkg_spec.x[-1]),
                     xticklabels=[])
-            axN.plot(bkg_spec.x, bkg_spec.data/S.sqrt(bkg_spec.var), 'g')
+            axN.plot(bkg_spec.x, bkg_spec.data/S.sqrt(bkg_spec.var), green)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (obj,method),
                 xlim=(star_spec.x[0],star_spec.x[-1]), xticklabels=[])
@@ -1163,8 +1178,12 @@ if __name__ == "__main__":
         ncol = S.floor(S.sqrt(nslice))
         nrow = S.ceil(nslice/float(ncol))
 
-        fig2 = pylab.figure()
-        fig2.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97)
+        fig2 = pylab.figure(figsize=(12,8))
+        fig2.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)        
+
+        fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (obj, airmass),
+                  fontsize='large', ha='center',va='center')
+        
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
         fmin = 0
         for i in xrange(nslice):        # Loop over meta-slices
@@ -1174,15 +1193,20 @@ if __name__ == "__main__":
             ax = fig2.add_subplot(nrow, ncol, i+1, 
                                   xlim=(0,len(data)),
                                   yscale='log')
-            ax.plot(data - fmin, 'b-', lw=2)  # Signal
-            ax.plot(fit - fmin, 'r-')         # Model
+            ax.plot(S.sort(cube.no), data - fmin, color=blue, ls='-', lw=2)  # Signal
+            ax.plot(S.sort(cube.no), fit - fmin,  color=red, ls='-')         # Model
             ax.set_autoscale_on(False)
             if skyDeg >= 0:
-                ax.plot(psf[i,:] - fmin, 'g-') # PSF alone
-                ax.plot(bkg[i,:] - fmin, 'y-') # Background
+                if channel.startswith('B'):
+                    ax.plot(S.arange(225,0,-1), psf[i,:] - fmin, color=green, ls='-') # PSF alone
+                    ax.plot(S.arange(225,0,-1), bkg[i,:] - fmin, color=orange, ls='-') # Background
+                if channel.startswith('R'):
+                    ax.plot(S.arange(1,226,1), psf[i,:] - fmin, color=green, ls='-') # PSF alone
+                    ax.plot(S.arange(1,226,1), bkg[i,:] - fmin, color=orange, ls='-') # Background                
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
+            
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Spaxel ID", fontsize=8)
                 ax.set_ylabel("Flux + cte", fontsize=8)
@@ -1193,8 +1217,12 @@ if __name__ == "__main__":
 
         if not opts.verbosity:  # Plot fit on rows and columns sum
 
-            fig3 = pylab.figure()
-            fig3.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97)
+            fig3 = pylab.figure(figsize=(12,8))
+            fig3.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+
+            fig3.text(0.5,0.97,"Rows and columns plot [%s, airmass=%.2f]" % (obj, airmass),
+                      fontsize='large', ha='center', va='center')
+            
             for i in xrange(nslice):        # Loop over slices
                 ax = fig3.add_subplot(nrow, ncol, i+1)
                 sigSlice = cube.slice2d(i, coord='p', NAN=False)
@@ -1206,10 +1234,12 @@ if __name__ == "__main__":
                 err_J = S.sqrt(varSlice.sum(axis=1))
                 mod_I = modSlice.sum(axis=0)
                 mod_J = modSlice.sum(axis=1)
-                ax.errorbar(range(len(prof_I)),prof_I,err_I, fmt='bo', ms=3)
-                ax.plot(mod_I, 'b-')
-                ax.errorbar(range(len(prof_J)),prof_J,err_J, fmt='r^', ms=3)
-                ax.plot(mod_J, 'r-')
+                ax.errorbar(range(len(prof_I)),prof_I,err_I, marker='o',
+                            mfc=blue, mec=blue, ms=3, ls='None')
+                ax.plot(mod_I, ls='-', color=blue)
+                ax.errorbar(range(len(prof_J)),prof_J,err_J, marker='^',
+                            mfc=red, mec=red, ms=3, ls='None')
+                ax.plot(mod_J, ls='-', color=red)
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                            fontsize=6)
                 ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
@@ -1239,7 +1269,7 @@ if __name__ == "__main__":
                              vmin=max(1e-3,corr.min()), vmax=1,
                              aspect='equal', origin='upper',
                              norm=pylab.matplotlib.colors.LogNorm(),
-                             )
+                             interpolation='nearest')
             ax3.set_xticks(range(len(parnames)))
             ax3.set_xticklabels(parnames,
                                 va='top', fontsize='x-small', rotation=90)
@@ -1247,7 +1277,7 @@ if __name__ == "__main__":
             ax3.set_yticklabels(parnames,
                                 ha='right', fontsize='x-small')
 
-            cb3 = fig3.colorbar(im3, ax=ax3, orientation='horizontal')
+            cb3 = fig3.colorbar(im3, ax=ax3, orientation='vertical')
             cb3.set_label("|Correlation|")
 
         # Plot of the star center of gravity and adjusted center -------------
@@ -1259,7 +1289,9 @@ if __name__ == "__main__":
         xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
         yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
 
-        fig4 = pylab.figure()
+        fig4 = pylab.figure(figsize=(12,8))
+        fig4.subplots_adjust(left=0.07, right=0.95, bottom=0.06, top=0.95)
+        
         ax4a = fig4.add_subplot(2, 2, 1,
                                 xlabel=u"Wavelength [Å]",
                                 ylabel="X center [spaxels]")
@@ -1272,40 +1304,44 @@ if __name__ == "__main__":
                                 ylabel="Y center [spaxels]")
 
         ax4a.errorbar(cube.lbda[good], xc_vec[good], yerr=error_mat[good,2],
-                      fmt='b.',ecolor='b',label="Fit 2D")
+                      marker='.', mfc=blue, mec=blue, capsize=0, ecolor=blue,
+                      ls='None', label="Fit 2D")
         if bad.any():
-            ax4a.plot(cube.lbda[bad],xc_vec[bad],'r.', label='_nolegend_')
+            ax4a.plot(cube.lbda[bad],xc_vec[bad], mfc=red, mec=red, marker='.',
+                      ls='None', label='_nolegend_')
         ax4a.plot(cube.lbda, xguess, 'k--', label="Guess 3D")
-        ax4a.plot(cube.lbda, xfit, 'g', label="Fit 3D")
+        ax4a.plot(cube.lbda, xfit, green, label="Fit 3D")
         pylab.setp(ax4a.get_xticklabels()+ax4a.get_yticklabels(), fontsize=8)
         leg = ax4a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='small')
 
         ax4b.errorbar(cube.lbda[good], yc_vec[good], yerr=error_mat[good,3],
-                      fmt='b.',ecolor='b')
+                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
-            ax4b.plot(cube.lbda[bad],yc_vec[bad],'r.')
-        ax4b.plot(cube.lbda, yfit, 'g')
+            ax4b.plot(cube.lbda[bad],yc_vec[bad],  marker='.', mfc=red, mec=red, ls='None')
+        ax4b.plot(cube.lbda, yfit, green)
         ax4b.plot(cube.lbda, yguess, 'k--')
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
 
         ax4c.errorbar(xc_vec[valid],yc_vec[valid],
                       xerr=error_mat[valid,2],yerr=error_mat[valid,3],
-                      fmt=None, ecolor='g')
-        ax4c.scatter(xc_vec[good],yc_vec[good], faceted=True,
+                      fmt=None, ecolor=green)
+        ax4c.scatter(xc_vec[good],yc_vec[good], edgecolors='none',
                      c=cube.lbda[good][::-1],
-                     cmap=matplotlib.cm.Spectral, zorder=3)
+                     cmap=M.cm.Spectral, zorder=3)
         # Plot position selection process
-        ax4c.plot(xref[good],yref[good],'b.') # Selected ref. positions
-        ax4c.plot(xref[bad],yref[bad],'r.')   # Discarded ref. positions
+        ax4c.plot(xref[good],yref[good], marker='.',
+                  mfc=blue, mec=blue, ls='None') # Selected ref. positions
+        ax4c.plot(xref[bad],yref[bad], marker='.',
+                  mfc=red, mec=red, ls='None')   # Discarded ref. positions
         ax4c.plot((xref0,xc),(yref0,yc),'k-')
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
-        ax4c.plot(xfit, yfit, 'g')       # Adjusted ADR
+        ax4c.plot(xfit, yfit, green)     # Adjusted ADR
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,),(yc,),'k+')
-        ax4c.add_patch(matplotlib.patches.Circle((xref0,yref0),radius=rmax,
+        ax4c.add_patch(M.patches.Circle((xref0,yref0),radius=rmax,
                                                  ec='0.8',fc='None'))
-        ax4c.add_patch(matplotlib.patches.Rectangle((-7.5,-7.5),15,15,
+        ax4c.add_patch(M.patches.Rectangle((-7.5,-7.5),15,15,
                                                  ec='0.8',lw=2,fc='None')) # FoV
         ax4c.text(0.03, 0.85,
                   u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % \
@@ -1315,8 +1351,8 @@ if __name__ == "__main__":
                   u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % \
                   (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle()),
                   transform=ax4c.transAxes, fontsize='small')
-        fig4.text(0.5, 0.93, "ADR plot [%s, airmass=%.2f]" % (obj, airmass),
-                  horizontalalignment='center', size='large')
+        fig4.text(0.5, 0.97, "ADR plot [%s, airmass=%.2f]" % (obj, airmass),
+                  ha='center', va='center', size='large')
 
         # Plot of the other model parameters ---------------------------------
 
@@ -1333,12 +1369,14 @@ if __name__ == "__main__":
         err_PA = errorpar[4]
 
         def plot_conf_interval(ax, x, y, dy):
-            ax.plot(x, y, 'g', label="Fit 3D")
+            ax.plot(x, y, green, label="Fit 3D")
             if dy is not None:
-                ax.plot(x, y+dy, 'g:', label='_nolegend_')
-                ax.plot(x, y-dy, 'g:', label='_nolegend_')
+                ax.plot(x, y+dy, ls=':', color=green, label='_nolegend_')
+                ax.plot(x, y-dy, ls=':', color=green, label='_nolegend_')
 
-        fig6 = pylab.figure()
+        fig6 = pylab.figure(figsize=(12,8))
+        fig6.subplots_adjust(left=0.09, right=0.95, bottom=0.06, top=0.95)
+        
         ax6a = fig6.add_subplot(2, 1, 1,
                                 title='Model parameters ' \
                                     '[%s, seeing %.2f" FWHM]' % \
@@ -1373,10 +1411,11 @@ if __name__ == "__main__":
         #                     zip(xfit,yfit,fit_ell,[fitpar[4]]*nslice)])
         # and associated errors.
 
-        ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6],
-                      fmt='b.', ecolor='b', label="Fit 2D")
+        ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6], marker='.', 
+                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None', label="Fit 2D")
         if bad.any():
-            ax6a.plot(cube.lbda[bad],alpha_vec[bad],'r.', label="_nolegend_")
+            ax6a.plot(cube.lbda[bad],alpha_vec[bad], marker='.',
+                      mfc=red, mec=red, ls='None', label="_nolegend_")
         ax6a.plot(cube.lbda, guess_alpha, 'k--', label="Guess 3D")
         #plot_conf_interval(ax6a, cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, cube.lbda, fit_alpha, None)
@@ -1393,10 +1432,10 @@ if __name__ == "__main__":
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='small')
 
-        ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5],
-                      fmt='b.',ecolor='blue')
+        ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5], ls='None',
+                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0)
         if bad.any():
-            ax6b.plot(cube.lbda[bad],ell_vec[bad],'r.')
+            ax6b.plot(cube.lbda[bad],ell_vec[bad], marker='.', mfc=red, mec=red, ls='None')
         ax6b.plot(cube.lbda, guess_ell, 'k--')
         #plot_conf_interval(ax6b, cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, cube.lbda, fit_ell, None)
@@ -1411,10 +1450,10 @@ if __name__ == "__main__":
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6b.transAxes, fontsize='small')
 
-        ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], 
-                      fmt='b.', ecolor='b')
+        ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], ls='None', 
+                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0)
         if bad.any():
-            ax6c.plot(cube.lbda[bad],PA_vec[bad],'r.')
+            ax6c.plot(cube.lbda[bad],PA_vec[bad], marker='.', mfc=red, mec=red, ls='None')
         ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA]*2, 'k--')
         plot_conf_interval(ax6c, S.asarray([cube.lbda[0],cube.lbda[-1]]),
                            S.ones(2)*fitpar[4], S.ones(2)*err_PA)
@@ -1426,8 +1465,11 @@ if __name__ == "__main__":
 
         print_msg("Producing radial profile plot %s..." % plot7, 1)
 
-        fig7 = pylab.figure()
-        fig7.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97)
+        fig7 = pylab.figure(figsize=(12,8))
+        fig7.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+
+        fig7.text(0.5,0.97,"Radial profile plot [%s, airmass=%.2f]" % (obj, airmass),
+                  fontsize='large', ha='center', va='center')
 
         def ellRadius(x,y, x0,y0, ell, q):
             dx = x - x0
@@ -1461,17 +1503,21 @@ if __name__ == "__main__":
                              fit_ell[i], fitpar[4])
             #fmin = min(cube.data[i].min(),cube_fit.data[i].min()) - \
             #    max(cube.data[i].max(),cube_fit.data[i].max())/1e4
-            ax.plot(r, cube.data[i] - fmin, 'b,')             # Data
-            ax.plot(rfit, cube_fit.data[i] - fmin, 'r.',ms=1) # Model
+            ax.plot(r, cube.data[i] - fmin,  marker=',', mfc=blue, mec=blue,
+                    ls='None') # Data
+            ax.plot(rfit, cube_fit.data[i] - fmin, marker='.', mfc=red, mec=red,
+                    ms=1, ls='None') # Model
             ax.set_autoscale_on(False)
             if skyDeg >= 0:
-                ax.plot(rfit, psf[i] - fmin,'g.',ms=1) # PSF alone
-                ax.plot(rfit, bkg[i] - fmin,'y.',ms=1) # Sky
+                ax.plot(rfit, psf[i] - fmin, marker='.', mfc=green, mec=green,
+                        ms=1, ls='None') # PSF alone
+                ax.plot(rfit, bkg[i] - fmin, marker='.', mfc=orange, mec=orange,
+                        ms=1, ls='None') # Sky
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='right', transform=ax.transAxes)
             if method!='psf':
-                ax.axvline(radius/SpaxelSize, color='y', lw=2)
+                ax.axvline(radius/SpaxelSize, color=orange, lw=2)
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
                 ax.set_ylabel("Flux + cte", fontsize=8)
@@ -1507,14 +1553,14 @@ if __name__ == "__main__":
                 if skyDeg >= 0:
                     rfb,pb = radialbin(rfit, psf[i])
                     rfb,bb = radialbin(rfit, bkg[i])
-                    ax.plot(rfb, 1 - S.cumsum(rfb*pb)/norm, 'g.')
-                    ax.plot(rfb, 1 - S.cumsum(rfb*bb)/norm, 'y.')
+                    ax.plot(rfb, 1 - S.cumsum(rfb*pb)/norm, marker='.', mfc=green,   mec=green, ls='None')
+                    ax.plot(rfb, 1 - S.cumsum(rfb*bb)/norm, marker='.', mfc=orange, mec=orange, ls='None')
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), 
                            fontsize=6)
                 ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                         horizontalalignment='right', transform=ax.transAxes)
                 if method!='psf':
-                    ax.axvline(radius/SpaxelSize, color='y', lw=2)
+                    ax.axvline(radius/SpaxelSize, color=orange, lw=2)
                 if ax.is_last_row() and ax.is_first_col():
                     ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
                     ax.set_ylabel("Missing energy [fraction]", fontsize=8)
@@ -1531,13 +1577,13 @@ if __name__ == "__main__":
                 chi2 = (cube.slice2d(i,coord='p') - \
                         cube_fit.slice2d(i,coord='p'))**2 / \
                         cube.slice2d(i,coord='p',var=True)
-                ax.plot(rfit, chi2.flatten(), 'b.')
+                ax.plot(rfit, chi2.flatten(), marker='.', mfc=blue, mec=blue)
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), 
                            fontsize=6)
                 ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                         horizontalalignment='right', transform=ax.transAxes)
                 if method!='psf':
-                    ax.axvline(radius/SpaxelSize, color='y', lw=2)
+                    ax.axvline(radius/SpaxelSize, color=orange, lw=2)
                 if ax.is_last_row() and ax.is_first_col():
                     ax.set_xlabel("Elliptical radius [spaxels]", fontsize=8)
                     ax.set_ylabel(ur"$\chi$²", fontsize=8)
@@ -1546,9 +1592,13 @@ if __name__ == "__main__":
 
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
-        fig8 = pylab.figure()
-        fig8.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97,
+        fig8 = pylab.figure(figsize=(12,8))
+        fig8.subplots_adjust(left=0.05, right=0.96, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
+
+        fig8.text(0.5,0.97,"Contour plot [%s, airmass=%.2f]" % (obj, airmass),
+                  fontsize='large', ha='center', va='center')
+                
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
                   cube.y.min()-0.5,cube.y.max()+0.5)
         for i in xrange(nslice):        # Loop over meta-slices
@@ -1562,12 +1612,12 @@ if __name__ == "__main__":
             pylab.setp(cnt.collections, linestyle='dotted')
             ax.errorbar((xc_vec[i],),(yc_vec[i],),
                         xerr=(error_mat[i,2],),yerr=(error_mat[i,3],),
-                        fmt=None, ecolor=good[i] and 'k' or 'r')
-            ax.plot((xfit[i],),(yfit[i],), 'g+')
+                        fmt=None, ecolor=good[i] and 'k' or red)
+            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)
             if opts.method != 'psf':
-                ax.add_patch(matplotlib.patches.Circle((xfit[i],yfit[i]),
-                                                       radius/SpaxelSize,
-                                                       fc='None', ec='y', lw=2))
+                ax.add_patch(M.patches.Circle((xfit[i],yfit[i]),
+                                              radius/SpaxelSize,
+                                              fc='None', ec=orange, lw=2))
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
@@ -1584,23 +1634,37 @@ if __name__ == "__main__":
 
         print_msg("Producing residuals plot %s..." % plot5, 1)
 
-        fig5 = pylab.figure()
-        fig5.subplots_adjust(left=0.06, right=0.97, bottom=0.05, top=0.97,
+        fig5 = pylab.figure(figsize=(12,8))
+        fig5.subplots_adjust(left=0.06, right=0.91, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
+
+        fig5.text(0.5,0.97,"Residuals plot [%s, airmass=%.2f]" % (obj, airmass),
+                  fontsize='large', ha='center', va='center')
+
+        images = []
+        bounds = []
+        cmap = M.cm.jet
+
+        cax = fig5.add_axes([0.91,0.06,0.02,0.89])
+                
         for i in xrange(nslice):        # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
             var  = cube.slice2d(i, coord='p', var=True)
             fit  = cube_fit.slice2d(i, coord='p')
             res  = S.nan_to_num((data - fit)/S.sqrt(var))
+            
             vmin,vmax = pylab.prctile(res, (3.,97.)) # Percentiles
-            ax.imshow(res, origin='lower', extent=extent,
-                      vmin=vmin, vmax=vmax, interpolation='nearest')
-            ax.plot((xfit[i],),(yfit[i],), 'g+')
+            bounds.append([vmin,vmax])
+            images.append(ax.imshow(res, origin='lower', extent=extent,
+                                    cmap=cmap, interpolation='nearest')) # List of images
+            
+            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)            
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
             ax.axis(extent)
+            
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
@@ -1608,7 +1672,31 @@ if __name__ == "__main__":
                 ax.set_xticks([])
             if not ax.is_first_col():
                 ax.set_yticks([])
+                
+        # Set the first image as the master, with all the others
+        # observing it for changes in cmap or norm.
+        
+        class ImageFollower:
+            'update image in response to changes in clim or cmap on another image'
+            def __init__(self, follower):
+                self.follower = follower
+            def __call__(self, leader):
+                self.follower.set_cmap(leader.get_cmap())
+                self.follower.set_clim(leader.get_clim())
 
+        vmin = min(S.transpose(bounds)[0])
+        vmax = max(S.transpose(bounds)[1])
+        norm = M.colors.Normalize(vmin=vmin, vmax=vmax)
+        for i, im in enumerate(images):
+            im.set_norm(norm)
+            if i > 0:
+                images[0].callbacksSM.connect('changed', ImageFollower(im))
+
+        # The colorbar is also based on this master image.
+        fig5.colorbar(images[0], cax, orientation='vertical')
+
+        # Show or save figures -------------------------------------------------
+        
         if opts.graph=='pylab':
             pylab.show()
         else:
@@ -1616,9 +1704,9 @@ if __name__ == "__main__":
             fig2.savefig(plot2)
             fig3.savefig(plot3)
             fig4.savefig(plot4)
+            fig5.savefig(plot5)
             fig6.savefig(plot6)
             fig7.savefig(plot7)
             fig8.savefig(plot8)
-            fig5.savefig(plot5)
 
-# End of extract_star.py =====================================================
+# End of extract_star.py =======================================================

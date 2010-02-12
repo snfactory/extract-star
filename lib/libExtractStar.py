@@ -19,6 +19,9 @@ MK_temp = 2.                            # Default temperature [C]
 
 DEG2RAD = S.pi/180
 
+# Chebychev coefficients for 2nd order polynomial
+chebs = [ S.special.chebyu(i) for i in range(3) ]
+
 def atmosphericIndex(lbda, P=616., T=2.):
     """Compute atmospheric refractive index: lbda in angstrom, P in mbar, T in
     C. Relative humidity effect is neglected. From Fillipenko, 1982 (from
@@ -289,6 +292,14 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
                              "for degree %d" % (y[good].size,deg))
     return coeffs
 
+def chebychev(pars, x, xmin, xmax, chebs):
+    """Orthogonal Chebychev polynomial"""
+
+    # Normalization -> [-1,1] 
+    nx = ( 2*x - (xmax+xmin) ) / (xmax-xmin)
+
+    return S.sum( [ p * ch(nx) for p,ch in zip(pars,chebs) ], axis=0)
+
 # Ellipse utilities ==============================
 
 def quadEllipse(a,b,c,d,f,g):
@@ -445,7 +456,12 @@ class ExposurePSF:
         alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
-        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
+        b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
+        s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
+        s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
+        e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
+        e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)                 
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -497,7 +513,12 @@ class ExposurePSF:
         alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
-        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
+        b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
+        s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
+        s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
+        e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
+        e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)          
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -537,7 +558,12 @@ class ExposurePSF:
 
         lrel = ( 2*lbda - (self.lmin+self.lmax) ) / ( self.lmax-self.lmin )
         alpha = polyEval(alphaCoeffs, lrel)
-        s1,s0,b1,b0,e1,e0 = self.corrCoeffs
+        b0 = chebychev(self.beta0, lbda, self.lbda_min, self.lbda_max, chebs)
+        b1 = chebychev(self.beta1, lbda, self.lbda_min, self.lbda_max, chebs)
+        s0 = chebychev(self.sigma0, lbda, self.lbda_min, self.lbda_max, chebs)
+        s1 = chebychev(self.sigma1, lbda, self.lbda_min, self.lbda_max, chebs)
+        e0 = chebychev(self.eta0, lbda, self.lbda_min, self.lbda_max, chebs)
+        e1 = chebychev(self.eta1, lbda, self.lbda_min, self.lbda_max, chebs)          
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -557,14 +583,54 @@ class ExposurePSF:
 
         return fwhm                     # In spaxels
 
+class long_blue_exposure_psf(ExposurePSF): 
 
-class Long_ExposurePSF(ExposurePSF): 
+    name = 'long blue'
+    lbda_min = 3399.0
+    lbda_max = 5100.0
 
-    name = 'long'
-    corrCoeffs = [0.215,0.545,0.345,1.685,0.0,1.04] # long exposures
+    beta0  = [ 1.318,-0.022, 0.031] # b00,b01,b02
+    beta1  = [ 0.519, 0.017, 0.011] # b10,b11,b12
+    sigma0 = [ 0.565, 0.007, 0.024] # s00,s01,s02
+    sigma1 = [ 0.234,-0.009,-0.029] # s10,s11,s12
+    eta0   = [ 1.106,-0.036,-0.109] # e00,e01,e02
+    eta1   = [-0.184, 0.019, 0.056] # e10,e11,e12    
 
+class long_red_exposure_psf(ExposurePSF):         
 
-class Short_ExposurePSF(ExposurePSF):
+    name = 'long red'
+    lbda_min = 5318.0
+    lbda_max = 9508.0
+    
+    beta0  = [ 1.294,-0.049, 0.021] # b00,b01,b02
+    beta1  = [ 0.506, 0.024, 0.020] # b10,b11,b12
+    sigma0 = [ 0.536, 0.031, 0.024] # s00,s01,s02
+    sigma1 = [ 0.248,-0.022,-0.029] # s10,s11,s12
+    eta0   = [ 1.251,-0.063,-0.091] # e00,e01,e02   
+    eta1   = [-0.229, 0.042, 0.057] # e10,e11,e12
+    
+class short_blue_exposure_psf(ExposurePSF):
 
-    name = 'short'
-    corrCoeffs = [0.2,0.56,0.415,1.395,0.16,0.6] # short exposures
+    name = 'short blue'
+    lbda_min = 3399.0
+    lbda_max = 5100.0    
+    
+    beta0  = [ 1.433, 0.030, 0.024] # b00,b01,b02
+    beta1  = [ 0.470,-0.013, 0.029] # b10,b11,b12
+    sigma0 = [ 0.515,-0.019, 0.022] # s00,s01,s02
+    sigma1 = [ 0.234, 0.003,-0.042] # s10,s11,s12
+    eta0   = [ 0.525,-0.009,-0.116] # e00,e01,e02   
+    eta1   = [ 0.016, 0.017, 0.055] # e10,e11,e12
+    
+class short_red_exposure_psf(ExposurePSF):
+
+    name = 'short red'
+    lbda_min = 5318.0
+    lbda_max = 9508.0
+    
+    beta0  = [1.407,-0.012,-0.009] # b00,b01,b02
+    beta1  = [0.476, 0.019, 0.022] # b10,b11,b12
+    sigma0 = [0.535,-0.012, 0.007] # s00,s01,s02
+    sigma1 = [0.166,-0.009,-0.009] # s10,s11,s12
+    eta0   = [0.013,-0.082, 0.000] # e00,e01,e02   
+    eta1   = [0.521, 0.101, 0.000] # e10,e11,e12
