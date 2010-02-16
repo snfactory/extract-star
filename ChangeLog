@@ -1,3 +1,13 @@
+2010-02-16  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: add '--correlations' option
+	which allow to choose between 'old' and 'new' version of the PSF
+	shape parameters correlations (default is 'old').
+
+	* lib/libExtractStar.py: add '--correlations' option
+	which allow to choose between 'old' and 'new' version of the PSF
+	shape parameters correlations (default is 'old').
+	
 2010-02-12  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Major update of the
@@ -9,7 +19,8 @@
 	etc). Add classes for red and blue exposures.
 
 2009-12-01  Stephen Bailey <stephen.bailey@in2p3.fr>
-    * Removed numarray from cube_explorer.py and convert_3DPSF.py
+
+        * Removed: numarray from cube_explorer.py and convert_3DPSF.py
 
 2009-11-19  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 

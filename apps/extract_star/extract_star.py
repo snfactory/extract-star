@@ -683,7 +683,11 @@ if __name__ == "__main__":
                       default=2)
     parser.add_option("-E", "--ellDeg", type="int",
                       help="Ellipticity polynomial degree [%default]",
-                      default=2)    
+                      default=0)    
+
+    parser.add_option("-c", "--correlations", type="string",
+                      help="(PSF correlations values 'new' or 'old') [%default]",
+                      default='old')    
 
     parser.add_option("-m", "--method", type="string",
                       help="Extraction method ['%default']",
@@ -735,6 +739,9 @@ if __name__ == "__main__":
         if opts.sky:
             print "WARNING: cannot extract sky spectrum in no-sky mode."
 
+    if opts.correlations not in ['new','old']:
+        parser.error("'correlations' option must be 'new' or 'old' !")
+
     # Input datacube ===========================================================
 
     print "Opening datacube %s" % opts.input
@@ -771,15 +778,24 @@ if __name__ == "__main__":
     skyDeg   = opts.skyDeg
     npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
 
-    # Select the PSF (short or long, red or blue)
-    if (efftime > 12.) and (channel.startswith('B')):
-        psfFn = libES.long_blue_exposure_psf
-    if (efftime > 12.) and (channel.startswith('R')):
-        psfFn = libES.long_red_exposure_psf
-    if (efftime < 12.) and (channel.startswith('B')):
-        psfFn = libES.short_blue_exposure_psf
-    if (efftime < 12.) and (channel.startswith('R')):
-        psfFn = libES.short_red_exposure_psf
+    # Select the PSF
+    if opts.correlations=='new':
+        
+        # New parameters description (short or long, red or blue)
+        if (efftime > 12.) and (channel.startswith('B')):
+            psfFn = libES.long_blue_exposure_psf
+        if (efftime > 12.) and (channel.startswith('R')):
+            psfFn = libES.long_red_exposure_psf
+        if (efftime < 12.) and (channel.startswith('B')):
+            psfFn = libES.short_blue_exposure_psf
+        if (efftime < 12.) and (channel.startswith('R')):
+            psfFn = libES.short_red_exposure_psf
+    else:
+        
+        # Old parameters description (short or long)
+        psfFn = (efftime > 12.) and \
+                libES.Long_ExposurePSF or \
+                libES.Short_ExposurePSF
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
@@ -1037,13 +1053,11 @@ if __name__ == "__main__":
     cube_fit.y = cube_fit.j - 7     # y in spaxel
     
     psf_model = psfFn(psfCtes, cube=cube_fit)
-    #psf_model = data_model.func[0]
     psf = psf_model.comp(fitpar[:psf_model.npar])
     cube_fit.data = psf.copy()
 
     if skyDeg >= 0:
         bkg_model = pySNIFS_fit.poly2D(skyDeg, cube_fit)
-        #bkg_model = data_model.func[1]
         bkg = bkg_model.comp(fitpar[psf_model.npar: \
                                     psf_model.npar+bkg_model.npar])
         cube_fit.data += bkg
@@ -1197,12 +1211,8 @@ if __name__ == "__main__":
             ax.plot(S.sort(cube.no), fit - fmin,  color=red, ls='-')         # Model
             ax.set_autoscale_on(False)
             if skyDeg >= 0:
-                if channel.startswith('B'):
-                    ax.plot(S.arange(225,0,-1), psf[i,:] - fmin, color=green, ls='-') # PSF alone
-                    ax.plot(S.arange(225,0,-1), bkg[i,:] - fmin, color=orange, ls='-') # Background
-                if channel.startswith('R'):
-                    ax.plot(S.arange(1,226,1), psf[i,:] - fmin, color=green, ls='-') # PSF alone
-                    ax.plot(S.arange(1,226,1), bkg[i,:] - fmin, color=orange, ls='-') # Background                
+                ax.plot(S.sort(cube_fit.no), psf[i,:] - fmin, color=green, ls='-') # PSF alone
+                ax.plot(S.sort(cube_fit.no), bkg[i,:] - fmin, color=orange, ls='-') # Background
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
@@ -1646,7 +1656,8 @@ if __name__ == "__main__":
         cmap = M.cm.jet
 
         cax = fig5.add_axes([0.91,0.06,0.02,0.89])
-                
+
+        # Loop over slices
         for i in xrange(nslice):        # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
@@ -1664,7 +1675,8 @@ if __name__ == "__main__":
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
             ax.axis(extent)
-            
+
+            # Axis
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
@@ -1673,27 +1685,17 @@ if __name__ == "__main__":
             if not ax.is_first_col():
                 ax.set_yticks([])
                 
-        # Set the first image as the master, with all the others
-        # observing it for changes in cmap or norm.
-        
-        class ImageFollower:
-            'update image in response to changes in clim or cmap on another image'
-            def __init__(self, follower):
-                self.follower = follower
-            def __call__(self, leader):
-                self.follower.set_cmap(leader.get_cmap())
-                self.follower.set_clim(leader.get_clim())
-
+        # Normalization
         vmin = min(S.transpose(bounds)[0])
         vmax = max(S.transpose(bounds)[1])
+
         norm = M.colors.Normalize(vmin=vmin, vmax=vmax)
         for i, im in enumerate(images):
             im.set_norm(norm)
-            if i > 0:
-                images[0].callbacksSM.connect('changed', ImageFollower(im))
 
-        # The colorbar is also based on this master image.
-        fig5.colorbar(images[0], cax, orientation='vertical')
+        # Colorbar
+        cbar = fig5.colorbar(images[0], cax, orientation='vertical')
+        cbar.set_label(r'residuals [$\sigma$]', fontsize='large')
 
         # Show or save figures -------------------------------------------------
         

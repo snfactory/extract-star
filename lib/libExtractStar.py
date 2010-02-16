@@ -456,12 +456,20 @@ class ExposurePSF:
         alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
-        b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
-        b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
-        s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
-        s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
-        e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
-        e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)                 
+        if self.correlations=='new':
+            b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
+            b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
+            s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
+            s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
+            e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
+            e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)
+        else:
+            b0 = self.beta0
+            b1 = self.beta1
+            s0 = self.sigma0
+            s1 = self.sigma1
+            e0 = self.eta0
+            e1 = self.eta1                
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -513,12 +521,20 @@ class ExposurePSF:
         alpha = polyEval(alphaCoeffs, self.lrel)
 
         # Correlated params
-        b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
-        b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
-        s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
-        s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
-        e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
-        e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)          
+        if self.correlations=='new':
+            b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
+            b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
+            s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
+            s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
+            e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
+            e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)
+        else:
+            b0 = self.beta0
+            b1 = self.beta1
+            s0 = self.sigma0
+            s1 = self.sigma1
+            e0 = self.eta0
+            e1 = self.eta1        
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -558,12 +574,20 @@ class ExposurePSF:
 
         lrel = ( 2*lbda - (self.lmin+self.lmax) ) / ( self.lmax-self.lmin )
         alpha = polyEval(alphaCoeffs, lrel)
-        b0 = chebychev(self.beta0, lbda, self.lbda_min, self.lbda_max, chebs)
-        b1 = chebychev(self.beta1, lbda, self.lbda_min, self.lbda_max, chebs)
-        s0 = chebychev(self.sigma0, lbda, self.lbda_min, self.lbda_max, chebs)
-        s1 = chebychev(self.sigma1, lbda, self.lbda_min, self.lbda_max, chebs)
-        e0 = chebychev(self.eta0, lbda, self.lbda_min, self.lbda_max, chebs)
-        e1 = chebychev(self.eta1, lbda, self.lbda_min, self.lbda_max, chebs)          
+        if self.correlations=='new':
+            b0 = chebychev(self.beta0, lbda, self.lbda_min, self.lbda_max, chebs)
+            b1 = chebychev(self.beta1, lbda, self.lbda_min, self.lbda_max, chebs)
+            s0 = chebychev(self.sigma0, lbda, self.lbda_min, self.lbda_max, chebs)
+            s1 = chebychev(self.sigma1, lbda, self.lbda_min, self.lbda_max, chebs)
+            e0 = chebychev(self.eta0, lbda, self.lbda_min, self.lbda_max, chebs)
+            e1 = chebychev(self.eta1, lbda, self.lbda_min, self.lbda_max, chebs)
+        else:
+            b0 = self.beta0
+            b1 = self.beta1
+            s0 = self.sigma0
+            s1 = self.sigma1
+            e0 = self.eta0
+            e1 = self.eta1
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -583,9 +607,40 @@ class ExposurePSF:
 
         return fwhm                     # In spaxels
 
+# Old PSF parameters description without chromaticity for long and
+# short exposures.
+
+class Long_ExposurePSF(ExposurePSF): 
+    
+    name = 'long'
+    correlations = 'old'
+
+    beta0  = 1.685
+    beta1  = 0.345
+    sigma0 = 0.545
+    sigma1 = 0.215
+    eta0   = 1.04
+    eta1   = 0.00 
+
+class Short_ExposurePSF(ExposurePSF):
+
+    name = 'short'
+    correlations = 'old'
+
+    beta0  = 1.395
+    beta1  = 0.415
+    sigma0 = 0.56 
+    sigma1 = 0.2  
+    eta0   = 0.6  
+    eta1   = 0.16     
+
+# New PSF parameters description using 2nd order chebychev polynomial
+# for long and short exposures and blue and red channels.
+
 class long_blue_exposure_psf(ExposurePSF): 
 
     name = 'long blue'
+    correlations = 'new'
     lbda_min = 3399.0
     lbda_max = 5100.0
 
@@ -599,6 +654,7 @@ class long_blue_exposure_psf(ExposurePSF):
 class long_red_exposure_psf(ExposurePSF):         
 
     name = 'long red'
+    correlations = 'new'
     lbda_min = 5318.0
     lbda_max = 9508.0
     
@@ -612,6 +668,7 @@ class long_red_exposure_psf(ExposurePSF):
 class short_blue_exposure_psf(ExposurePSF):
 
     name = 'short blue'
+    correlations = 'new'
     lbda_min = 3399.0
     lbda_max = 5100.0    
     
@@ -625,6 +682,7 @@ class short_blue_exposure_psf(ExposurePSF):
 class short_red_exposure_psf(ExposurePSF):
 
     name = 'short red'
+    correlations = 'new'
     lbda_min = 5318.0
     lbda_max = 9508.0
     
