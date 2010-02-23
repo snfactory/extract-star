@@ -13,6 +13,7 @@ __author__ = "Y. Copin, C. Buton, E. Pecontal"
 __version__ = '$Id$'
 
 import scipy as S
+import scipy.special
 
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]

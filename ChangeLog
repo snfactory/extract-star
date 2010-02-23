@@ -1,3 +1,8 @@
+2010-02-23  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
+
+	* lib/libExtractStar.py: minor bug correction related to
+	'scipy.special' importation.
+
 2010-02-16  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: add '--correlations' option
