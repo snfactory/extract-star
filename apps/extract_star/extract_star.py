@@ -372,7 +372,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
               [0, 0],                   # theta (unfitted)
               [None, None],             # xc
               [None, None],             # yc
-              [None, None],             # PA              
+              [None, None],             # PA
               [0, None],                # ellipticity > 0
               [0, None],                # alpha > 0
               [0, None]]                # Intensity > 0
@@ -521,7 +521,7 @@ def create_3D_log_file(filename,object,airmass,efftime,
     for i in xrange(alphaDeg+1):
         list3D += [fitpar[6+ellDeg+i],errorpar[6+ellDeg+i]]
     list3D += [khi3D]
-    logfile.write(fmt % tuple(list3D))  
+    logfile.write(fmt % tuple(list3D)) 
 
     # Megaslice parameters
     npar_psf = 7 + ellDeg + alphaDeg
@@ -683,11 +683,11 @@ if __name__ == "__main__":
                       default=2)
     parser.add_option("-E", "--ellDeg", type="int",
                       help="Ellipticity polynomial degree [%default]",
-                      default=0)    
+                      default=0)
 
     parser.add_option("-c", "--correlations", type="string",
-                      help="(PSF correlations values 'new' or 'old') [%default]",
-                      default='old')    
+                      help="PSF correlation (new|old) [%default]",
+                      default='old') 
 
     parser.add_option("-m", "--method", type="string",
                       help="Extraction method ['%default']",
@@ -844,7 +844,7 @@ if __name__ == "__main__":
     # Save 2D adjusted parameter file ==========================================
     
     if opts.file:
-        print "Producing 2D adjusted parameter file [%s]..." % opts.file        
+        print "Producing 2D adjusted parameter file [%s]..." % opts.file
         create_2D_log_file(opts.file,obj,airmass,efftime,
                            cube,param_arr,khi2_vec,error_mat)
 
@@ -1193,7 +1193,7 @@ if __name__ == "__main__":
         nrow = S.ceil(nslice/float(ncol))
 
         fig2 = pylab.figure(figsize=(12,8))
-        fig2.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)        
+        fig2.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
 
         fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (obj, airmass),
                   fontsize='large', ha='center',va='center')
@@ -1207,12 +1207,16 @@ if __name__ == "__main__":
             ax = fig2.add_subplot(nrow, ncol, i+1, 
                                   xlim=(0,len(data)),
                                   yscale='log')
-            ax.plot(S.sort(cube.no), data - fmin, color=blue, ls='-', lw=2)  # Signal
-            ax.plot(S.sort(cube.no), fit - fmin,  color=red, ls='-')         # Model
+            ax.plot(S.sort(cube.no), data - fmin,
+                    color=blue, ls='-', lw=2) # Signal
+            ax.plot(S.sort(cube.no), fit - fmin,
+                    color=red, ls='-')        # Model
             ax.set_autoscale_on(False)
             if skyDeg >= 0:
-                ax.plot(S.sort(cube_fit.no), psf[i,:] - fmin, color=green, ls='-') # PSF alone
-                ax.plot(S.sort(cube_fit.no), bkg[i,:] - fmin, color=orange, ls='-') # Background
+                ax.plot(S.sort(cube_fit.no), psf[i,:] - fmin,
+                        color=green, ls='-')  # PSF alone
+                ax.plot(S.sort(cube_fit.no), bkg[i,:] - fmin,
+                        color=orange, ls='-') # Background
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
@@ -1230,7 +1234,8 @@ if __name__ == "__main__":
             fig3 = pylab.figure(figsize=(12,8))
             fig3.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
 
-            fig3.text(0.5,0.97,"Rows and columns plot [%s, airmass=%.2f]" % (obj, airmass),
+            fig3.text(0.5,0.97, "Rows and columns plot [%s, airmass=%.2f]" % \
+                      (obj, airmass),
                       fontsize='large', ha='center', va='center')
             
             for i in xrange(nslice):        # Loop over slices
@@ -1326,9 +1331,11 @@ if __name__ == "__main__":
         pylab.setp(leg.get_texts(), fontsize='small')
 
         ax4b.errorbar(cube.lbda[good], yc_vec[good], yerr=error_mat[good,3],
-                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
+                      marker='.', mfc=blue, mec=blue, ecolor=blue,
+                      capsize=0, ls='None')
         if bad.any():
-            ax4b.plot(cube.lbda[bad],yc_vec[bad],  marker='.', mfc=red, mec=red, ls='None')
+            ax4b.plot(cube.lbda[bad],yc_vec[bad],
+                      marker='.', mfc=red, mec=red, ls='None')
         ax4b.plot(cube.lbda, yfit, green)
         ax4b.plot(cube.lbda, yguess, 'k--')
         pylab.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(), fontsize=8)
@@ -1421,11 +1428,13 @@ if __name__ == "__main__":
         #                     zip(xfit,yfit,fit_ell,[fitpar[4]]*nslice)])
         # and associated errors.
 
-        ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6], marker='.', 
-                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None', label="Fit 2D")
+        ax6a.errorbar(cube.lbda[good], alpha_vec[good], error_mat[good,6],
+                      marker='.', 
+                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None',
+                      label="Fit 2D")
         if bad.any():
-            ax6a.plot(cube.lbda[bad],alpha_vec[bad], marker='.',
-                      mfc=red, mec=red, ls='None', label="_nolegend_")
+            ax6a.plot(cube.lbda[bad],alpha_vec[bad],
+                      marker='.', mfc=red, mec=red, ls='None', label="_")
         ax6a.plot(cube.lbda, guess_alpha, 'k--', label="Guess 3D")
         #plot_conf_interval(ax6a, cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, cube.lbda, fit_alpha, None)
@@ -1442,10 +1451,12 @@ if __name__ == "__main__":
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='small')
 
-        ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5], ls='None',
-                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0)
+        ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5],
+                      marker='.',
+                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
-            ax6b.plot(cube.lbda[bad],ell_vec[bad], marker='.', mfc=red, mec=red, ls='None')
+            ax6b.plot(cube.lbda[bad],ell_vec[bad],
+                      marker='.', mfc=red, mec=red, ls='None')
         ax6b.plot(cube.lbda, guess_ell, 'k--')
         #plot_conf_interval(ax6b, cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, cube.lbda, fit_ell, None)
@@ -1460,10 +1471,13 @@ if __name__ == "__main__":
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6b.transAxes, fontsize='small')
 
-        ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], ls='None', 
-                      marker='.', mfc=blue, mec=blue, ecolor=blue, capsize=0)
+        ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], 
+                      marker='.',
+                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
-            ax6c.plot(cube.lbda[bad],PA_vec[bad], marker='.', mfc=red, mec=red, ls='None')
+            ax6c.plot(cube.lbda[bad],PA_vec[bad],
+                      marker='.',
+                      mfc=red, mec=red, ls='None')
         ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA]*2, 'k--')
         plot_conf_interval(ax6c, S.asarray([cube.lbda[0],cube.lbda[-1]]),
                            S.ones(2)*fitpar[4], S.ones(2)*err_PA)
@@ -1478,7 +1492,8 @@ if __name__ == "__main__":
         fig7 = pylab.figure(figsize=(12,8))
         fig7.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
 
-        fig7.text(0.5,0.97,"Radial profile plot [%s, airmass=%.2f]" % (obj, airmass),
+        fig7.text(0.5,0.97,
+                  "Radial profile plot [%s, airmass=%.2f]" % (obj, airmass),
                   fontsize='large', ha='center', va='center')
 
         def ellRadius(x,y, x0,y0, ell, q):
@@ -1563,8 +1578,10 @@ if __name__ == "__main__":
                 if skyDeg >= 0:
                     rfb,pb = radialbin(rfit, psf[i])
                     rfb,bb = radialbin(rfit, bkg[i])
-                    ax.plot(rfb, 1 - S.cumsum(rfb*pb)/norm, marker='.', mfc=green,   mec=green, ls='None')
-                    ax.plot(rfb, 1 - S.cumsum(rfb*bb)/norm, marker='.', mfc=orange, mec=orange, ls='None')
+                    ax.plot(rfb, 1 - S.cumsum(rfb*pb)/norm,
+                            marker='.', mfc=green,   mec=green, ls='None')
+                    ax.plot(rfb, 1 - S.cumsum(rfb*bb)/norm,
+                            marker='.', mfc=orange, mec=orange, ls='None')
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), 
                            fontsize=6)
                 ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
@@ -1608,7 +1625,7 @@ if __name__ == "__main__":
 
         fig8.text(0.5,0.97,"Contour plot [%s, airmass=%.2f]" % (obj, airmass),
                   fontsize='large', ha='center', va='center')
-                
+
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
                   cube.y.min()-0.5,cube.y.max()+0.5)
         for i in xrange(nslice):        # Loop over meta-slices
@@ -1642,7 +1659,7 @@ if __name__ == "__main__":
 
         # Residuals of each slice --------------------------------------------
 
-        print_msg("Producing residuals plot %s..." % plot5, 1)
+        print_msg("Producing residual plot %s..." % plot5, 1)
 
         fig5 = pylab.figure(figsize=(12,8))
         fig5.subplots_adjust(left=0.06, right=0.91, bottom=0.06, top=0.95,
@@ -1652,31 +1669,24 @@ if __name__ == "__main__":
                   fontsize='large', ha='center', va='center')
 
         images = []
-        bounds = []
-        cmap = M.cm.jet
-
-        cax = fig5.add_axes([0.91,0.06,0.02,0.89])
-
-        # Loop over slices
         for i in xrange(nslice):        # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
             var  = cube.slice2d(i, coord='p', var=True)
             fit  = cube_fit.slice2d(i, coord='p')
             res  = S.nan_to_num((data - fit)/S.sqrt(var))
-            
-            vmin,vmax = pylab.prctile(res, (3.,97.)) # Percentiles
-            bounds.append([vmin,vmax])
+
+            # List of images, to be commonly normalized latter on
             images.append(ax.imshow(res, origin='lower', extent=extent,
-                                    cmap=cmap, interpolation='nearest')) # List of images
+                                    cmap=M.cm.jet, interpolation='nearest')) 
             
-            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)            
+            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
             ax.axis(extent)
 
-            # Axis
+            # Axis management
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
@@ -1685,17 +1695,17 @@ if __name__ == "__main__":
             if not ax.is_first_col():
                 ax.set_yticks([])
                 
-        # Normalization
-        vmin = min(S.transpose(bounds)[0])
-        vmax = max(S.transpose(bounds)[1])
-
+        # Common image normalization
+        vmin,vmax = pylab.prctile(S.ravel([ im.get_array().filled()
+                                            for im in images ]), (3.,97.))
         norm = M.colors.Normalize(vmin=vmin, vmax=vmax)
-        for i, im in enumerate(images):
+        for im in images:
             im.set_norm(norm)
 
         # Colorbar
+        cax = fig5.add_axes([0.91,0.06,0.02,0.89])
         cbar = fig5.colorbar(images[0], cax, orientation='vertical')
-        cbar.set_label(r'residuals [$\sigma$]', fontsize='large')
+        cbar.set_label(r'Residuals [$\sigma$]')
 
         # Show or save figures -------------------------------------------------
         

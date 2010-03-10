@@ -18,10 +18,7 @@ import scipy.special
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]
 
-DEG2RAD = S.pi/180
-
-# Chebychev coefficients for 2nd order polynomial
-chebs = [ S.special.chebyu(i) for i in range(3) ]
+DEG2RAD = 0.017453292519943295          # pi/180
 
 def atmosphericIndex(lbda, P=616., T=2.):
     """Compute atmospheric refractive index: lbda in angstrom, P in mbar, T in
@@ -147,7 +144,7 @@ class ADR_model:
 
         if not 550<pressure<650 and not not -20<temp<20:
             raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
-                             "temperature (%.0f C)" % (pressure, temp))        
+                             "temperature (%.0f C)" % (pressure, temp))
         self.P = pressure
         self.T = temp
         if 'lref' in kwargs:
@@ -293,13 +290,20 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
                              "for degree %d" % (y[good].size,deg))
     return coeffs
 
-def chebychev(pars, x, xmin, xmax, chebs):
-    """Orthogonal Chebychev polynomial"""
+def chebNorm(x, xmin, xmax):
+    """Normalization [xmin,xmax] to [-1,1]"""
 
-    # Normalization -> [-1,1] 
-    nx = ( 2*x - (xmax+xmin) ) / (xmax-xmin)
+    return ( 2*x - (xmax+xmin) ) / (xmax-xmin)
 
-    return S.sum( [ p * ch(nx) for p,ch in zip(pars,chebs) ], axis=0)
+def chebEval(pars, nx, chebpolys=[]):
+    """Orthogonal Chebychev polynomial expansion, x should be already
+    normalized in [-1,1]."""
+
+    if len(chebpolys)<len(pars):
+        print "Initializing Chebychev polynomials up to order %d" % len(pars)
+        chebpolys[:] = [ S.special.chebyu(i) for i in range(len(pars)) ]
+
+    return S.sum( [ par*cheb(nx) for par,cheb in zip(pars,chebpolys) ], axis=0)
 
 # Ellipse utilities ==============================
 
@@ -402,9 +406,7 @@ class ExposurePSF:
         if self.nslice > 1:
             self.lmin = cube.lbda[0]
             self.lmax = cube.lbda[-1]
-            lrel = ( 2*cube.lbda - (self.lmin + self.lmax) ) / \
-                   ( self.lmax - self.lmin ) # From -1 to +1
-            self.lrel = S.resize(lrel, (self.nlens,self.nslice)).T
+            self.lrel = chebNorm(self.l, self.lmin, self.lmax) # From -1 to +1
         else:
             self.lmin,self.lmax = -1,+1
             self.lrel = self.l
@@ -428,7 +430,7 @@ class ExposurePSF:
                      - C{param[1]}: Atmospheric dispersion position angle
                      - C{param[2]}: X center at the reference wavelength
                      - C{param[3]}: Y center at the reference wavelength
-                     - C{param[4]}: Position angle                    
+                     - C{param[4]}: Position angle
                      - C{param[5:6+n]}: Ellipticity
                                         (n:polynomial degree of ellipticity)
                      - C{param[6+n:7+n+m]}: Moffat scale
@@ -450,7 +452,7 @@ class ExposurePSF:
 
         # Other params
         PA          = self.param[4]
-        ellCoeffs   = self.param[5:6+self.ellDeg]        
+        ellCoeffs   = self.param[5:6+self.ellDeg]
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel) # nslice,nlens
@@ -458,19 +460,20 @@ class ExposurePSF:
 
         # Correlated params
         if self.correlations=='new':
-            b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
-            b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
-            s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
-            s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
-            e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
-            e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)
+            lcheb = chebNorm(self.l, *self.chebRange)
+            b0 = chebEval(self.beta0,  lcheb)
+            b1 = chebEval(self.beta1,  lcheb)
+            s0 = chebEval(self.sigma0, lcheb)
+            s1 = chebEval(self.sigma1, lcheb)
+            e0 = chebEval(self.eta0,   lcheb)
+            e1 = chebEval(self.eta1,   lcheb)
         else:
             b0 = self.beta0
             b1 = self.beta1
             s0 = self.sigma0
             s1 = self.sigma1
             e0 = self.eta0
-            e1 = self.eta1                
+            e1 = self.eta1
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -515,7 +518,7 @@ class ExposurePSF:
         
         # Other params
         PA  = self.param[4]
-        ellCoeffs   = self.param[5:6+self.ellDeg]                
+        ellCoeffs   = self.param[5:6+self.ellDeg]
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel)
@@ -523,19 +526,20 @@ class ExposurePSF:
 
         # Correlated params
         if self.correlations=='new':
-            b0 = chebychev(self.beta0, self.l, self.lbda_min, self.lbda_max, chebs)
-            b1 = chebychev(self.beta1, self.l, self.lbda_min, self.lbda_max, chebs)
-            s0 = chebychev(self.sigma0, self.l, self.lbda_min, self.lbda_max, chebs)
-            s1 = chebychev(self.sigma1, self.l, self.lbda_min, self.lbda_max, chebs)
-            e0 = chebychev(self.eta0, self.l, self.lbda_min, self.lbda_max, chebs)
-            e1 = chebychev(self.eta1, self.l, self.lbda_min, self.lbda_max, chebs)
+            lcheb = chebNorm(self.l, *self.chebRange)
+            b0 = chebEval(self.beta0,  lcheb)
+            b1 = chebEval(self.beta1,  lcheb)
+            s0 = chebEval(self.sigma0, lcheb)
+            s1 = chebEval(self.sigma1, lcheb)
+            e0 = chebEval(self.eta0,   lcheb)
+            e1 = chebEval(self.eta1,   lcheb)
         else:
             b0 = self.beta0
             b1 = self.beta1
             s0 = self.sigma0
             s1 = self.sigma1
             e0 = self.eta0
-            e1 = self.eta1        
+            e1 = self.eta1
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
@@ -573,15 +577,16 @@ class ExposurePSF:
     def _HWHM_fn(self, r, alphaCoeffs, lbda):
         """Half-width at half maximum function (=0 at HWHM)."""
 
-        lrel = ( 2*lbda - (self.lmin+self.lmax) ) / ( self.lmax-self.lmin )
+        lrel = chebNorm(lbda, self.lmin, self.lmax) # Norm to [-1,1]
         alpha = polyEval(alphaCoeffs, lrel)
         if self.correlations=='new':
-            b0 = chebychev(self.beta0, lbda, self.lbda_min, self.lbda_max, chebs)
-            b1 = chebychev(self.beta1, lbda, self.lbda_min, self.lbda_max, chebs)
-            s0 = chebychev(self.sigma0, lbda, self.lbda_min, self.lbda_max, chebs)
-            s1 = chebychev(self.sigma1, lbda, self.lbda_min, self.lbda_max, chebs)
-            e0 = chebychev(self.eta0, lbda, self.lbda_min, self.lbda_max, chebs)
-            e1 = chebychev(self.eta1, lbda, self.lbda_min, self.lbda_max, chebs)
+            lcheb = chebNorm(lbda, *self.chebRange)
+            b0 = chebEval(self.beta0,  lcheb)
+            b1 = chebEval(self.beta1,  lcheb)
+            s0 = chebEval(self.sigma0, lcheb)
+            s1 = chebEval(self.sigma1, lcheb)
+            e0 = chebEval(self.eta0,   lcheb)
+            e1 = chebEval(self.eta1,   lcheb)
         else:
             b0 = self.beta0
             b1 = self.beta1
@@ -631,9 +636,9 @@ class Short_ExposurePSF(ExposurePSF):
     beta0  = 1.395
     beta1  = 0.415
     sigma0 = 0.56 
-    sigma1 = 0.2  
-    eta0   = 0.6  
-    eta1   = 0.16     
+    sigma1 = 0.2
+    eta0   = 0.6
+    eta1   = 0.16
 
 # New PSF parameters description using 2nd order chebychev polynomial
 # for long and short exposures and blue and red channels.
@@ -642,54 +647,50 @@ class long_blue_exposure_psf(ExposurePSF):
 
     name = 'long blue'
     correlations = 'new'
-    lbda_min = 3399.0
-    lbda_max = 5100.0
+    chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
 
     beta0  = [ 1.318,-0.022, 0.031] # b00,b01,b02
     beta1  = [ 0.519, 0.017, 0.011] # b10,b11,b12
     sigma0 = [ 0.565, 0.007, 0.024] # s00,s01,s02
     sigma1 = [ 0.234,-0.009,-0.029] # s10,s11,s12
     eta0   = [ 1.106,-0.036,-0.109] # e00,e01,e02
-    eta1   = [-0.184, 0.019, 0.056] # e10,e11,e12    
+    eta1   = [-0.184, 0.019, 0.056] # e10,e11,e12
 
-class long_red_exposure_psf(ExposurePSF):         
+class long_red_exposure_psf(ExposurePSF):
 
     name = 'long red'
     correlations = 'new'
-    lbda_min = 5318.0
-    lbda_max = 9508.0
+    chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
     
     beta0  = [ 1.294,-0.049, 0.021] # b00,b01,b02
     beta1  = [ 0.506, 0.024, 0.020] # b10,b11,b12
     sigma0 = [ 0.536, 0.031, 0.024] # s00,s01,s02
     sigma1 = [ 0.248,-0.022,-0.029] # s10,s11,s12
-    eta0   = [ 1.251,-0.063,-0.091] # e00,e01,e02   
+    eta0   = [ 1.251,-0.063,-0.091] # e00,e01,e02
     eta1   = [-0.229, 0.042, 0.057] # e10,e11,e12
     
 class short_blue_exposure_psf(ExposurePSF):
 
     name = 'short blue'
     correlations = 'new'
-    lbda_min = 3399.0
-    lbda_max = 5100.0    
+    chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
     
     beta0  = [ 1.433, 0.030, 0.024] # b00,b01,b02
     beta1  = [ 0.470,-0.013, 0.029] # b10,b11,b12
     sigma0 = [ 0.515,-0.019, 0.022] # s00,s01,s02
     sigma1 = [ 0.234, 0.003,-0.042] # s10,s11,s12
-    eta0   = [ 0.525,-0.009,-0.116] # e00,e01,e02   
+    eta0   = [ 0.525,-0.009,-0.116] # e00,e01,e02
     eta1   = [ 0.016, 0.017, 0.055] # e10,e11,e12
     
 class short_red_exposure_psf(ExposurePSF):
 
     name = 'short red'
     correlations = 'new'
-    lbda_min = 5318.0
-    lbda_max = 9508.0
+    chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
     
     beta0  = [1.407,-0.012,-0.009] # b00,b01,b02
     beta1  = [0.476, 0.019, 0.022] # b10,b11,b12
     sigma0 = [0.535,-0.012, 0.007] # s00,s01,s02
     sigma1 = [0.166,-0.009,-0.009] # s10,s11,s12
-    eta0   = [0.013,-0.082, 0.000] # e00,e01,e02   
+    eta0   = [0.013,-0.082, 0.000] # e00,e01,e02
     eta1   = [0.521, 0.101, 0.000] # e10,e11,e12
