@@ -1,5 +1,8 @@
 2010-04-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
+	* apps/extract_star/plot_slices.py: Visualize mean slices and mean
+	spectrum of a cube.
+
 	* apps/extract_star/extract_star.py (fit_slices): centroid
 	estimated from 2D-gaussian fit should be more robust and help on
 	low S-to-N cubes (Mantis #1455).  Extracted variance spectrum is
