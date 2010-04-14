@@ -37,7 +37,7 @@ __version__ = '$Id$'
 import os
 import optparse
 
-import pyfits                           # getheader
+from pyfits import getheader
 
 import pySNIFS
 import pySNIFS_fit
@@ -75,10 +75,10 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     Returns Spec,Var where Spec and Var are (nslice,npar+1)."""
 
-    if method not in ('psf','aperture','optimal'):
-        raise ValueError("Extraction method '%s' unrecognized" % method)
-    if skyDeg < -1: 
-        raise ValueError("skyDeg=%d is invalid (should be >=-1)" % skyDeg)
+    assert method in ('psf','aperture','optimal'), \
+           "Extraction method '%s' unrecognized" % method
+    assert skyDeg >= -1, \
+           "skyDeg=%d is invalid (should be >=-1)" % skyDeg
 
     if (cube.var>1e20).any(): 
         print "WARNING: discarding infinite variances in extract_spec"
@@ -99,7 +99,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     model = psf_fn(psf_ctes, cube)
     psf = model.comp(param, normed=True) # nslice,nlens
 
-    npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb param. in polynomial bkgnd
+    npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb param. in polynomial bkgnd
     Z = S.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
     Z[:,:,0] = psf                      # Intensity
     if npar_sky:                        # =0 when no background (skyDeg<=-1)
@@ -299,11 +299,11 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     """Fit (meta)slices of (meta)cube using PSF psf_fn and a background of
     polynomial degree skyDeg."""
 
-    if skyDeg < -1: 
-        raise ValueError("skyDeg=%d is invalid (should be >=-1)" % skyDeg)
+    assert skyDeg >= -1, \
+           "skyDeg=%d is invalid (should be >=-1)" % skyDeg
     
     npar_psf = 7                        # Number of parameters of the psf
-    npar_sky = int((skyDeg+1)*(skyDeg+2)/2) # Nb. param. in polynomial bkgnd
+    npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb. param. in polynomial bkgnd
 
     cube_sky = pySNIFS.SNIFS_cube()
     cube_sky.x = cube.x 
@@ -332,7 +332,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
     print_msg("  Adjusted parameters: [delta=0],[theta=0],xc,yc,PA,ell,alpha,I,"
-              "%d bkgndCoeffs" % (skyDeg and npar_sky or 0), 2)
+              "%d bkgndCoeffs" % (skyDeg>=0 and npar_sky or 0), 2)
 
     for i in xrange(cube.nslice):
         cube_star.lbda = S.array([cube.lbda[i]])
@@ -342,7 +342,6 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         cube_sky.var   = cube.var[i,  S.newaxis].copy()
 
         # Sky estimate (from FoV edge spx)
-        medstar = F.median_filter(cube_star.data[0], 3)
         skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
@@ -354,17 +353,22 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                                           bounds=[[[0,None]] +
                                                   [[None,None]]*(npar_sky-1)])
             model_sky.fit()
-            cube_sky.data = model_sky.evalfit() # 1st background estimate
-            medstar -= cube_sky.data[0] # Subtract structured background estim.
-        elif skyDeg == 0:
-            medstar -= skyLev           # Subtract sky level estimate
+            skyLev = model_sky.evalfit().squeeze() # Structure bkgnd estimate
 
         # Guess parameters for the current slice
+        medstar = F.median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
-        xc = S.average(cube_star.x, weights=medstar) # Centroid [spx]
-        yc = S.average(cube_star.y, weights=medstar)
-        xc = S.clip(xc, -7.5,7.5)       # Put initial guess ~ in FoV
-        yc = S.clip(yc, -7.5,7.5)
+        cube_sky.data -= skyLev
+        cube_sky.var   = cube.var[i,  S.newaxis]
+        model = pySNIFS_fit.model(data=cube_sky,
+                                  func=['gaus2D','poly2D;0'],
+                                  param=[[0,0,1,1,imax],[0]],
+                                  bounds=[[[-7.5,7.5]]*2 + \
+                                          [[0,5]]*2 +
+                                          [[0,None]],
+                                          [[None,None]]])
+        model.fit(msge=(opts.verbosity>2))
+        xc,yc = model.fitpar[:2]        # Centroid
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., 2.4, imax] # psf parameters
@@ -549,11 +553,11 @@ def create_3D_log_file(filename,object,airmass,efftime,
 
 def build_sky_cube(cube, sky, sky_var, skyDeg):
 
-    if skyDeg < 0:
-        raise ValueError("Cannot build_sky_cube with skyDeg=%d < 0." % skyDeg)
+    assert skyDeg >= 0, \
+           "Cannot build_sky_cube with skyDeg=%d < 0." % skyDeg
 
     nslices  = len(sky)
-    npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
+    npar_sky = (skyDeg+1)*(skyDeg+2)/2
     poly     = pySNIFS_fit.poly2D(skyDeg,cube)
     cube2    = pySNIFS.zerolike(cube)
     cube2.x  = (cube2.x)**2
@@ -661,19 +665,21 @@ if __name__ == "__main__":
 
     methods = ('psf','aperture','optimal')
 
-    usage = "usage: [%prog] [options] -i inE3D.fits " \
-            "[-o outSpec.fits -s outSky.fits [...] ]"
+    usage = "Usage: [%prog] [options] incube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
 
     parser.add_option("-i", "--in", type="string", dest="input",
-                      help="Input datacube (euro3d format)")
+                      help="Input datacube (or use argument)")
     parser.add_option("-o", "--out", type="string",
-                      help="Output star spectrum")
+                      help="Output point source spectrum")
     parser.add_option("-s", "--sky", type="string",
                       help="Output sky spectrum")
     parser.add_option("-V", "--variance", action='store_true',
-                      help="Store variance spectrum in extension")
+                      help="Store variance spectrum in extension",
+                      default=True)
+    parser.add_option("--varianceAside", dest='variance', action='store_false',
+                      help="Store variance in individual spectrum")
 
     parser.add_option("-S", "--skyDeg", type="int",
                       help="Sky polynomial background degree [%default]",
@@ -683,7 +689,11 @@ if __name__ == "__main__":
                       default=2)
     parser.add_option("-E", "--ellDeg", type="int",
                       help="Ellipticity polynomial degree [%default]",
-                      default=0)
+                      default=0)    
+
+    parser.add_option("--nmeta", type='int',
+                      help="Number of meta-slices [%default].",
+                      default=12)
 
     parser.add_option("-c", "--correlations", type="string",
                       help="PSF correlation (new|old) [%default]",
@@ -713,7 +723,7 @@ if __name__ == "__main__":
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (no final 3D fit).")
     parser.add_option("--keepmodel", action='store_true',
-                      help="Store meta-slice model in 3D-cube.")
+                      help="Store meta-slices and adjusted model in 3D cubes.")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
                       help="Constraints on PSF parameters (n:val,[val]).")
 
@@ -750,11 +760,11 @@ if __name__ == "__main__":
     # updates in fill_hdr, which requires a *true* pyfits header.
 
     try:                                # Try to read a Euro3D cube
-        inhdr = pyfits.getheader(opts.input, 1) # 1st extension
+        inhdr = getheader(opts.input, 1) # 1st extension
         full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
         isE3D = True
     except ValueError:                  # Try to read a 3D FITS cube
-        inhdr = pyfits.getheader(opts.input, 0) # Primary extension
+        inhdr = getheader(opts.input, 0) # Primary extension
         full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
         isE3D = False
     step = full_cube.lstep
@@ -768,7 +778,7 @@ if __name__ == "__main__":
     efftime = inhdr['EFFTIME']
     airmass = inhdr['AIRMASS']
     parangle = libES.read_parangle(inhdr)
-    channel = inhdr['CHANNEL'][0].upper()
+    channel = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
     pressure,temp = libES.read_PT(inhdr)
 
     ellDeg   = opts.ellDeg
@@ -776,19 +786,19 @@ if __name__ == "__main__":
     npar_psf = 7 + ellDeg + alphaDeg
 
     skyDeg   = opts.skyDeg
-    npar_sky = int((skyDeg+1)*(skyDeg+2)/2)
+    npar_sky = (skyDeg+1)*(skyDeg+2)/2
 
     # Select the PSF
     if opts.correlations=='new':
         
         # New parameters description (short or long, red or blue)
-        if (efftime > 12.) and (channel.startswith('B')):
+        if (efftime > 12.) and (channel=='B'):
             psfFn = libES.long_blue_exposure_psf
-        if (efftime > 12.) and (channel.startswith('R')):
+        elif (efftime > 12.) and (channel=='R'):
             psfFn = libES.long_red_exposure_psf
-        if (efftime < 12.) and (channel.startswith('B')):
+        elif (efftime < 12.) and (channel=='B'):
             psfFn = libES.short_blue_exposure_psf
-        if (efftime < 12.) and (channel.startswith('R')):
+        elif (efftime < 12.) and (channel=='R'):
             psfFn = libES.short_red_exposure_psf
     else:
         
@@ -800,21 +810,27 @@ if __name__ == "__main__":
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
           (obj, airmass, efftime, psfFn.name)
 
-    # Meta-slice definition (min,max,step [px])
-    if channel.startswith('B'):
-        slices=[10, 900, 65]
-    elif channel.startswith('R'):
-        slices=[10, 1500, 130]
-    else:
+    # Test channel and set default output name
+    if channel not in ('B','R'):
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % \
                      (opts.input, channel))
+    if not opts.out:
+        opts.out = 'spec_%s.fits' % (channel)
+
+    # Meta-slice definition (min,max,step [px])
+    imin = 10                           # 1st slice [px]
+    imax = full_cube.nslice - 10        # Last slice [px]
+    istep = (imax-imin)//opts.nmeta     # Metaslice thickness [px]
+    imax = imin + opts.nmeta*istep
+    slices = [imin,imax,istep]
+    
     print "  Channel: '%s', extracting slices: %s" % (channel,slices)
 
     if isE3D:
         cube = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
     else:
         cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input, slices=slices)
-    cube.x = cube.i - 7                 # From arcsec to spx
+    cube.x = cube.i - 7                 # From I,J to spx coords
     cube.y = cube.j - 7
 
     print_msg("  Meta-slices before selection: %d " \
@@ -827,6 +843,12 @@ if __name__ == "__main__":
     cube.data /= norm
     cube.var /= norm**2
 
+    if opts.keepmodel:                  # Store meta-slices in 3D-cube
+        path,name = os.path.split(opts.out)
+        outpsf = os.path.join(path,'meta_'+name)
+        print "Saving meta-slices in 3D-fits cube '%s'..." % outpsf
+        cube.WR_3d_fits(outpsf)
+    
     # Computing guess parameters from slice by slice 2D fit ====================
 
     print "Slice-by-slice 2D-fitting..."
@@ -1075,9 +1097,7 @@ if __name__ == "__main__":
 
     # Save star spectrum =====================================================
 
-    if not opts.out:
-        opts.out = 'spec_%s.fits' % (channel)
-        print "Saving output source spectrum to '%s'" % opts.out
+    print "Saving output source spectrum to '%s'" % opts.out
 
     if not opts.variance:
         star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
@@ -1125,7 +1145,7 @@ if __name__ == "__main__":
         path,name = os.path.split(opts.out)
         outpsf = os.path.join(path,'psf_'+name)
         print "Saving adjusted meta-slice PSF in 3D-fits cube '%s'..." % outpsf
-        cube_fit.WR_3d_fits(outpsf)
+        cube_fit.WR_3d_fits(outpsf, header=[]) # No header in cube_fit
     
     # Create output graphics =================================================
 
@@ -1200,23 +1220,26 @@ if __name__ == "__main__":
         
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
         fmin = 0
+
+        # Compute PSF & bkgnd models on incomplete cube
+        sno = S.sort(cube.no)
+        psf2 = psfFn(psfCtes, cube=cube).comp(fitpar[:psf_model.npar])
+        if skyDeg >= 0:
+            bkg2 = pySNIFS_fit.poly2D(skyDeg,cube).\
+                   comp(fitpar[psf_model.npar:psf_model.npar+bkg_model.npar])
+
         for i in xrange(nslice):        # Loop over meta-slices
             data = cube.data[i,:]
             fit = mod[i,:]
             #fmin = min(data.min(),fit.min()) - max(data.max(),fit.max())/1e4
-            ax = fig2.add_subplot(nrow, ncol, i+1, 
-                                  xlim=(0,len(data)),
-                                  yscale='log')
-            ax.plot(S.sort(cube.no), data - fmin,
-                    color=blue, ls='-', lw=2) # Signal
-            ax.plot(S.sort(cube.no), fit - fmin,
-                    color=red, ls='-')        # Model
+            ax = fig2.add_subplot(nrow, ncol, i+1,
+                                  xlim=(0,len(data)), yscale='log')
+            ax.plot(sno, data - fmin, color=blue, ls='-', lw=2)  # Signal
+            ax.plot(sno, fit - fmin,  color=red, ls='-')         # Model
             ax.set_autoscale_on(False)
             if skyDeg >= 0:
-                ax.plot(S.sort(cube_fit.no), psf[i,:] - fmin,
-                        color=green, ls='-')  # PSF alone
-                ax.plot(S.sort(cube_fit.no), bkg[i,:] - fmin,
-                        color=orange, ls='-') # Background
+                ax.plot(sno, psf2[i,:] - fmin, color=green, ls='-') # PSF alone
+                ax.plot(sno, bkg2[i,:] - fmin, color=orange, ls='-') # Bkgnd
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)
@@ -1224,6 +1247,8 @@ if __name__ == "__main__":
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("Spaxel ID", fontsize=8)
                 ax.set_ylabel("Flux + cte", fontsize=8)
+            ax.set_ylim(data.min()/1.2,data.max()*1.2)
+            ax.set_xlim(-1,226)
 
         # Plot of the fit on rows and columns sum ----------------------------
 
@@ -1604,7 +1629,8 @@ if __name__ == "__main__":
                 chi2 = (cube.slice2d(i,coord='p') - \
                         cube_fit.slice2d(i,coord='p'))**2 / \
                         cube.slice2d(i,coord='p',var=True)
-                ax.plot(rfit, chi2.flatten(), marker='.', mfc=blue, mec=blue)
+                ax.plot(rfit, chi2.flatten(),
+                        marker='.', ls='none', mfc=blue, mec=blue)
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), 
                            fontsize=6)
                 ax.text(0.9,0.8, "%.0f" % cube.lbda[i], fontsize=8,
@@ -1653,9 +1679,9 @@ if __name__ == "__main__":
                 ax.set_xlabel("I", fontsize=8)
                 ax.set_ylabel("J", fontsize=8)
             if not ax.is_last_row():
-                ax.set_xticks([])
+                pylab.setp(ax.get_xticklabels(), visible=False)
             if not ax.is_first_col():
-                ax.set_yticks([])
+                pylab.setp(ax.get_yticklabels(), visible=False)
 
         # Residuals of each slice --------------------------------------------
 

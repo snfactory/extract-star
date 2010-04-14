@@ -1,3 +1,16 @@
+2010-04-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (fit_slices): centroid
+	estimated from 2D-gaussian fit should be more robust and help on
+	low S-to-N cubes (Mantis #1455).  Extracted variance spectrum is
+	now stored as an extension by default (option '-V/--variance' set
+	to True by default); new option '--varianceAside' to force storage
+	in individual spectrum.  New option '--nmeta' to specify number of
+	meta-slices in 2D-fit; default value (12) is similar to what was
+	used before.  Option '--keepmodel' now saves meta-slices cube
+	('meta_xxx') in addition to adjusted model ('psf_xxx').  Debug of
+	'fit1' plot (Mantis #1453) and some other debug plots.
+	
 2010-03-10  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: minor updates.
