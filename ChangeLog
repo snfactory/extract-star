@@ -1,3 +1,10 @@
+2010-05-03  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: Decrease figures size of
+	plots (from [12,10] to [8,6]) to resolve disk space problem (see
+	Stephen email 'extract_star pngs and web png directory' from
+	05/03/2010).
+
 2010-04-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: Visualize mean slices and mean

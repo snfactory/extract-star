@@ -1174,8 +1174,8 @@ if __name__ == "__main__":
 
         print_msg("Producing spectra plot %s..." % plot1, 1)
 
-        fig1 = pylab.figure(figsize=(12,8))
-        fig1.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+        fig1 = pylab.figure(figsize=(8,6))
+        fig1.subplots_adjust(left=0.06, right=0.96, bottom=0.08, top=0.95)
         
         if skyDeg >= 0:
             axS = fig1.add_subplot(3, 1, 1)
@@ -1212,8 +1212,8 @@ if __name__ == "__main__":
         ncol = S.floor(S.sqrt(nslice))
         nrow = S.ceil(nslice/float(ncol))
 
-        fig2 = pylab.figure(figsize=(12,8))
-        fig2.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+        fig2 = pylab.figure(figsize=(8,6))
+        fig2.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
         fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (obj, airmass),
                   fontsize='large', ha='center',va='center')
@@ -1256,8 +1256,8 @@ if __name__ == "__main__":
 
         if not opts.verbosity:  # Plot fit on rows and columns sum
 
-            fig3 = pylab.figure(figsize=(12,8))
-            fig3.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+            fig3 = pylab.figure(figsize=(8,6))
+            fig3.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
             fig3.text(0.5,0.97, "Rows and columns plot [%s, airmass=%.2f]" % \
                       (obj, airmass),
@@ -1329,8 +1329,8 @@ if __name__ == "__main__":
         xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
         yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
 
-        fig4 = pylab.figure(figsize=(12,8))
-        fig4.subplots_adjust(left=0.07, right=0.95, bottom=0.06, top=0.95)
+        fig4 = pylab.figure(figsize=(8,6))
+        fig4.subplots_adjust(left=0.08, right=0.96, bottom=0.08, top=0.95)
         
         ax4a = fig4.add_subplot(2, 2, 1,
                                 xlabel=u"Wavelength [Å]",
@@ -1416,8 +1416,8 @@ if __name__ == "__main__":
                 ax.plot(x, y+dy, ls=':', color=green, label='_nolegend_')
                 ax.plot(x, y-dy, ls=':', color=green, label='_nolegend_')
 
-        fig6 = pylab.figure(figsize=(12,8))
-        fig6.subplots_adjust(left=0.09, right=0.95, bottom=0.06, top=0.95)
+        fig6 = pylab.figure(figsize=(8,6))
+        fig6.subplots_adjust(left=0.1, right=0.96, bottom=0.08, top=0.95)
         
         ax6a = fig6.add_subplot(2, 1, 1,
                                 title='Model parameters ' \
@@ -1475,7 +1475,8 @@ if __name__ == "__main__":
                   transform=ax6a.transAxes, fontsize='small')
         leg = ax6a.legend(loc='best')
         pylab.setp(leg.get_texts(), fontsize='small')
-
+        pylab.setp(ax6a.get_yticklabels(), fontsize=10)
+        
         ax6b.errorbar(cube.lbda[good], ell_vec[good], error_mat[good,5],
                       marker='.',
                       mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
@@ -1495,6 +1496,7 @@ if __name__ == "__main__":
                   (', '.join([ 'e%d=%.2f' % (i,e)
                               for i,e in enumerate(fitpar[5:6+ellDeg]) ])),
                   transform=ax6b.transAxes, fontsize='small')
+        pylab.setp(ax6b.get_yticklabels(), fontsize=10)
 
         ax6c.errorbar(cube.lbda[good], PA_vec[good], error_mat[good,4], 
                       marker='.',
@@ -1509,13 +1511,15 @@ if __name__ == "__main__":
         ax6c.text(0.03, 0.1,
                   u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (PA,fitpar[4]),
                   transform=ax6c.transAxes, fontsize='small')
+        pylab.setp(ax6c.get_xticklabels() + ax6c.get_yticklabels(),
+                   fontsize=10)
 
         # Plot of the radial profile -----------------------------------------
 
         print_msg("Producing radial profile plot %s..." % plot7, 1)
 
-        fig7 = pylab.figure(figsize=(12,8))
-        fig7.subplots_adjust(left=0.06, right=0.95, bottom=0.06, top=0.95)
+        fig7 = pylab.figure(figsize=(8,6))
+        fig7.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
         fig7.text(0.5,0.97,
                   "Radial profile plot [%s, airmass=%.2f]" % (obj, airmass),
@@ -1645,7 +1649,7 @@ if __name__ == "__main__":
 
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
-        fig8 = pylab.figure(figsize=(12,8))
+        fig8 = pylab.figure(figsize=(8,6))
         fig8.subplots_adjust(left=0.05, right=0.96, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
@@ -1687,8 +1691,8 @@ if __name__ == "__main__":
 
         print_msg("Producing residual plot %s..." % plot5, 1)
 
-        fig5 = pylab.figure(figsize=(12,8))
-        fig5.subplots_adjust(left=0.06, right=0.91, bottom=0.06, top=0.95,
+        fig5 = pylab.figure(figsize=(8,6))
+        fig5.subplots_adjust(left=0.06, right=0.90, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
         fig5.text(0.5,0.97,"Residuals plot [%s, airmass=%.2f]" % (obj, airmass),
@@ -1729,8 +1733,9 @@ if __name__ == "__main__":
             im.set_norm(norm)
 
         # Colorbar
-        cax = fig5.add_axes([0.91,0.06,0.02,0.89])
+        cax = fig5.add_axes([0.91,0.07,0.02,0.87])
         cbar = fig5.colorbar(images[0], cax, orientation='vertical')
+        pylab.setp(cbar.ax.get_yticklabels(), fontsize=10)
         cbar.set_label(r'Residuals [$\sigma$]')
 
         # Show or save figures -------------------------------------------------
