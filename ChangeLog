@@ -5,6 +5,11 @@
 	Stephen email 'extract_star pngs and web png directory' from
 	05/03/2010).
 
+2010-04-15  Yannick Copin  <ycopin@ipnl.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: new option
+	'-R/--rangePerSlice'.
+
 2010-04-14  Yannick Copin  <ycopin@ipnl.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: Visualize mean slices and mean

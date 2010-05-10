@@ -8,13 +8,11 @@
 ## $Id$
 ##############################################################################
 
-"""Primarily based on E. Pecontal's point source extractor (extract_star.py).
-This version replaces the double gaussian PSF profile by an ad-hoc PSF profile
-(correlated Gaussian + Moffat).
+"""3D PSF-based point-source extractor. The PSF is a constrained
+Gaussian+Moffat with elliptical distortion.
 
 Todo:
 
-* replace meta-slice centroid-based initial guess by gaussian-fit.
 * one could use Aitchison (or 'additive log-ratio') transform to
   enforce the normalization constraint on alphas (see
   http://thread.gmane.org/gmane.comp.python.scientific.user/16180/focus=16187
@@ -793,13 +791,13 @@ if __name__ == "__main__":
         
         # New parameters description (short or long, red or blue)
         if (efftime > 12.) and (channel=='B'):
-            psfFn = libES.long_blue_exposure_psf
+            psfFn = libES.LongBlue_ExposurePSF
         elif (efftime > 12.) and (channel=='R'):
-            psfFn = libES.long_red_exposure_psf
+            psfFn = libES.LongRed_ExposurePSF
         elif (efftime < 12.) and (channel=='B'):
-            psfFn = libES.short_blue_exposure_psf
+            psfFn = libES.ShortBlue_ExposurePSF
         elif (efftime < 12.) and (channel=='R'):
-            psfFn = libES.short_red_exposure_psf
+            psfFn = libES.ShortRed_ExposurePSF
     else:
         
         # Old parameters description (short or long)
@@ -1174,7 +1172,7 @@ if __name__ == "__main__":
 
         print_msg("Producing spectra plot %s..." % plot1, 1)
 
-        fig1 = pylab.figure(figsize=(8,6))
+        fig1 = pylab.figure()
         fig1.subplots_adjust(left=0.06, right=0.96, bottom=0.08, top=0.95)
         
         if skyDeg >= 0:
@@ -1212,7 +1210,7 @@ if __name__ == "__main__":
         ncol = S.floor(S.sqrt(nslice))
         nrow = S.ceil(nslice/float(ncol))
 
-        fig2 = pylab.figure(figsize=(8,6))
+        fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
         fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (obj, airmass),
@@ -1256,7 +1254,7 @@ if __name__ == "__main__":
 
         if not opts.verbosity:  # Plot fit on rows and columns sum
 
-            fig3 = pylab.figure(figsize=(8,6))
+            fig3 = pylab.figure()
             fig3.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
             fig3.text(0.5,0.97, "Rows and columns plot [%s, airmass=%.2f]" % \
@@ -1329,7 +1327,7 @@ if __name__ == "__main__":
         xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
         yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
 
-        fig4 = pylab.figure(figsize=(8,6))
+        fig4 = pylab.figure()
         fig4.subplots_adjust(left=0.08, right=0.96, bottom=0.08, top=0.95)
         
         ax4a = fig4.add_subplot(2, 2, 1,
@@ -1416,7 +1414,7 @@ if __name__ == "__main__":
                 ax.plot(x, y+dy, ls=':', color=green, label='_nolegend_')
                 ax.plot(x, y-dy, ls=':', color=green, label='_nolegend_')
 
-        fig6 = pylab.figure(figsize=(8,6))
+        fig6 = pylab.figure()
         fig6.subplots_adjust(left=0.1, right=0.96, bottom=0.08, top=0.95)
         
         ax6a = fig6.add_subplot(2, 1, 1,
@@ -1518,7 +1516,7 @@ if __name__ == "__main__":
 
         print_msg("Producing radial profile plot %s..." % plot7, 1)
 
-        fig7 = pylab.figure(figsize=(8,6))
+        fig7 = pylab.figure()
         fig7.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
         fig7.text(0.5,0.97,
@@ -1649,7 +1647,7 @@ if __name__ == "__main__":
 
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
-        fig8 = pylab.figure(figsize=(8,6))
+        fig8 = pylab.figure()
         fig8.subplots_adjust(left=0.05, right=0.96, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
@@ -1691,7 +1689,7 @@ if __name__ == "__main__":
 
         print_msg("Producing residual plot %s..." % plot5, 1)
 
-        fig5 = pylab.figure(figsize=(8,6))
+        fig5 = pylab.figure()
         fig5.subplots_adjust(left=0.06, right=0.90, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 

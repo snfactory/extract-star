@@ -643,7 +643,7 @@ class Short_ExposurePSF(ExposurePSF):
 # New PSF parameters description using 2nd order chebychev polynomial
 # for long and short exposures and blue and red channels.
 
-class long_blue_exposure_psf(ExposurePSF): 
+class LongBlue_ExposurePSF(ExposurePSF): 
 
     name = 'long blue'
     correlations = 'new'
@@ -656,7 +656,7 @@ class long_blue_exposure_psf(ExposurePSF):
     eta0   = [ 1.106,-0.036,-0.109] # e00,e01,e02
     eta1   = [-0.184, 0.019, 0.056] # e10,e11,e12
 
-class long_red_exposure_psf(ExposurePSF):
+class LongRed_ExposurePSF(ExposurePSF):
 
     name = 'long red'
     correlations = 'new'
@@ -669,7 +669,7 @@ class long_red_exposure_psf(ExposurePSF):
     eta0   = [ 1.251,-0.063,-0.091] # e00,e01,e02
     eta1   = [-0.229, 0.042, 0.057] # e10,e11,e12
     
-class short_blue_exposure_psf(ExposurePSF):
+class ShortBlue_ExposurePSF(ExposurePSF):
 
     name = 'short blue'
     correlations = 'new'
@@ -682,7 +682,7 @@ class short_blue_exposure_psf(ExposurePSF):
     eta0   = [ 0.525,-0.009,-0.116] # e00,e01,e02
     eta1   = [ 0.016, 0.017, 0.055] # e10,e11,e12
     
-class short_red_exposure_psf(ExposurePSF):
+class ShortRed_ExposurePSF(ExposurePSF):
 
     name = 'short red'
     correlations = 'new'
