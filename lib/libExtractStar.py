@@ -34,7 +34,7 @@ def atmosphericIndex(lbda, P=616., T=2.):
     index fluctuations with typical P,T MK-variations (+/-5mbar, +/-5C) is +/-
     ~3e-6. Water vapor contribution is around ~1e-10.
 
-    See also Peck & Reeder (1972, J.Opt.Soc.Am., 62, 958) and 
+    See also Peck & Reeder (1972, J.Opt.Soc.Am., 62, 958) and
     http://emtoolbox.nist.gov/Wavelength/Documentation.asp"""
 
     # Sea-level (P=760 mmHg, T=15C)
@@ -46,7 +46,7 @@ def atmosphericIndex(lbda, P=616., T=2.):
         P *= 0.75006168                 # Convert P to mmHg: *= 760./1013.25
         n = 1 + (n-1) * P * \
             ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
-    
+
     return n
 
 
@@ -85,7 +85,7 @@ def read_parangle(hdr):
 
     # PARANG keyword is absent, estimate it from LATITUDE,HA,DEC
     print "WARNING: cannot read PARANG keyword, estimate it from header"
-    
+
     from math import sin,cos,pi,sqrt,atan2
 
     d2r = pi/180.                       # Degree to Radians
@@ -191,7 +191,7 @@ class ADR_model:
         x0 = S.atleast_1d(x)            # (npos,)
         y0 = S.atleast_1d(y)
         npos = len(x0)
-        assert len(x0)==len(y0), "Incompatible x and y vectors." 
+        assert len(x0)==len(y0), "Incompatible x and y vectors."
         lbda = S.atleast_1d(lbda)       # (nlbda,)
         nlbda = len(lbda)
 
@@ -233,7 +233,7 @@ def polyEval(coeffs, x):
             y += c * x**i
     else:                               # Faster on arrays
         y = S.polyval(coeffs[::-1], x)  # Beware coeffs order!
-        
+
     return y
 
 def polyConvMatrix(n, trans=(0,1)):
@@ -269,7 +269,7 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
     polynomial coeffs w/ same convention as S.polyfit: [cn,...,c1,c0]."""
-    
+
     good = S.ones(y.shape, dtype='bool')
     niter = 0
     while True:
@@ -370,7 +370,7 @@ class ExposurePSF:
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
         @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
-                       reference wavelength and polynomial degrees). 
+                       reference wavelength and polynomial degrees).
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         @param coords: if not None, should be (x,y).
         """
@@ -378,7 +378,7 @@ class ExposurePSF:
         self.lbda_ref = psf_ctes[1]     # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
-        
+
         self.npar_cor = 7 + self.ellDeg + self.alphaDeg # PSF parameters
         self.npar_ind = 1               # Intensity parameters per slice
         self.nslice = cube.nslice
@@ -477,7 +477,7 @@ class ExposurePSF:
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
-        
+
         # Gaussian + Moffat
         dx = self.x - x0
         dy = self.y - y0
@@ -515,7 +515,7 @@ class ExposurePSF:
         sintheta = S.sin(theta)
         x0 = xc + delta*self.ADR_coeff*sintheta
         y0 = yc - delta*self.ADR_coeff*costheta
-        
+
         # Other params
         PA  = self.param[4]
         ellCoeffs   = self.param[5:6+self.ellDeg]
@@ -616,8 +616,8 @@ class ExposurePSF:
 # Old PSF parameters description without chromaticity for long and
 # short exposures.
 
-class Long_ExposurePSF(ExposurePSF): 
-    
+class Long_ExposurePSF(ExposurePSF):
+
     name = 'long'
     correlations = 'old'
 
@@ -626,7 +626,7 @@ class Long_ExposurePSF(ExposurePSF):
     sigma0 = 0.545
     sigma1 = 0.215
     eta0   = 1.04
-    eta1   = 0.00 
+    eta1   = 0.00
 
 class Short_ExposurePSF(ExposurePSF):
 
@@ -635,7 +635,7 @@ class Short_ExposurePSF(ExposurePSF):
 
     beta0  = 1.395
     beta1  = 0.415
-    sigma0 = 0.56 
+    sigma0 = 0.56
     sigma1 = 0.2
     eta0   = 0.6
     eta1   = 0.16
@@ -643,54 +643,54 @@ class Short_ExposurePSF(ExposurePSF):
 # New PSF parameters description using 2nd order chebychev polynomial
 # for long and short exposures and blue and red channels.
 
-class LongBlue_ExposurePSF(ExposurePSF): 
+class LongBlue_ExposurePSF(ExposurePSF):
 
     name = 'long blue'
     correlations = 'new'
     chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
 
-    beta0  = [ 1.318,-0.022, 0.031] # b00,b01,b02
-    beta1  = [ 0.519, 0.017, 0.011] # b10,b11,b12
-    sigma0 = [ 0.565, 0.007, 0.024] # s00,s01,s02
-    sigma1 = [ 0.234,-0.009,-0.029] # s10,s11,s12
-    eta0   = [ 1.106,-0.036,-0.109] # e00,e01,e02
-    eta1   = [-0.184, 0.019, 0.056] # e10,e11,e12
+    beta0  = [ 1.220, 0.016,-0.056] # b00,b01,b02
+    beta1  = [ 0.590, 0.004, 0.014] # b10,b11,b12
+    sigma0 = [ 0.710,-0.024, 0.016] # s00,s01,s02
+    sigma1 = [ 0.119, 0.001,-0.004] # s10,s11,s12
+    eta0   = [ 0.544,-0.090, 0.039] # e00,e01,e02
+    eta1   = [ 0.223, 0.060,-0.020] # e10,e11,e12
 
 class LongRed_ExposurePSF(ExposurePSF):
 
     name = 'long red'
     correlations = 'new'
     chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
-    
-    beta0  = [ 1.294,-0.049, 0.021] # b00,b01,b02
-    beta1  = [ 0.506, 0.024, 0.020] # b10,b11,b12
-    sigma0 = [ 0.536, 0.031, 0.024] # s00,s01,s02
-    sigma1 = [ 0.248,-0.022,-0.029] # s10,s11,s12
-    eta0   = [ 1.251,-0.063,-0.091] # e00,e01,e02
-    eta1   = [-0.229, 0.042, 0.057] # e10,e11,e12
-    
+
+    beta0  = [ 1.205,-0.100,-0.031] # b00,b01,b02
+    beta1  = [ 0.578, 0.062, 0.028] # b10,b11,b12
+    sigma0 = [ 0.596, 0.044, 0.011] # s00,s01,s02
+    sigma1 = [ 0.173,-0.035,-0.008] # s10,s11,s12
+    eta0   = [ 1.366,-0.184,-0.126] # e00,e01,e02
+    eta1   = [-0.134, 0.121, 0.054] # e10,e11,e12
+
 class ShortBlue_ExposurePSF(ExposurePSF):
 
     name = 'short blue'
     correlations = 'new'
     chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
-    
-    beta0  = [ 1.433, 0.030, 0.024] # b00,b01,b02
-    beta1  = [ 0.470,-0.013, 0.029] # b10,b11,b12
-    sigma0 = [ 0.515,-0.019, 0.022] # s00,s01,s02
-    sigma1 = [ 0.234, 0.003,-0.042] # s10,s11,s12
-    eta0   = [ 0.525,-0.009,-0.116] # e00,e01,e02
-    eta1   = [ 0.016, 0.017, 0.055] # e10,e11,e12
-    
+
+    beta0  = [ 1.355, 0.023,-0.042] # b00,b01,b02
+    beta1  = [ 0.524,-0.012, 0.020] # b10,b11,b12
+    sigma0 = [ 0.492,-0.037, 0.000] # s00,s01,s02
+    sigma1 = [ 0.176, 0.016, 0.000] # s10,s11,s12
+    eta0   = [ 0.499, 0.080, 0.061] # e00,e01,e02
+    eta1   = [ 0.316,-0.015,-0.050] # e10,e11,e12
+
 class ShortRed_ExposurePSF(ExposurePSF):
 
     name = 'short red'
     correlations = 'new'
     chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
-    
-    beta0  = [1.407,-0.012,-0.009] # b00,b01,b02
-    beta1  = [0.476, 0.019, 0.022] # b10,b11,b12
-    sigma0 = [0.535,-0.012, 0.007] # s00,s01,s02
-    sigma1 = [0.166,-0.009,-0.009] # s10,s11,s12
-    eta0   = [0.013,-0.082, 0.000] # e00,e01,e02
-    eta1   = [0.521, 0.101, 0.000] # e10,e11,e12
+
+    beta0  = [ 1.350,-0.030,-0.012] # b00,b01,b02
+    beta1  = [ 0.496, 0.032, 0.020] # b10,b11,b12
+    sigma0 = [ 0.405,-0.003, 0.000] # s00,s01,s02
+    sigma1 = [ 0.212,-0.017, 0.000] # s10,s11,s12
+    eta0   = [ 0.704,-0.060, 0.044] # e00,e01,e02
+    eta1   = [ 0.343, 0.113,-0.045] # e10,e11,e12
