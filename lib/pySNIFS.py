@@ -1261,12 +1261,13 @@ def WR_e3d_file(data_list, var_list, no_list,
     col_list.append(pyfits.Column(name='SPAX_ID',format='1A1',array=spax_id))
     if nslice==None:
         col_list.append(pyfits.Column(name='DATA_SPE',format='PD()',
-                                      array=data_list))
+                                      array=num.array(data_list, dtype='O')))
+        qual = num.array([[0 for i in d] for d in data_list], dtype='O')
         col_list.append(pyfits.Column(name='QUAL_SPE',format='PJ()',
-                                      array=[[0 for i in d] for d in data_list]))
+                                      array=qual))
         if var_list is not None:
             col_list.append(pyfits.Column(name='STAT_SPE',format='PD()',
-                                          array=var_list))
+                                          array=num.array(var_list, dtype='O')))
     else:
         col_list.append(pyfits.Column(name='DATA_SPE',format='%dD()'%nslice,
                                       array=data_list))
@@ -1275,7 +1276,7 @@ def WR_e3d_file(data_list, var_list, no_list,
         if var_list is not None:
             col_list.append(pyfits.Column(name='STAT_SPE',format='%dD()'%nslice,
                                           array=var_list))
-        
+
     tb_hdu = pyfits.new_table(col_list)
     tb_hdu.header.update('CTYPES',' ')
     tb_hdu.header.update('CRVALS',start)
