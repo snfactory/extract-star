@@ -12,16 +12,20 @@
 __version__ = "$Id$"
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 
+import numpy as N
 import pyfits
+
 from pySnurp import Spectrum
 from pySNIFS import spectrum as SNIFS_spectrum
 import pySNIFS_fit
-import numpy as N
+from ToolBox.MPL import errorband
+
 from matplotlib.mlab import prctile
+
 import optparse
 import os
 
-CLIGHT = 299792.458
+CLIGHT = 299792.458             # km/s
 
 def find_max(lbda, flux, lrange):
 
@@ -179,17 +183,6 @@ class LinesNIIHa:
             return f,df
         else:
             return f
-
-
-def errorband(ax, x, y, dy, color='b', alpha=0.3, label='_nolegend_'):
-    """Plot errorband between y-dy and y+dy."""
-
-    #xp,yp = M.poly_between(x, y-dy, y+dy) # matplotlib.mlab
-    xp = N.concatenate((x,x[::-1]))
-    yp = N.concatenate(((y+dy),(y-dy)[::-1]))
-    poly = ax.fill(xp, yp, fc=color, ec=color, alpha=alpha,
-                   zorder=2, label=label)
-    return poly
 
 
 def addRedshiftedLines(ax, z):
@@ -353,10 +346,15 @@ if __name__ == '__main__':
 
     # Detection level: flux(Ha) in units of sig(flux).
     func = model.func[0]
-    f,df = func.flux(model.fitpar[:func.npar_cor],
-                     cov=cov[:func.npar_cor,:func.npar_cor])
-    nsig = f/df
-    print "Detection level: %.1f-sigma (flux: %f +/- %f)" % (nsig, f, df)
+    if hasattr(func,'flux'):
+        f,df = func.flux(model.fitpar[:func.npar_cor],
+                         cov=cov[:func.npar_cor,:func.npar_cor])
+        nsig = f/df
+        print "Detection level: %.1f-sigma (flux: %f +/- %f)" % (nsig, f, df)
+    else:
+        print "WARNING: %s has no flux method, " \
+            "cannot compute detection level" % func.name
+        nsig = 0
 
     # Store results in input spectra (awkward way, but pySnurp is too dumb...)
     if model.status==0:
