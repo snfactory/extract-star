@@ -18,7 +18,7 @@ import scipy.special
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]
 
-DEG2RAD = 0.017453292519943295          # pi/180
+RAD2DEG = 57.295779513082323            # 180/pi
 
 def atmosphericIndex(lbda, P=616., T=2.):
     """Compute atmospheric refractive index: lbda in angstrom, P in mbar, T in
@@ -175,7 +175,7 @@ class ADR_model:
 
         if obs:                         # p1 = airmass, p2 = parangle [deg]
             self.delta = S.tan(S.arccos(1./p1))
-            self.theta = p2*DEG2RAD
+            self.theta = p2/RAD2DEG
         else:                           # p1 = delta, p2 = theta [rad]
             self.delta = p1
             self.theta = p2
@@ -217,7 +217,7 @@ class ADR_model:
         return 1/S.cos(S.arctan(self.delta))
 
     def get_parangle(self):
-        return self.theta/DEG2RAD       # Parangle in deg.
+        return self.theta*RAD2DEG       # Parangle in deg.
 
 
 # Polynomial utilities ======================================================
@@ -351,7 +351,7 @@ def flatAndPA(cy2, c2xy):
     x0,y0,a,b,phi = quadEllipse(1,c2xy,cy2,0,0,-1)
     assert a>0 and b>0, "Input equation does not correspond to an ellipse"
     q = b/a                             # Flattening
-    pa = phi/DEG2RAD                    # From rad to deg
+    pa = phi*RAD2DEG                    # From rad to deg
 
     return q,pa
 

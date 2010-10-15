@@ -100,7 +100,7 @@ def comp_histo(a, **kwargs):
         h,l = N.histogram(a, bins=nbins, **kwargs)
 
     h = N.concatenate((h,[h[-1]]))  # Complete h
-    l = N.concatenate((l,[l[-1]+l[1]-l[0]])) # Not needed w/ new=True
+    #l = N.concatenate((l,[l[-1]+l[1]-l[0]])) # Not needed w/ new=True
 
     return h,l
 

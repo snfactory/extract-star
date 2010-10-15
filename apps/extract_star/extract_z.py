@@ -225,13 +225,15 @@ def addRedshiftedLines(ax, z):
 
 def plot_correlation(ax, corr, parnames=None):
 
+    npar = len(corr)
     im = ax.imshow(N.absolute(corr), 
                    norm=P.matplotlib.colors.LogNorm(),
-                   origin='upper')
+                   origin='upper', extent=(-0.5,npar-0.5,-0.5,npar-0.5))
     if parnames:
-        ax.set_xticks(range(len(parnames))) # Set the nb of ticks
+        assert len(parnames)==npar
+        ax.set_xticks(range(npar)) # Set the nb of ticks
         ax.set_xticklabels(parnames, rotation=45, size='smaller')
-        ax.set_yticks(range(len(parnames)))
+        ax.set_yticks(range(npar))
         ax.set_yticklabels(parnames, rotation=45, size='smaller')
     fig = ax.get_figure()
     cb = fig.colorbar(im, ax=ax, orientation='horizontal')
@@ -358,7 +360,7 @@ if __name__ == '__main__':
 
     # Store results in input spectra (awkward way, but pySnurp is too dumb...)
     if model.status==0:
-        hdu = pyfits.open(specname, mode='update')
+        hdu = pyfits.open(specname, mode='update', ignore_missing_end=True)
         hdu[0].header.update('CVSEXTZ',__version__)
         hdu[0].header.update('EXTZ_Z',zsys,"extract_z redshift")
         hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
@@ -371,25 +373,25 @@ if __name__ == '__main__':
     if makeMap:
         raise NotImplementedError
 
-        zmap = N.zeros_like(ima) * N.nan # Redshift
-        params = [ model.fitpar ] # Use global fit result as initial guess
-        for ino,ii,ij in zip(cube.no,cube.i,cube.j):
-            print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
-            y = cube.spec(no=ino)[g]
-            ibkg = N.median(y)
-            inorm = y.max() - ibkg
-            y = ( y - ibkg ) / inorm
-            v = cube.spec(no=ino, var=True)[g] / inorm**2
-            ispec = SNIFS_spectrum(data=y, var=v, start=x[0], step=cube.lstep)
-            imodel = SNIFS_fit.model(data=ispec, func=funcs,
-                                      param=params,bounds=bounds,myfunc=myfunc)
-            imodel.fit(msge=False, deriv=False)
-            imodel.khi2 *= imodel.dof   # True Chi2
-            #print "   Fitpar:", imodel.fitpar
-            z = imodel.fitpar[0] - 1
-            print "Chi2 (DoF=%d)=%.2f, v=%+.2f km/s" % \
-                (imodel.dof, imodel.khi2, (z-zsys)*CLIGHT)
-            zmap[ii,ij] = z
+        #zmap = N.zeros_like(ima) * N.nan # Redshift
+        #params = [ model.fitpar ] # Use global fit result as initial guess
+        #for ino,ii,ij in zip(cube.no,cube.i,cube.j):
+        #    print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
+        #    y = cube.spec(no=ino)[g]
+        #    ibkg = N.median(y)
+        #    inorm = y.max() - ibkg
+        #    y = ( y - ibkg ) / inorm
+        #    v = cube.spec(no=ino, var=True)[g] / inorm**2
+        #    ispec = SNIFS_spectrum(data=y, var=v, start=x[0], step=cube.lstep)
+        #    imodel = SNIFS_fit.model(data=ispec, func=funcs,
+        #                              param=params,bounds=bounds,myfunc=myfunc)
+        #    imodel.fit(msge=False, deriv=False)
+        #    imodel.khi2 *= imodel.dof   # True Chi2
+        #    #print "   Fitpar:", imodel.fitpar
+        #    z = imodel.fitpar[0] - 1
+        #    print "Chi2 (DoF=%d)=%.2f, v=%+.2f km/s" % \
+        #        (imodel.dof, imodel.khi2, (z-zsys)*CLIGHT)
+        #    zmap[ii,ij] = z
 
         # Could now compute flux-weighted redshift
 
@@ -416,6 +418,8 @@ if __name__ == '__main__':
             addRedshiftedLines(ax1, zsys)
         ax1.legend()
         ax1.set_xlim(lbda[0],lbda[-1])
+        ymin,ymax = ax1.get_ylim()
+        ax1.set_ylim(min(0,ymin/10),ymax)
 
         # Zoom on adjusted line
         ax2.plot(x, resSpec[g], 'g-')
@@ -437,19 +441,21 @@ if __name__ == '__main__':
             plot_correlation(ax3, corr, parnames=flatparnames)
 
         if makeMap:
-            fig2 = P.figure(figsize=(6,6))
-            axv = fig2.add_subplot(1,1,1, title=title,
-                                   xlabel='I [spx]', ylabel='J [spx]')
-            # Velocity map
-            vmap = (zmap - zsys)*CLIGHT # Convert redshift to velocity
-            vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
-            imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
-                             extent=(-7.5,7.5,-7.5,7.5))
-            cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
-            cbv.set_label('Velocity [km/s]')
-            # Intensity contours
-            axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
-                        extent=(-7.5,7.5,-7.5,7.5))
+            raise NotImplementedError
+
+            #fig2 = P.figure(figsize=(6,6))
+            #axv = fig2.add_subplot(1,1,1, title=title,
+            #                       xlabel='I [spx]', ylabel='J [spx]')
+            ## Velocity map
+            #vmap = (zmap - zsys)*CLIGHT # Convert redshift to velocity
+            #vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
+            #imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
+            #                 extent=(-7.5,7.5,-7.5,7.5))
+            #cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
+            #cbv.set_label('Velocity [km/s]')
+            ## Intensity contours
+            #axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
+            #            extent=(-7.5,7.5,-7.5,7.5))
 
         if opts.plot:
             print "Saving figure in", figname

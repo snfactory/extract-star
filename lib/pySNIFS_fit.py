@@ -681,7 +681,29 @@ class model:
         val2 = S.zeros(S.size(param),'d')
         i = 0
         for f in self.func:
-            deriv = -2*val1 * f.deriv(param[i:i+f.npar])
+            if hasattr(f,'deriv'):
+                deriv = -2*val1 * f.deriv(param[i:i+f.npar])
+                #try:
+                #    assert S.allclose(approx_deriv(f.comp, param[i:i+f.npar]),
+                #                      f.deriv(param[i:i+f.npar]))
+                #except AssertionError:
+                #    print "Deriv\n", f.deriv(param[i:i+f.npar])
+                #    print "Approx\n", approx_deriv(f.comp, param[i:i+f.npar])
+            else:
+                #raise AttributeError,"%s has not 'deriv' method" % f.name
+                #print "model.objgrad: using approx_deriv for", f.name
+                deriv = -2*val1 * approx_deriv(f.comp, param[i:i+f.npar])
+            #print "DEBUG OG: val1=%s, val2=%s" % \
+            #    (S.shape(val1),S.shape(val2))
+            #print "DEBUG OG: param=%s, param[]=%s" % \
+            #    (S.shape(param),S.shape(param[i:i+f.npar]))
+            #print "DEBUG OG: f.comp=%s, f.deriv=%s" % \
+            #    (S.shape(f.comp(param[i:i+f.npar])),
+            #     S.shape(f.deriv(param[i:i+f.npar])))
+            #print "DEBUG OG: approx_deriv=%s, deriv=%s" % \
+            #    (S.shape(approx_deriv(f.comp, param[i:i+f.npar])),
+            #     S.shape(deriv))
+
             if f.npar_cor != 0:         # Sum over all axes except 0
                 val2[i:i+f.npar_cor] = \
                      deriv[0:f.npar_cor].sum(axis=-1).sum(axis=-1)
@@ -837,20 +859,23 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
         raise NotImplementedError
 
     if dpars is None:
-        dpars = S.ones(len(pars))*eps   # N
-    mat = S.diag(dpars)                 # NxN
+        dpars = S.ones(len(pars))*eps   # (N,)
+    mat = S.diag(dpars)                 # (N,N)
 
-    delta = S.arange(len(weights)) - (len(weights)-1)//2
+    delta = S.arange(len(weights))-(len(weights)-1)//2 # [-order/2...+order/2]
     df = 0
     for w,d in zip(weights,delta):
         if w:
-            df += w*S.array([ func(pars+d*dpi, *args) for dpi in mat]) # NxS
+            df += w*S.array([ func(pars+d*dpi, *args) for dpi in mat ]) # (N,S)
 
-    f = func(pars, *args)               # S
-    if f.ndim==0:                       # func returns a scalar S=()
-        der = df/dpars                  # N
-    else:                               # func returns an array of shape S
-        der = df/dpars[...,S.newaxis]   # NxS
+    f = func(pars, *args)               # (S,)
+    #if f.ndim==0:                       # func returns a scalar S=()
+    #    der = df/dpars                  # (N,)
+    #else:                               # func returns an array of shape S
+    #    der = df/dpars[...,S.newaxis]   # (N,S)
+    der = df / dpars.reshape((-1,)+(1,)*f.ndim)
+    #print "DEBUG AD: f=%s, df=%s, pars=%s, dpars=%s, der=%s" % \
+    #    (S.shape(f),S.shape(df),S.shape(pars),S.shape(dpars),S.shape(der))
 
     return der
 

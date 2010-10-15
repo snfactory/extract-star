@@ -784,9 +784,14 @@ class SNIFS_cube:
                 i = num.array(self.i)
                 j = num.array(self.j)
                 if var:
-                    slice_2D[j,i] = num.sum(self.var[n1:n2],axis=0)
+                    if var is True: # Boolean
+                        arr = self.var
+                    else:   # Attribute string
+                        arr = getattr(self,var)
                 else:
-                    slice_2D[j,i] = num.sum(self.data[n1:n2],axis=0)
+                    arr = self.data
+                slice_2D[j,i] = num.sum(arr[n1:n2],axis=0)
+
                 return(slice_2D)
             else:
                 raise IndexError("No slice #%d" % n)
@@ -811,9 +816,14 @@ class SNIFS_cube:
                     i = num.array(self.i)
                     j = num.array(self.j)
                     if var:
-                        slice_2D[j,i] = num.sum(num.transpose(num.transpose(num.array(self.var[imin:imax,:]))*w),axis=0)
+                        if var is True: # Boolean
+                            arr = self.var
+                        else:   # Attribute string
+                            arr = getattr(self,var)
                     else:
-                        slice_2D[j,i] = num.sum(num.transpose(num.transpose(num.array(self.data[imin:imax,:]))*w),axis=0)
+                        arr = self.data
+                    slice_2D[j,i] = num.sum((arr[imin:imax,:].T*w).T,axis=0)
+
                     return slice_2D
                 
     def spec(self,no=None,ind=None,mask=None,var=False):

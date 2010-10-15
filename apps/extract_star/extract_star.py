@@ -41,7 +41,7 @@ import pySNIFS
 import pySNIFS_fit
 import libExtractStar as libES
 
-import scipy as S
+import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
 from scipy import linalg as L
 from scipy.ndimage import filters as F
 
@@ -87,7 +87,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
-    param = S.concatenate((psf_param,[1.]*cube.nslice))
+    param = N.concatenate((psf_param,[1.]*cube.nslice))
 
     # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
 
@@ -98,7 +98,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     psf = model.comp(param, normed=True) # nslice,nlens
 
     npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb param. in polynomial bkgnd
-    Z = S.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
+    Z = N.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
     Z[:,:,0] = psf                      # Intensity
     if npar_sky:                        # =0 when no background (skyDeg<=-1)
         Z[:,:,1] = 1                    # Constant background
@@ -109,29 +109,29 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
                 n += 1                  # Finally: n = npar_sky + 1
 
     # Weighting
-    weight = S.where(cube.var>0, 1/S.sqrt(cube.var), 0) # nslice,nlens
+    weight = N.where(cube.var>0, 1/N.sqrt(cube.var), 0) # nslice,nlens
     X = (Z.T * weight.T).T              # nslice,nlens,npar+1
     b = weight*cube.data                # nslice,nlens
 
     # The linear least-squares fit could be done directly using
-    # Spec = S.array([ L.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
+    # Spec = N.array([ L.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
     # but A is needed anyway to compute covariance matrix C=1/A.
     # Furthermore, linear resolution 
     # [ L.solve(aa,bb) for aa,bb in zip(A,B) ]
     # can be replace by faster (~x10) matrix product
-    # [ S.dot(cc,bb) for cc,bb in zip(C,B) ]
+    # [ N.dot(cc,bb) for cc,bb in zip(C,B) ]
     # since C=1/A is already available.
     # See Numerical Recipes (2nd ed.), sect.15.4
     
-    A = S.array([S.dot(xx.T, xx) for xx in X]) # nslice,npar+1,npar+1
-    B = S.array([S.dot(xx.T, bb) for xx,bb in zip(X,b)]) # nslice,npar+1
+    A = N.array([N.dot(xx.T, xx) for xx in X]) # nslice,npar+1,npar+1
+    B = N.array([N.dot(xx.T, bb) for xx,bb in zip(X,b)]) # nslice,npar+1
     try:
-        C = S.array([L.inv(aa) for aa in A])  # nslice,npar+1,npar+1
+        C = N.array([L.inv(aa) for aa in A])  # nslice,npar+1,npar+1
     except L.LinAlgError:
         raise L.LinAlgError("Singular matrix during spectrum extraction")
     # Spec & Var = nslice x Star,Sky,[slope_x...]
-    Spec = S.array([S.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
-    Var = S.array([S.diag(cc) for cc in C]) # nslice,npar+1
+    Spec = N.array([N.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
+    Var = N.array([N.diag(cc) for cc in C]) # nslice,npar+1
 
     # Now, what about negative sky?
     # One could also use an NNLS fit to force parameter non-negativity:
@@ -151,8 +151,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
                   (len(negSky.nonzero()[0]))
             print_msg(str(cube.lbda[negSky]), 2)
             # For slices w/ sky<0, fit only PSF without background
-            A = S.array([ S.dot(xx,xx) for xx in X[negSky,:,0] ])
-            B = S.array([ S.dot(xx,bb)
+            A = N.array([ N.dot(xx,xx) for xx in X[negSky,:,0] ])
+            B = N.array([ N.dot(xx,bb)
                           for xx,bb in zip(X[negSky,:,0],b[negSky]) ])
             C = 1/A
             Spec[negSky,0] = C*B        # Linear fit without sky
@@ -164,8 +164,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         return cube.lbda,Spec,Var       # Nothing else to be done
 
     # Reconstruct background and subtract it from cube
-    bkgnd = S.zeros_like(cube.data)
-    var_bkgnd = S.zeros_like(cube.var)
+    bkgnd = N.zeros_like(cube.data)
+    var_bkgnd = N.zeros_like(cube.var)
     if npar_sky:
         for d in xrange(1,npar_sky+1):      # Loop over sky components
             bkgnd += (Z[:,:,d].T * Spec[:,d]).T
@@ -191,17 +191,17 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     # Aperture center [spx] (nslice)
     xc = psf_param[2] + \
-         psf_param[0]*model.ADR_coeff[:,0]*S.cos(psf_param[1])
+         psf_param[0]*model.ADR_coeff[:,0]*N.cos(psf_param[1])
     yc = psf_param[3] + \
-         psf_param[0]*model.ADR_coeff[:,0]*S.sin(psf_param[1])
+         psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
     # Aperture radius in spaxels
     aperRad = radius / spxSize
     print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad), 1)
 
     # Radius [spx] (nslice,nlens)
-    r = S.hypot((model.x.T - xc).T, (model.y.T - yc).T)
+    r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
     # Circular aperture (nslice,nlens)
-    # Use r<aperRad[:,S.newaxis] if radius is a (nslice,) vec.
+    # Use r<aperRad[:,N.newaxis] if radius is a (nslice,) vec.
     frac = (r < aperRad).astype('float')
 
     # Check if aperture hits the FoV edges
@@ -230,8 +230,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # Extend usual range by ns spx on each side
         nw = 15 + 2*ns                  # New FoV size in spaxels
         mid = (7 + ns)                  # FoV center
-        extRange = S.arange(nw) - mid
-        extx,exty = S.meshgrid(extRange[::-1],extRange) # nw,nw
+        extRange = N.arange(nw) - mid
+        extx,exty = N.meshgrid(extRange[::-1],extRange) # nw,nw
         extnlens = extx.size                 # = nlens' = nw**2
         print_msg("  Extend FoV by %d spx: nlens=%d -> %d" % \
                   (ns, model.nlens, extnlens), 1)
@@ -244,7 +244,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         origData = subData.copy()
         origVar = subVar.copy()
         subData = (Spec[:,0]*extPsf.T).T   # Extended model, nslice,extnlens
-        subVar = S.zeros((extModel.nslice,extModel.nlens))
+        subVar = N.zeros((extModel.nslice,extModel.nlens))
         for i in xrange(model.nlens):
             # Embeb original spx i in extended model array by finding
             # corresponding index j in new array
@@ -253,7 +253,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
             subData[:,j[0]] = origData[:,i]
             subVar[:,j[0]] = origVar[:,i]
 
-        r = S.hypot((extModel.x.T - xc).T, (extModel.y.T - yc).T)
+        r = N.hypot((extModel.x.T - xc).T, (extModel.y.T - yc).T)
         frac = (r < aperRad).astype('float')
 
     if method == 'aperture':
@@ -274,10 +274,10 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # flat-field, which is supposed to be constant of FoV.
 
         # Model variance = alpha*Signal + beta
-        coeffs = S.array([ libES.polyfit_clip(modsig[s], cube.var[s], 1, clip=5)
+        coeffs = N.array([ libES.polyfit_clip(modsig[s], cube.var[s], 1, clip=5)
                            for s in xrange(cube.nslice) ])
         coeffs = F.median_filter(coeffs, (5,1)) # A bit of smoothing...
-        modvar = S.array([ S.polyval(coeffs[s], modsig[s])
+        modvar = N.array([ N.polyval(coeffs[s], modsig[s])
                            for s in xrange(cube.nslice) ]) # nslice,nlens
 
         # Optimal weighting
@@ -320,9 +320,9 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     cube_star.nlens = cube.nlens
 
     # PSF + Intensity + Bkgnd coeffs
-    param_arr = S.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
-    khi2_vec  = S.zeros(cube.nslice, dtype='d')
-    error_mat = S.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
+    param_arr = N.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
+    khi2_vec  = N.zeros(cube.nslice, dtype='d')
+    error_mat = N.zeros((cube.nslice,npar_psf+1+npar_sky), dtype='d')
     
     if nsky>7:                          # Nb of edge spx used for sky estimate
         raise ValueError('The number of edge pixels should be less than 7')
@@ -333,14 +333,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
               "%d bkgndCoeffs" % (skyDeg>=0 and npar_sky or 0), 2)
 
     for i in xrange(cube.nslice):
-        cube_star.lbda = S.array([cube.lbda[i]])
-        cube_star.data = cube.data[i, S.newaxis]
-        cube_star.var  = cube.var[i,  S.newaxis]
-        cube_sky.data  = cube.data[i, S.newaxis].copy() # To be modified
-        cube_sky.var   = cube.var[i,  S.newaxis].copy()
+        cube_star.lbda = N.array([cube.lbda[i]])
+        cube_star.data = cube.data[i, N.newaxis]
+        cube_star.var  = cube.var[i,  N.newaxis]
+        cube_sky.data  = cube.data[i, N.newaxis].copy() # To be modified
+        cube_sky.var   = cube.var[i,  N.newaxis].copy()
 
         # Sky estimate (from FoV edge spx)
-        skyLev = S.median(cube_sky.data.T[skySpx].squeeze())
+        skyLev = N.median(cube_sky.data.T[skySpx].squeeze())
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
             # given cube slice.
@@ -357,7 +357,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         medstar = F.median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
         cube_sky.data -= skyLev
-        cube_sky.var   = cube.var[i,  S.newaxis]
+        cube_sky.var   = cube.var[i,  N.newaxis]
         model = pySNIFS_fit.model(data=cube_sky,
                                   func=['gaus2D','poly2D;0'],
                                   param=[[0,0,1,1,imax],[0]],
@@ -419,15 +419,15 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             # not handle fixed parameters (lb=ub).
             hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                             model_star.fitpar)
-            cov = 2 * S.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+            cov = 2 * N.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
             diag = cov.diagonal()
             if (diag>0).all():
-                errorpar = S.concatenate(([0.,0.], S.sqrt(diag)))
+                errorpar = N.concatenate(([0.,0.], N.sqrt(diag)))
             else:                       # Some negative diagonal elements!
                 print "WARNING: negative covariance diagonal elements " \
                     "in metaslice %d" % (i+1)
                 model_star.khi2 *= -1   # To be discarded
-                errorpar = S.zeros(len(error_mat.T))
+                errorpar = N.zeros(len(error_mat.T))
         else:
             # Set error to 0 if alpha, intensity or ellipticity is 0.
             if model_star.fitpar[5]==0:
@@ -437,7 +437,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             elif model_star.fitpar[7]==0:
                 print "WARNING: intensity of metaslice %d is null" % (i+1)
             model_star.khi2 *= -1       # To be discarded
-            errorpar = S.zeros(len(error_mat.T))
+            errorpar = N.zeros(len(error_mat.T))
 
         # Storing the result of the current slice parameters
         param_arr[i] = model_star.fitpar
@@ -486,7 +486,7 @@ def create_2D_log_file(filename,object,airmass,efftime,
                    alpha[n], error_mat[n][6],
                    intensity[n], error_mat[n][-npar_sky-1]]
         if npar_sky:
-            tmp = S.array((sky.T[n],error_mat[n][-npar_sky:]))
+            tmp = N.array((sky.T[n],error_mat[n][-npar_sky:]))
             list2D += tmp.T.flatten().tolist()
         list2D += [khi2[n]]
         logfile.write(fmt % tuple(list2D))
@@ -541,7 +541,7 @@ def create_3D_log_file(filename,object,airmass,efftime,
         for i in xrange(npar_sky):
             list2D.extend([fitpar[npar_psf+nslice+n*npar_sky+i],
                            errorpar[npar_psf+nslice+n*npar_sky+i]])
-        chi2 = S.nan_to_num((cube.slice2d(n, coord='p') - \
+        chi2 = N.nan_to_num((cube.slice2d(n, coord='p') - \
                              cube_fit.slice2d(n, coord='p'))**2 / \
                             cube.slice2d(n, coord='p', var=True))
         list2D += [chi2.sum()]          # Slice chi2
@@ -561,8 +561,8 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
     cube2.x  = (cube2.x)**2
     cube2.y  = (cube2.y)**2
     poly2    = pySNIFS_fit.poly2D(skyDeg,cube2)
-    param    = S.zeros((nslices,npar_sky),'d')
-    vparam   = S.zeros((nslices,npar_sky),'d')
+    param    = N.zeros((nslices,npar_sky),'d')
+    vparam   = N.zeros((nslices,npar_sky),'d')
     for i in xrange(nslices):
         param[i,:] = sky[i].data
         vparam[i,:] = sky_var[i].data
@@ -890,22 +890,22 @@ if __name__ == "__main__":
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, 
                             backward=True, unit=SpaxelSize)
     valid = khi2_vec > 0                # Discard unfitted slices
-    xref0 = S.median(xref[valid])       # Robust to outliers
-    yref0 = S.median(yref[valid])
-    r = S.hypot(xref - xref0, yref - yref0)
-    rmax = 5*S.median(r[valid])         # Robust to outliers
+    xref0 = N.median(xref[valid])       # Robust to outliers
+    yref0 = N.median(yref[valid])
+    r = N.hypot(xref - xref0, yref - yref0)
+    rmax = 5*N.median(r[valid])         # Robust to outliers
     good = valid & (r <= rmax)          # Valid fit and reasonable position
     bad = valid & (r > rmax)            # Valid fit but discarded position
     if (valid & bad).any():
         print "WARNING: %d metaslices discarded after ADR selection" % \
-              (len(S.nonzero(valid & bad)))
+              (len(N.nonzero(valid & bad)))
     print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % \
               (len(xref[good]),len(xref),rmax,xref0,yref0), 1)
     xc,yc = xref[good].mean(),yref[good].mean()
     # We could use a weighted average, but does not make much of a difference
     # dx,dy = error_mat[:,2],error_mat[:,3]
-    # xc = S.average(xref[good], weights=1/dx[good]**2)
-    # yc = S.average(yref[good], weights=1/dy[good]**2)
+    # xc = N.average(xref[good], weights=1/dx[good]**2)
+    # yc = N.average(yref[good], weights=1/dy[good]**2)
 
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
@@ -915,10 +915,10 @@ if __name__ == "__main__":
     print_msg("  Reference position guess [%.0fA]: %.2f x %.2f spx" % \
               (lref,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % \
-              (delta0, theta0/S.pi*180), 1) # S.degrees() from python-2.5 only
+              (delta0, theta0/N.pi*180), 1) # N.degrees() from python-2.5 only
 
     # 2) Other parameters
-    PA       = S.median(PA_vec[good])
+    PA       = N.median(PA_vec[good])
     polEll   = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
     polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
 
@@ -960,7 +960,7 @@ if __name__ == "__main__":
     bounds = [b1]
 
     if skyDeg >= 0:
-        p2 = S.ravel(sky_vec.T)
+        p2 = N.ravel(sky_vec.T)
         b2 = ([[0,None]] + [[None,None]]*(npar_sky-1)) * nslice 
         func += ['poly2D;%d' % skyDeg]  # Add background
         param += [p2]
@@ -987,7 +987,7 @@ if __name__ == "__main__":
     data_model.khi2 *= data_model.dof   # Restore real chi2
     khi2 = data_model.khi2              # Total chi2 of 3D-fit
     cov = data_model.param_error(fitpar) # Covariance matrix
-    errorpar = S.sqrt(cov.diagonal())
+    errorpar = N.sqrt(cov.diagonal())
 
     print_msg("  Fit result [%d]: DoF=%d, chi2=%f" % \
               (data_model.status, data_model.dof, khi2), 2)
@@ -1009,7 +1009,7 @@ if __name__ == "__main__":
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * SpaxelSize
     print '  Seeing estimate [%.0fA]: %.2f" FWHM' % (LbdaRef,seeing)
 
-    if not 0.<seeing<4. and not 1.<adr.get_airmass()<3.:
+    if not (0.<seeing<4. and 1.<adr.get_airmass()<3.):
         raise ValueError("Unphysical seeing or airmass")
 
     # Test positivity of alpha and ellipticity. At some point, maybe it would
@@ -1187,14 +1187,14 @@ if __name__ == "__main__":
         axS.text(0.95,0.8, os.path.basename(opts.input), fontsize='small',
                  horizontalalignment='right', transform=axS.transAxes)
 
-        axN.plot(star_spec.x, star_spec.data/S.sqrt(var[:,0]), blue)
+        axN.plot(star_spec.x, star_spec.data/N.sqrt(var[:,0]), blue)
 
         if skyDeg >= 0:
             axB.plot(bkg_spec.x, bkg_spec.data, green)
             axB.set(title=u"Background spectrum (per arcsec²)",
                     xlim=(bkg_spec.x[0],bkg_spec.x[-1]),
                     xticklabels=[])
-            axN.plot(bkg_spec.x, bkg_spec.data/S.sqrt(bkg_spec.var), green)
+            axN.plot(bkg_spec.x, bkg_spec.data/N.sqrt(bkg_spec.var), green)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (obj,method),
                 xlim=(star_spec.x[0],star_spec.x[-1]), xticklabels=[])
@@ -1207,8 +1207,8 @@ if __name__ == "__main__":
 
         print_msg("Producing slice fit plot %s..." % plot2, 1)
 
-        ncol = S.floor(S.sqrt(nslice))
-        nrow = S.ceil(nslice/float(ncol))
+        ncol = N.floor(N.sqrt(nslice))
+        nrow = N.ceil(nslice/float(ncol))
 
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
@@ -1220,7 +1220,7 @@ if __name__ == "__main__":
         fmin = 0
 
         # Compute PSF & bkgnd models on incomplete cube
-        sno = S.sort(cube.no)
+        sno = N.sort(cube.no)
         psf2 = psfFn(psfCtes, cube=cube).comp(fitpar[:psf_model.npar])
         if skyDeg >= 0:
             bkg2 = pySNIFS_fit.poly2D(skyDeg,cube).\
@@ -1268,8 +1268,8 @@ if __name__ == "__main__":
                 modSlice = cube_fit.slice2d(i, coord='p')
                 prof_I = sigSlice.sum(axis=0) # Sum along rows
                 prof_J = sigSlice.sum(axis=1) # Sum along columns
-                err_I = S.sqrt(varSlice.sum(axis=0))
-                err_J = S.sqrt(varSlice.sum(axis=1))
+                err_I = N.sqrt(varSlice.sum(axis=0))
+                err_J = N.sqrt(varSlice.sum(axis=1))
                 mod_I = modSlice.sum(axis=0)
                 mod_J = modSlice.sum(axis=1)
                 ax.errorbar(range(len(prof_I)),prof_I,err_I, marker='o',
@@ -1288,7 +1288,7 @@ if __name__ == "__main__":
 
         else:                           # Plot correlation matrix
 
-            corr = cov / S.outer(errorpar,errorpar) # Correlation matrix
+            corr = cov / N.outer(errorpar,errorpar) # Correlation matrix
             parnames = data_model.func[0].parnames # PSF param names
             if skyDeg >= 0:                 # Add background param names
                 coeffnames = [ "00" ] + \
@@ -1303,7 +1303,7 @@ if __name__ == "__main__":
 
             fig3 = pylab.figure(figsize=(6,6))
             ax3 = fig3.add_subplot(1,1,1, title="Correlation matrix for 3D-fit")
-            im3 = ax3.imshow(S.absolute(corr),
+            im3 = ax3.imshow(N.absolute(corr),
                              vmin=max(1e-3,corr.min()), vmax=1,
                              aspect='equal', origin='upper',
                              norm=pylab.matplotlib.colors.LogNorm(),
@@ -1322,10 +1322,10 @@ if __name__ == "__main__":
 
         print_msg("Producing ADR plot %s..." % plot4, 1)
 
-        xguess = xc + delta0*psf_model.ADR_coeff[:,0]*S.sin(theta0)
-        yguess = yc - delta0*psf_model.ADR_coeff[:,0]*S.cos(theta0)
-        xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*S.sin(fitpar[1])
-        yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*S.cos(fitpar[1])
+        xguess = xc + delta0*psf_model.ADR_coeff[:,0]*N.sin(theta0)
+        yguess = yc - delta0*psf_model.ADR_coeff[:,0]*N.cos(theta0)
+        xfit = fitpar[2] + fitpar[0]*psf_model.ADR_coeff[:,0]*N.sin(fitpar[1])
+        yfit = fitpar[3] - fitpar[0]*psf_model.ADR_coeff[:,0]*N.cos(fitpar[1])
 
         fig4 = pylab.figure()
         fig4.subplots_adjust(left=0.08, right=0.96, bottom=0.08, top=0.95)
@@ -1398,14 +1398,14 @@ if __name__ == "__main__":
 
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
-        guess_ell   = S.polyval(polEll.coeffs,   lbda_rel)
-        guess_alpha = S.polyval(polAlpha.coeffs, lbda_rel)
+        guess_ell   = N.polyval(polEll.coeffs,   lbda_rel)
+        guess_alpha = N.polyval(polAlpha.coeffs, lbda_rel)
 
         # err_ell and err_alpha are definitely wrong, and not only because
         # they do not include correlations between parameters!
         # d = cov.diagonal()
-        # err_ell   = S.sqrt(libES.polyEval(d[5:6+ellDeg],lbda_rel))
-        # err_alpha = S.sqrt(libES.polyEval(d[6+ellDeg:npar_psf],lbda_rel))
+        # err_ell   = N.sqrt(libES.polyEval(d[5:6+ellDeg],lbda_rel))
+        # err_alpha = N.sqrt(libES.polyEval(d[6+ellDeg:npar_psf],lbda_rel))
         err_PA = errorpar[4]
 
         def plot_conf_interval(ax, x, y, dy):
@@ -1444,7 +1444,7 @@ if __name__ == "__main__":
         # with a=1, b=q, c=ell, d=-(x0 + q*y0), f=-(ell*y0 + q*x0), 
         # and g=x0**2 + ell*y0**2 + 2*q*x0*y0
         # so one should compute:
-        # elldata = S.array([ quadEllipse(1, q, ell,
+        # elldata = N.array([ quadEllipse(1, q, ell,
         #                                 -(x0 + q*y0), -(ell*y0 + q*x0),
         #                                 x0**2 + ell*y0**2 + 2*q*x0*y0 - 1) 
         #                     for x0,y0,ell,q in 
@@ -1504,8 +1504,8 @@ if __name__ == "__main__":
                       marker='.',
                       mfc=red, mec=red, ls='None')
         ax6c.plot([cube.lbda[0],cube.lbda[-1]], [PA]*2, 'k--')
-        plot_conf_interval(ax6c, S.asarray([cube.lbda[0],cube.lbda[-1]]),
-                           S.ones(2)*fitpar[4], S.ones(2)*err_PA)
+        plot_conf_interval(ax6c, N.asarray([cube.lbda[0],cube.lbda[-1]]),
+                           N.ones(2)*fitpar[4], N.ones(2)*err_PA)
         ax6c.text(0.03, 0.1,
                   u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (PA,fitpar[4]),
                   transform=ax6c.transAxes, fontsize='small')
@@ -1526,30 +1526,31 @@ if __name__ == "__main__":
         def ellRadius(x,y, x0,y0, ell, q):
             dx = x - x0
             dy = y - y0
-            return S.sqrt(dx**2 + ell*dy**2 + 2*q*dx*dy)
+            # BEWARE: can return NaN's if ellipse is ill-defined
+            return N.sqrt(dx**2 + ell*dy**2 + 2*q*dx*dy)
         
         def radialbin(r,f, binsize=20, weighted=True):
-            rbins = S.sort(r)[::binsize] # Bin limits, starting from min(r)
-            ibins = S.digitize(r, rbins) # WARNING: ibins(min(r)) = 1
-            ib = S.arange(len(rbins))+1 # Bin index
-            rb = S.array([ r[ibins==b].mean() for b in ib ]) # Mean radius
+            rbins = N.sort(r)[::binsize] # Bin limits, starting from min(r)
+            ibins = N.digitize(r, rbins) # WARNING: ibins(min(r)) = 1
+            ib = N.arange(len(rbins))+1 # Bin index
+            rb = N.array([ r[ibins==b].mean() for b in ib ]) # Mean radius
             if weighted:
-                fb = S.array([ S.average(f[ibins==b], weights=r[ibins==b]) 
+                fb = N.array([ N.average(f[ibins==b], weights=r[ibins==b]) 
                                for b in ib ]) # Mean radius-weighted data
             else:
-                fb = S.array([ f[ibins==b].mean() for b in ib ]) # Mean data
+                fb = N.array([ f[ibins==b].mean() for b in ib ]) # Mean data
             # Error on bin mean quantities
-            #snb = S.sqrt([ len(r[ibins==b]) for b in ib ]) # sqrt(nb of points)
-            #drb = S.array([ r[ibins==b].std()/n for b,n in zip(ib,snb) ])
-            #dfb = S.array([ f[ibins==b].std()/n for b,n in zip(ib,snb) ])
+            #snb = N.sqrt([ len(r[ibins==b]) for b in ib ]) # sqrt(nb of points)
+            #drb = N.array([ r[ibins==b].std()/n for b,n in zip(ib,snb) ])
+            #dfb = N.array([ f[ibins==b].std()/n for b,n in zip(ib,snb) ])
             return rb,fb
 
         fmin = 0
         for i in xrange(nslice):        # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i+1, yscale='log')
             # Use adjusted elliptical radius instead of plain radius
-            #r = S.hypot(cube.x-xfit[i],cube.y-yfit[i])
-            #rfit = S.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
+            #r = N.hypot(cube.x-xfit[i],cube.y-yfit[i])
+            #rfit = N.hypot(cube_fit.x-xfit[i],cube_fit.y-yfit[i])
             r = ellRadius(cube.x,cube.y, xfit[i],yfit[i], fit_ell[i], fitpar[4])
             rfit = ellRadius(cube_fit.x,cube_fit.y, xfit[i],yfit[i],
                              fit_ell[i], fitpar[4])
@@ -1598,16 +1599,16 @@ if __name__ == "__main__":
                 # Binned values
                 rb,db = radialbin(r, cube.data[i])
                 rfb,fb = radialbin(rfit, cube_fit.data[i])
-                tb = S.cumsum(rb*db)
+                tb = N.cumsum(rb*db)
                 norm = tb.max()
                 ax.plot(rb, 1 - tb/norm, 'c.')
-                ax.plot(rfb, 1 - S.cumsum(rfb*fb)/norm, 'm.')
+                ax.plot(rfb, 1 - N.cumsum(rfb*fb)/norm, 'm.')
                 if skyDeg >= 0:
                     rfb,pb = radialbin(rfit, psf[i])
                     rfb,bb = radialbin(rfit, bkg[i])
-                    ax.plot(rfb, 1 - S.cumsum(rfb*pb)/norm,
+                    ax.plot(rfb, 1 - N.cumsum(rfb*pb)/norm,
                             marker='.', mfc=green,   mec=green, ls='None')
-                    ax.plot(rfb, 1 - S.cumsum(rfb*bb)/norm,
+                    ax.plot(rfb, 1 - N.cumsum(rfb*bb)/norm,
                             marker='.', mfc=orange, mec=orange, ls='None')
                 pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), 
                            fontsize=6)
@@ -1661,7 +1662,7 @@ if __name__ == "__main__":
             data = cube.slice2d(i, coord='p')
             fit = cube_fit.slice2d(i, coord='p')
             vmin,vmax = pylab.prctile(fit, (5.,95.)) # Percentiles
-            lev = S.logspace(S.log10(vmin),S.log10(vmax),5)
+            lev = N.logspace(N.log10(vmin),N.log10(vmax),5)
             ax.contour(data, lev, origin='lower', extent=extent)
             cnt = ax.contour(fit, lev, ls='--', origin='lower', extent=extent)
             pylab.setp(cnt.collections, linestyle='dotted')
@@ -1702,7 +1703,7 @@ if __name__ == "__main__":
             data = cube.slice2d(i, coord='p')
             var  = cube.slice2d(i, coord='p', var=True)
             fit  = cube_fit.slice2d(i, coord='p')
-            res  = S.nan_to_num((data - fit)/S.sqrt(var))
+            res  = N.nan_to_num((data - fit)/N.sqrt(var))
 
             # List of images, to be commonly normalized latter on
             images.append(ax.imshow(res, origin='lower', extent=extent,
@@ -1724,7 +1725,7 @@ if __name__ == "__main__":
                 ax.set_yticks([])
                 
         # Common image normalization
-        vmin,vmax = pylab.prctile(S.ravel([ im.get_array().filled()
+        vmin,vmax = pylab.prctile(N.ravel([ im.get_array().filled()
                                             for im in images ]), (3.,97.))
         norm = M.colors.Normalize(vmin=vmin, vmax=vmax)
         for im in images:
