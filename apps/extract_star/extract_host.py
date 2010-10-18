@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 ##############################################################################
 ## Filename:      extract_host.py
 ## Version:       $Revision$
@@ -268,11 +269,12 @@ if __name__ == '__main__':
         #for i,j,no in zip(cube.i,cube.j,cube.no):
         #    ax.text(i-7,j-7,str(no), size='x-small',
         #            horizontalalignment='center', verticalalignment='center')
+        ax.axis((-7.5,7.5,-7.5,7.5))
 
         ax0 = fig.add_subplot(3,2,2,
                               title="Detection: %.1f-sigma" % nsig)
         ax1 = fig.add_subplot(3,2,4)
-        ax2 = fig.add_subplot(3,2,6, xlabel="Wavelength [A]", sharex=ax1)
+        ax2 = fig.add_subplot(3,2,6, xlabel=u"Wavelength [Å]", sharex=ax1)
 
         # Flux histogram
         fx = ima[N.isfinite(ima)]
@@ -284,7 +286,7 @@ if __name__ == '__main__':
         ax0.axvspan(fgmin,fgmax,fc='b', alpha=0.3,
                     label='Galaxy [%.0f-%.0f%%]' % (cgmin,cgmax)) # Galaxy
         ax0.axvline(med, c='k', ls='-', label='Median')
-        ax0.legend(loc='upper right')
+        ax0.legend(loc='upper right', prop=dict(size='x-small'))
         #ax0.axvline(med-mad, c='k', ls='--', label='_')
         #ax0.axvline(med+mad, c='k', ls='--', label='_')
         #ax0.axvline(med-mma, c='k', ls=':', label='_')
@@ -294,10 +296,10 @@ if __name__ == '__main__':
         ax1.plot(lbda, galSpec, 'b-', label='Galaxy')
         ax1.plot(lbda, skySpec, 'r-', label='Sky')
         ax1.axvspan(lmin,lmax,fc='0.9',ec='0.8', label='_')
-        ax1.legend()
+        ax1.legend(prop=dict(size='x-small'))
         # Galaxy spectrum
         lgal, = ax2.plot(lbda, resSpec, 'g-', label='Galaxy - sky')
-        ax2.legend()
+        ax2.legend(prop=dict(size='x-small'))
         ax2.set_xlim(lbda[0],lbda[-1])
         ax2.set_autoscale_on(False)
 

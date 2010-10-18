@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
 ##############################################################################
 ## Filename:      extract_z.py
 ## Version:       $Revision$
@@ -268,12 +269,12 @@ if __name__ == '__main__':
     # Convert array to pySNIFS.spectrum on a restricted range
     if X=='B':
         l0 = find_max(lbda, resSpec, (3700,4200)) # OII from 1+z=1 to 1.13
-        print "Fit [OII] doublet around %.0f A (%.0f A window)" % (l0,100)
+        print "Fit [OII] doublet around %.0f Å (%.0f Å window)" % (l0,100)
         lmin,lmax = l0-50,l0+50
         g = (lmin<=lbda) & (lbda<=lmax)
     elif X=='R':
         l0 = find_max(lbda, resSpec, (6560,7400)) # Ha from 1+z=1 to 1.13
-        print "Fit [NII],Ha complex around %.0f A (%.0f A window)" % (l0,200)
+        print "Fit [NII],Ha complex around %.0f Å (%.0f Å window)" % (l0,200)
         lmin,lmax = l0-100,l0+100
         g = (lmin<=lbda) & (lbda<=lmax)
 
@@ -332,7 +333,7 @@ if __name__ == '__main__':
 
     print "Adjusted parameters (including normalization):"
     for par,val,dval in zip(flatparnames, model.fitpar, dfitpar):
-        print "  %s = %f +/- %f" % (par,val,dval)
+        print "  %s = %f ± %f" % (par,val,dval)
 
     #print "Correlation matrix:"
     #print N.array2string(corr, 79, 3)
@@ -340,9 +341,19 @@ if __name__ == '__main__':
     # Mean redshift
     zsys = model.fitpar[0] - 1
     dzsys = dfitpar[0]
-    print "Estimated redshift: %f +/- %f (%.1f +/- %.1f km/s)" % \
+    #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+    #    (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+
+    # Barycentric correction: amount to add to an observed radial
+    # velocity to correct it to the solar system barycenter
+    v = s.get_skycalc('baryvcor')       # Relative velocity [km/s]
+    print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
+    zsys += v/CLIGHT
+    dzsys = N.hypot(dzsys, 0.01/CLIGHT) # Correction precision: 0.01 km/s
+    print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
         (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
-    print "Sigma: %.2f +/- %.2f A" % (model.fitpar[1],dfitpar[1])
+    
+    print "Sigma: %.2f ± %.2f Å" % (model.fitpar[1],dfitpar[1])
 
     # Detection level: flux(Ha) in units of sig(flux).
     func = model.func[0]
@@ -350,7 +361,7 @@ if __name__ == '__main__':
         f,df = func.flux(model.fitpar[:func.npar_cor],
                          cov=cov[:func.npar_cor,:func.npar_cor])
         nsig = f/df
-        print "Detection level: %.1f-sigma (flux: %f +/- %f)" % (nsig, f, df)
+        print "Detection level: %.1f-sigma (flux: %f ± %f)" % (nsig, f, df)
     else:
         print "WARNING: %s has no flux method, " \
             "cannot compute detection level" % func.name
@@ -360,7 +371,7 @@ if __name__ == '__main__':
     if model.status==0:
         hdu = pyfits.open(specname, mode='update', ignore_missing_end=True)
         hdu[0].header.update('CVSEXTZ',__version__)
-        hdu[0].header.update('EXTZ_Z',zsys,"extract_z redshift")
+        hdu[0].header.update('EXTZ_Z',zsys,"extract_z heliocentric redshift")
         hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
         hdu[0].header.update('EXTZ_K2',model.khi2,"extract_z chi2")
         hdu[0].header.update('EXTZ_NS',nsig,"extract_z detection level")
@@ -403,18 +414,18 @@ if __name__ == '__main__':
                  fontsize='large', horizontalalignment='center')
 
         ax1 = fig.add_subplot(1,2,1, 
-                              xlabel='Wavelength [A]',
+                              xlabel=u'Wavelength [Å]',
                               ylabel='Flux [%s]' % flxunits)
         ax2 = fig.add_subplot(1,4,3, 
-                              xlabel='Wavelength [A]')
+                              xlabel=u'Wavelength [Å]')
 
         # Galaxy spectrum
         lgal, = ax1.plot(lbda, resSpec, 'g-', 
-                         label="z=%.5f +/- %.1g" % (zsys,dzsys))
+                         label=u"zHelio = %.5f ± %.1g" % (zsys,dzsys))
         if model.status==0:
             #ax1.plot(x, model.evalfit()*norm + bkg, 'r-')
             addRedshiftedLines(ax1, zsys)
-        ax1.legend()
+        ax1.legend(prop=dict(size='x-small'))
         ax1.set_xlim(lbda[0],lbda[-1])
         ymin,ymax = ax1.get_ylim()
         ax1.set_ylim(min(0,ymin/10),ymax)
@@ -428,7 +439,7 @@ if __name__ == '__main__':
             ax2.text(0.1,0.9,
                      "Chi2=%.1f (DoF=%d)\nDetection: %.1f sigma" % \
                      (model.khi2, model.dof, nsig),
-                     transform=ax2.transAxes, fontsize='smaller')
+                     transform=ax2.transAxes, fontsize='small')
         else:
             ax2.plot(x, model.eval(model.flatparam)*norm + bkg, 'm-')
         ax2.set_xlim(x[0],x[-1])
