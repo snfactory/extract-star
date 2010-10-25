@@ -869,13 +869,10 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
             df += w*S.array([ func(pars+d*dpi, *args) for dpi in mat ]) # (N,S)
 
     f = func(pars, *args)               # (S,)
-    #if f.ndim==0:                       # func returns a scalar S=()
-    #    der = df/dpars                  # (N,)
-    #else:                               # func returns an array of shape S
-    #    der = df/dpars[...,S.newaxis]   # (N,S)
-    der = df / dpars.reshape((-1,)+(1,)*f.ndim)
-    #print "DEBUG AD: f=%s, df=%s, pars=%s, dpars=%s, der=%s" % \
-    #    (S.shape(f),S.shape(df),S.shape(pars),S.shape(dpars),S.shape(der))
+    if f.ndim==0:                       # func returns a scalar S=()
+        der = df/dpars                  # (N,)
+    else:                               # func returns an array of shape S
+        der = df/dpars[...,S.newaxis]   # (N,S)
 
     return der
 

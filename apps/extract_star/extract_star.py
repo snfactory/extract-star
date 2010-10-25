@@ -146,7 +146,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     if skyDeg==0:
         negSky = Spec[:,1]<0            # Test for presence of negative sky
-        if negSky.any():
+        if negSky.any(): # and 'long' not in psf_fn.name.lower():
             print "WARNING: %d slices w/ sky<0 in extract_spec" % \
                   (len(negSky.nonzero()[0]))
             print_msg(str(cube.lbda[negSky]), 2)
@@ -329,7 +329,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
-    print_msg("  Adjusted parameters: [delta=0],[theta=0],xc,yc,PA,ell,alpha,I,"
+    print_msg("  Adjusted parameters: [delta=0,theta=0],xc,yc,PA,ell,alpha,I,"
               "%d bkgndCoeffs" % (skyDeg>=0 and npar_sky or 0), 2)
 
     for i in xrange(cube.nslice):
@@ -354,6 +354,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             skyLev = model_sky.evalfit().squeeze() # Structure bkgnd estimate
 
         # Guess parameters for the current slice
+        print_msg("  Set initial guess from simple Gaussian+constant fit", 2)
         medstar = F.median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
         cube_sky.data -= skyLev
@@ -365,7 +366,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                                           [[0,5]]*2 +
                                           [[0,None]],
                                           [[None,None]]])
-        model.fit(msge=(opts.verbosity>2))
+        model.fit(msge=(opts.verbosity>3))
         xc,yc = model.fitpar[:2]        # Centroid
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
@@ -406,20 +407,32 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         # Fit of the current slice
         model_star.fit(maxfun=400, msge=int(opts.verbosity >= 3))
 
-        # Probably one should check model_star.status...
+        hasFailed = False
+        if model_star.status>0:
+            print "WARNING: fit failed with status %d" % (model_star.status)
+            hasFailed = True
+        elif model_star.fitpar[5]<=0:
+            print "WARNING: ellipticity of metaslice %d is null" % (i+1)
+            hasFailed = True
+        elif model_star.fitpar[6]<=0:
+            print "WARNING: alpha of metaslice %d is null" % (i+1)
+            hasFailed = True
+        elif model_star.fitpar[7]<=0:
+            print "WARNING: intensity of metaslice %d is null" % (i+1)
+            hasFailed = True
 
         # Restore true chi2 (not reduced one), ie.
         # chi2 = ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
         model_star.khi2 *= model_star.dof
 
         # Error computation
-        if model_star.fitpar[5]>0 and \
-               model_star.fitpar[6]>0 and model_star.fitpar[7]>0:
+        if not hasFailed:
             # Cannot use model_star.param_error to compute cov, since it does
             # not handle fixed parameters (lb=ub).
             hess = pySNIFS_fit.approx_deriv(model_star.objgrad,
                                             model_star.fitpar)
-            cov = 2 * N.linalg.inv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+            # Discard 1st 2 lines (unfitted)
+            cov = 2 * N.linalg.pinv(hess[2:,2:])
             diag = cov.diagonal()
             if (diag>0).all():
                 errorpar = N.concatenate(([0.,0.], N.sqrt(diag)))
@@ -429,13 +442,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
                 model_star.khi2 *= -1   # To be discarded
                 errorpar = N.zeros(len(error_mat.T))
         else:
-            # Set error to 0 if alpha, intensity or ellipticity is 0.
-            if model_star.fitpar[5]==0:
-                print "WARNING: ellipticity of metaslice %d is null" % (i+1)
-            elif model_star.fitpar[6]==0:
-                print "WARNING: alpha of metaslice %d is null" % (i+1)
-            elif model_star.fitpar[7]==0:
-                print "WARNING: intensity of metaslice %d is null" % (i+1)
+            # Set error to 0 if hasFailed
             model_star.khi2 *= -1       # To be discarded
             errorpar = N.zeros(len(error_mat.T))
 
@@ -837,7 +844,7 @@ if __name__ == "__main__":
 
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
-    norm = cube.data.mean()
+    norm = cube.data.max()
     cube.data /= norm
     cube.var /= norm**2
 
@@ -974,7 +981,7 @@ if __name__ == "__main__":
     print_msg("  Initial guess [Intensities]: %s" % \
               p1[npar_psf:npar_psf+nslice], 3)
     if skyDeg >= 0:
-        print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
+        print_msg("  Initial guess [Bkgnd]: %s" % p2, 3)
 
     # Instanciating the model class and perform the fit
     data_model = pySNIFS_fit.model(data=cube, func=func,
