@@ -844,8 +844,9 @@ if __name__ == "__main__":
 
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
-    norm = cube.data.max()
-    cube.data /= norm
+    norm = cube.data.max(axis=-1).reshape(-1,1) # (nmeta,1)
+    print_msg("  Meta-slice normalization (max): %s" % (norm.squeeze()), 2)
+    cube.data /= norm                           # (nmeta,nspx)
     cube.var /= norm**2
 
     if opts.keepmodel:                  # Store meta-slices in 3D-cube

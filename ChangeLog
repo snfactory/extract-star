@@ -1,8 +1,13 @@
+2010-10-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (main): normalize input
+	meta-slice cube to max(axis=-1)=1 (per slice).
+
 2010-10-25  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (fit_slices): use
-	pseudo-inverse of hessian matrix
-	(main): normalize input meta-slice cube to max=1
+	pseudo-inverse of hessian matrix;
+	(main): normalize input meta-slice cube to max(axis=None)=1.
 
 2010-10-18  Yannick Copin  <yannick@lyopc469>
 
