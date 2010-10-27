@@ -755,7 +755,7 @@ class model:
                                               scale=deriv and scale or None)
 
         # See S.optimize.tnc.RCSTRINGS for status message
-        self.status = (rc not in [0,1]) and rc or 0
+        self.status = rc>2 and rc or 0 # 0,1,2 means "fit has converged"
         if msge>=1:
             print "fmin_tnc (%d funcalls): %s" % \
                 (nfeval,S.optimize.tnc.RCSTRINGS[rc])

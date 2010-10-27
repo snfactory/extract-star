@@ -1,3 +1,14 @@
+2010-10-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py: switch from scipy to numpy, scipy-0.8.0
+	optimize.fsolve returns a 1D-array instead of a scalar.
+
+	* apps/extract_star/extract_star.py (fit_slices): further contrain
+	adjusted parameters, debug print-outs.
+
+	* lib/pySNIFS_fit.py (model.fit): fmin_tnc status=[0,1,2] mean fit
+	convergence.
+
 2010-10-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (main): normalize input

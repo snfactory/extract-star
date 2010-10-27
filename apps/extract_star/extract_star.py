@@ -42,6 +42,8 @@ import pySNIFS_fit
 import libExtractStar as libES
 
 import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
+#N.seterr(divide='raise',invalid='ignore')
+
 from scipy import linalg as L
 from scipy.ndimage import filters as F
 
@@ -149,7 +151,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         if negSky.any(): # and 'long' not in psf_fn.name.lower():
             print "WARNING: %d slices w/ sky<0 in extract_spec" % \
                   (len(negSky.nonzero()[0]))
-            print_msg(str(cube.lbda[negSky]), 2)
+            print_msg(str(cube.lbda[negSky]), 3)
             # For slices w/ sky<0, fit only PSF without background
             A = N.array([ N.dot(xx,xx) for xx in X[negSky,:,0] ])
             B = N.array([ N.dot(xx,bb)
@@ -362,10 +364,10 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         model = pySNIFS_fit.model(data=cube_sky,
                                   func=['gaus2D','poly2D;0'],
                                   param=[[0,0,1,1,imax],[0]],
-                                  bounds=[[[-7.5,7.5]]*2 + \
-                                          [[0,5]]*2 +
-                                          [[0,None]],
-                                          [[None,None]]])
+                                  bounds=[ [[-7.5,7.5]]*2 + # x0,y0
+                                           [[0.1,5]]*2 +    # sx,sy
+                                           [[0,None]],
+                                           [[None,None]] ])
         model.fit(msge=(opts.verbosity>3))
         xc,yc = model.fitpar[:2]        # Centroid
 
@@ -373,13 +375,14 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         p1 = [0., 0., xc, yc, 0., 1., 2.4, imax] # psf parameters
         b1 = [[0, 0],                   # delta (unfitted)
               [0, 0],                   # theta (unfitted)
-              [None, None],             # xc
-              [None, None],             # yc
+              [-10, 10],                # xc
+              [-10, 10],                # yc
               [None, None],             # PA
               [0, None],                # ellipticity > 0
-              [0, None],                # alpha > 0
+              [0.1, None],              # alpha > 0
               [0, None]]                # Intensity > 0
 
+        # alphaDeg & ellDeg set to 0 for meta-slice fits
         func = ['%s;%f,%f,%f,%f' % \
                 (psf_fn.name, SpaxelSize,cube_star.lbda[0],0,0)]
         param = [p1]
@@ -409,7 +412,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
 
         hasFailed = False
         if model_star.status>0:
-            print "WARNING: fit failed with status %d" % (model_star.status)
+            print "WARNING: fit of metaslice %d failed (status=%d) " % \
+                (i+1,model_star.status)
             hasFailed = True
         elif model_star.fitpar[5]<=0:
             print "WARNING: ellipticity of metaslice %d is null" % (i+1)
@@ -452,7 +456,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         error_mat[i] = errorpar
         print_msg("  Fit result [%d DoF=%d chi2=%f]: %s" % \
                   (model_star.status,model_star.dof,model_star.khi2,
-                   model_star.fitpar), 2)
+                   model_star.fitpar), 1)
 
     return param_arr,khi2_vec,error_mat
 
@@ -998,7 +1002,7 @@ if __name__ == "__main__":
     errorpar = N.sqrt(cov.diagonal())
 
     print_msg("  Fit result [%d]: DoF=%d, chi2=%f" % \
-              (data_model.status, data_model.dof, khi2), 2)
+              (data_model.status, data_model.dof, khi2), 1)
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % \
               fitpar[npar_psf:npar_psf+nslice], 3)
@@ -1017,8 +1021,9 @@ if __name__ == "__main__":
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * SpaxelSize
     print '  Seeing estimate [%.0fA]: %.2f" FWHM' % (LbdaRef,seeing)
 
-    if not (0.<seeing<4. and 1.<adr.get_airmass()<3.):
-        raise ValueError("Unphysical seeing or airmass")
+    if not (0.2<seeing<4. and 1.<adr.get_airmass()<3.):
+        raise ValueError("Unphysical seeing (%.2f'') or airmass (%.3f)" % \
+                             (seeing, adr.get_airmass()))
 
     # Test positivity of alpha and ellipticity. At some point, maybe it would
     # be necessary to force positivity in the fit (e.g. fmin_cobyla).
