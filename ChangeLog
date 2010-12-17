@@ -1,3 +1,9 @@
+2010-11-15  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (extract_spec): direct use of
+	N.linalg instead of scipy.linalg; use pseudo-inverse for linear
+	least-square fit.
+
 2010-10-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py: switch from scipy to numpy, scipy-0.8.0
@@ -12,7 +18,7 @@
 2010-10-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (main): normalize input
-	meta-slice cube to max(axis=-1)=1 (per slice).
+	meta-slice cube to max(axis=-1)=1 (per-slice normalization).
 
 2010-10-25  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 

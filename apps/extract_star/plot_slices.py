@@ -3,6 +3,7 @@
 
 import os
 import optparse
+import numpy as N
 import pySNIFS
 from ToolBox.MPL import get_backend
 
@@ -21,6 +22,9 @@ if __name__=='__main__':
                       default='3,97')
     parser.add_option("-R", "--rangePerSlice", action='store_true',
                       help="Compute flux range per slice.",
+                      default=False)
+    parser.add_option("-S", "--spatialStats", action='store_true',
+                      help="Compute spatial statistics.",
                       default=False)
     parser.add_option("-g", "--graph", type="string",
                       help="Graphic output format [%default]",
@@ -92,6 +96,13 @@ if __name__=='__main__':
         ax = fig.add_subplot(ncol, nrow, i+1, aspect='equal')
         data = cube.slice2d(i, coord='p')
 
+        gdata = data[N.isfinite(data)] # Non-NaN values
+        m,s = gdata.mean(),gdata.std()
+        print "Slice #%02d/%d, %.0f A [%.0f-%.0f]: " \
+            "mean=%f, stddev=%f (%.2f%%)" % \
+            (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
+             m,s,s/m*100)
+
         if opts.rangePerSlice:
             var = cube.slice2d(i, coord='p', var=True)
             vmin,vmax = P.prctile(data[P.isfinite(var)], (fmin,fmax))
@@ -99,10 +110,13 @@ if __name__=='__main__':
         im = ax.imshow(data,
                        origin='lower', extent=extent, interpolation='nearest',
                        vmin=vmin, vmax=vmax, cmap=M.cm.jet)
-            
-        ax.text(0.1,0.1, "%.0f A [%.0f-%.0f]" % \
-                (cube.lbda[i],lbounds[i],lbounds[i+1]),
-                fontsize=8, horizontalalignment='left', transform=ax.transAxes)
+
+        lbl = "%.0f A [%.0f-%.0f]" % (cube.lbda[i],lbounds[i],lbounds[i+1])
+        if opts.spatialStats:
+            lbl += "\nRMS=%.2f%%" % (s/m*100)
+        ax.text(0.1,0.1, lbl, 
+                fontsize=9, horizontalalignment='left', 
+                transform=ax.transAxes)
         ax.axis(extent)
 
         # Axis

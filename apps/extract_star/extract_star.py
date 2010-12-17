@@ -44,7 +44,6 @@ import libExtractStar as libES
 import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
 #N.seterr(divide='raise',invalid='ignore')
 
-from scipy import linalg as L
 from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
@@ -116,21 +115,25 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     b = weight*cube.data                # nslice,nlens
 
     # The linear least-squares fit could be done directly using
-    # Spec = N.array([ L.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
+    # Spec = N.array([ N.linalg.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
     # but A is needed anyway to compute covariance matrix C=1/A.
     # Furthermore, linear resolution 
-    # [ L.solve(aa,bb) for aa,bb in zip(A,B) ]
+    # [ N.linalg.solve(aa,bb) for aa,bb in zip(A,B) ]
     # can be replace by faster (~x10) matrix product
     # [ N.dot(cc,bb) for cc,bb in zip(C,B) ]
-    # since C=1/A is already available.
+    # since C=1/A is readily available.
     # See Numerical Recipes (2nd ed.), sect.15.4
+
+    # OTOH, "Solving Ax = b: inverse vs cholesky factorization" thread
+    # (http://thread.gmane.org/gmane.comp.python.numeric.general/41365)
+    # advocates to never invert a matrix directly.
     
     A = N.array([N.dot(xx.T, xx) for xx in X]) # nslice,npar+1,npar+1
     B = N.array([N.dot(xx.T, bb) for xx,bb in zip(X,b)]) # nslice,npar+1
     try:
-        C = N.array([L.inv(aa) for aa in A])  # nslice,npar+1,npar+1
-    except L.LinAlgError:
-        raise L.LinAlgError("Singular matrix during spectrum extraction")
+        C = N.array([N.linalg.pinv(aa) for aa in A])  # nslice,npar+1,npar+1
+    except N.linalg.LinAlgError:
+        raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
     # Spec & Var = nslice x Star,Sky,[slope_x...]
     Spec = N.array([N.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
     Var = N.array([N.diag(cc) for cc in C]) # nslice,npar+1
