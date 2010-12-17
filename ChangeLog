@@ -1,3 +1,8 @@
+2010-12-17  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: cast ncol and nrow to int, to
+	please matplotlib 1.0.
+
 2010-11-15  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (extract_spec): direct use of

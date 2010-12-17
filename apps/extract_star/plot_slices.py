@@ -77,8 +77,8 @@ if __name__=='__main__':
     fig.text(0.5, 0.97, "%s [%.0f A width]" % (basename,fcube.lstep*istep),
              fontsize='large', ha='center', va='center')
 
-    ncol = P.floor(P.sqrt(cube.nslice))
-    nrow = P.ceil(cube.nslice/float(ncol))
+    ncol = int(P.floor(P.sqrt(cube.nslice)))
+    nrow = int(P.ceil(cube.nslice/float(ncol)))
     extent = (cube.x.min()-0.5,cube.x.max()+0.5,
               cube.y.min()-0.5,cube.y.max()+0.5)
 
