@@ -1,3 +1,9 @@
+2011-01-02  Yannick Copin  <yannick@lyopc469>
+
+	* apps/extract_star/PSF_analysis.py:
+	* apps/extract_star/extract_star.py: cast ncol and nrow to int, to
+	please matplotlib 1.0, and other minor tweaks.
+
 2010-12-17  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: cast ncol and nrow to int, to

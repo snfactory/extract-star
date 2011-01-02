@@ -1882,8 +1882,8 @@ if __name__ == "__main__":
 
         print_msg("Producing slice fit plot %s..." % plot2, 1)
 
-        ncol = S.floor(S.sqrt(nslice))
-        nrow = S.ceil(nslice/float(ncol))
+        ncol = int(S.floor(S.sqrt(nslice)))
+        nrow = int(S.ceil(nslice/float(ncol)))
 
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.05, right=0.97, bottom=0.05, top=0.97)

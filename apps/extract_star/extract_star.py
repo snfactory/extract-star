@@ -43,7 +43,6 @@ import libExtractStar as libES
 
 import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
 #N.seterr(divide='raise',invalid='ignore')
-
 from scipy.ndimage import filters as F
 
 SpaxelSize = 0.43                       # Spaxel size in arcsec
@@ -72,7 +71,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     skyDeg) using method ('psf' or 'aperture' or 'optimal'). For aperture
     related methods, radius gives aperture radius in arcsec.
 
-    Returns Spec,Var where Spec and Var are (nslice,npar+1)."""
+    Returns spec,var where spec and var are (nslice,npar+1)."""
 
     assert method in ('psf','aperture','optimal'), \
            "Extraction method '%s' unrecognized" % method
@@ -115,7 +114,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     b = weight*cube.data                # nslice,nlens
 
     # The linear least-squares fit could be done directly using
-    # Spec = N.array([ N.linalg.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
+    # spec = N.array([ N.linalg.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
     # but A is needed anyway to compute covariance matrix C=1/A.
     # Furthermore, linear resolution 
     # [ N.linalg.solve(aa,bb) for aa,bb in zip(A,B) ]
@@ -134,11 +133,16 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         C = N.array([N.linalg.pinv(aa) for aa in A])  # nslice,npar+1,npar+1
     except N.linalg.LinAlgError:
         raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
-    # Spec & Var = nslice x Star,Sky,[slope_x...]
-    Spec = N.array([N.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
-    Var = N.array([N.diag(cc) for cc in C]) # nslice,npar+1
+    # spec & var = nslice x Star,Sky,[slope_x...]
+    spec = N.array([N.dot(cc,bb) for cc,bb in zip(C,B)]) # nslice,npar+1
+    var = N.array([N.diag(cc) for cc in C]) # nslice,npar+1
 
-    # Now, what about negative sky?
+    # Now, what about negative sky? The pb arises for short-exposures,
+    # where there's probably no sky whatsoever (except if taken during
+    # twilight), and where a (significantly) negative sky is actually
+    # a shortcoming of the PSF. For long exposures, one expects "some"
+    # negative sky values, where sky is compatible to 0.
+    
     # One could also use an NNLS fit to force parameter non-negativity:
     # [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(A,B) ]
     # *BUT* 1. it is incompatible w/ non-constant sky (since it will force all
@@ -150,31 +154,32 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # fit without sky.
 
     if skyDeg==0:
-        negSky = Spec[:,1]<0            # Test for presence of negative sky
+        negSky = spec[:,1]<0            # Test for presence of negative sky
         if negSky.any(): # and 'long' not in psf_fn.name.lower():
             print "WARNING: %d slices w/ sky<0 in extract_spec" % \
                   (len(negSky.nonzero()[0]))
-            print_msg(str(cube.lbda[negSky]), 3)
+            print_msg(str(cube.lbda[negSky]), 2)
+        #if 'short' in psf_fn.name:
             # For slices w/ sky<0, fit only PSF without background
             A = N.array([ N.dot(xx,xx) for xx in X[negSky,:,0] ])
             B = N.array([ N.dot(xx,bb)
                           for xx,bb in zip(X[negSky,:,0],b[negSky]) ])
             C = 1/A
-            Spec[negSky,0] = C*B        # Linear fit without sky
-            Spec[negSky,1] = 0          # Set sky to null
-            Var[negSky,0] = C
-            Var[negSky,1] = 0
+            spec[negSky,0] = C*B        # Linear fit without sky
+            spec[negSky,1] = 0          # Set sky to null
+            var[negSky,0] = C
+            var[negSky,1] = 0
 
     if method=='psf':
-        return cube.lbda,Spec,Var       # Nothing else to be done
+        return cube.lbda,spec,var       # Nothing else to be done
 
     # Reconstruct background and subtract it from cube
     bkgnd = N.zeros_like(cube.data)
     var_bkgnd = N.zeros_like(cube.var)
     if npar_sky:
         for d in xrange(1,npar_sky+1):      # Loop over sky components
-            bkgnd += (Z[:,:,d].T * Spec[:,d]).T
-            var_bkgnd += (Z[:,:,d].T**2 * Var[:,d]).T
+            bkgnd += (Z[:,:,d].T * spec[:,d]).T
+            var_bkgnd += (Z[:,:,d].T**2 * var[:,d]).T
     subData = cube.data - bkgnd         # Bkgnd subtraction (nslice,nlens)
     subVar = cube.var.copy()
     good = cube.var>0
@@ -184,7 +189,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     if not good.all():
         print_msg("Replacing %d vx with modeled signal" % \
                   len((~good).nonzero()[0]), 1)
-        subData[~good] = (Spec[:,0]*psf.T).T[~good]
+        subData[~good] = (spec[:,0]*psf.T).T[~good]
 
     # Plain summation over aperture
     
@@ -248,7 +253,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # Embed background-subtracted data in extended model PSF
         origData = subData.copy()
         origVar = subVar.copy()
-        subData = (Spec[:,0]*extPsf.T).T   # Extended model, nslice,extnlens
+        subData = (spec[:,0]*extPsf.T).T   # Extended model, nslice,extnlens
         subVar = N.zeros((extModel.nslice,extModel.nlens))
         for i in xrange(model.nlens):
             # Embeb original spx i in extended model array by finding
@@ -263,13 +268,13 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     if method == 'aperture':
         # Replace signal and variance estimates from plain summation
-        Spec[:,0] = (frac * subData).sum(axis=1)
-        Var[:,0] = (frac**2 * subVar).sum(axis=1)
-        return cube.lbda,Spec,Var
+        spec[:,0] = (frac * subData).sum(axis=1)
+        var[:,0] = (frac**2 * subVar).sum(axis=1)
+        return cube.lbda,spec,var
 
     if method=='optimal':
         # Model signal = Intensity*PSF + bkgnd
-        modsig = (Spec[:,0]*psf.T).T + bkgnd # nslice,nlens
+        modsig = (spec[:,0]*psf.T).T + bkgnd # nslice,nlens
 
         # One has to have a model of the variance. This can be estimated from
         # a simple 'photon noise + RoN' model on each slice: signal ~ alpha*N
@@ -293,9 +298,9 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         weight = (weight.T / norm).T    # Normalized weights, nslice,nlens
         
         # Replace signal and variance estimates from optimal summation
-        Spec[:,0] = (weight * subData).sum(axis=1)
-        Var[:,0] = (weight**2 * subVar).sum(axis=1)
-        return cube.lbda,Spec,Var
+        spec[:,0] = (weight * subData).sum(axis=1)
+        var[:,0] = (weight**2 * subVar).sum(axis=1)
+        return cube.lbda,spec,var
 
 
 def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
@@ -580,11 +585,9 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
     for i in xrange(nslices):
         param[i,:] = sky[i].data
         vparam[i,:] = sky_var[i].data
-    data = poly.comp(param)
-    var = poly2.comp(vparam)
     bkg_cube = pySNIFS.zerolike(cube)
-    bkg_cube.data = data
-    bkg_cube.var = var
+    bkg_cube.data = poly.comp(param)
+    bkg_cube.var = poly2.comp(vparam)
     bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
 
     return bkg_cube,bkg_spec
@@ -595,7 +598,6 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
 
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
     lmin,lmax = lrange
-    lref = (lmin+lmax)/2                # ADR reference wavelength
     x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=SpaxelSize)
     print_msg("Reference position [%.0fA]: %.2f x %.2f spx" % \
               (LbdaRef,x0,y0), 1)
@@ -651,7 +653,7 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
             n = int(n)
             vals = map(float, constraintStr.split(','))
             assert len(vals) in (1,2)
-        except ValueError, AssertionError:
+        except (ValueError, AssertionError):
             print "WARNING: Cannot decipher constraint '%s', discarded" % \
                 psfConstraint
             continue
@@ -1223,8 +1225,8 @@ if __name__ == "__main__":
 
         print_msg("Producing slice fit plot %s..." % plot2, 1)
 
-        ncol = N.floor(N.sqrt(nslice))
-        nrow = N.ceil(nslice/float(ncol))
+        ncol = int(N.floor(N.sqrt(nslice)))
+        nrow = int(N.ceil(nslice/float(ncol)))
 
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
