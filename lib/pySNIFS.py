@@ -672,8 +672,7 @@ class SNIFS_cube:
                 else:
                     self.data = None
                     self.var = None
-                self.lbda = lbda[lmin+lstep/2: \
-                                 lmax+lstep/2:lstep]
+                self.lbda = lbda[lmin+lstep/2:lmax+lstep/2:lstep]
             self.lstep = self.lstep * lstep
             self.lstart = self.lbda[0]
             self.i = nx - 1-num.ravel(num.indices((nx,ny))[1]) 
@@ -709,12 +708,13 @@ class SNIFS_cube:
                 self.nslice = None
             else:
                 # Check 1st that lbda is a linear ramp
-                lbda = num.array(lbda)
-                delta = lbda[1:] - lbda[:-1]
-                if not num.allclose(delta, delta.mean()):
+                self.lbda = num.array(lbda)
+                delta = self.lbda[1:] - self.lbda[:-1]
+                self.lstep = delta.mean()
+                if not num.allclose(delta, self.lstep):
                     raise ValueError("Input wavelength ramp is not linear.")
                 self.lstart = lbda[0]
-                self.lstep = delta.mean()
+                self.lend = lbda[-1]
                 self.nslice = len(lbda)
                 data = num.zeros((self.nslice,self.nlens),num.float64)
                 i,j = [ arr.ravel()
@@ -729,7 +729,6 @@ class SNIFS_cube:
                 self.i = num.array(i)
                 self.j = num.array(j)
                 self.no = num.array(no)
-                self.lbda = num.array(lbda)  
                 self.var = None
           
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):

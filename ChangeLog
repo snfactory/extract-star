@@ -1,3 +1,12 @@
+2011-01-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/subtract_psf.py: reconstruct and subtract
+	extract_star PSF from extracted cube and spectrum (WORK IN
+	PROGRESS).
+
+	* lib/pySNIFS.py (SNIFS_cube.__init__): initialize self.lend in
+	any case.
+
 2011-01-02  Yannick Copin  <yannick@lyopc469>
 
 	* apps/extract_star/PSF_analysis.py:

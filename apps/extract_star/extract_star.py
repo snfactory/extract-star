@@ -45,15 +45,17 @@ import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
 #N.seterr(divide='raise',invalid='ignore')
 from scipy.ndimage import filters as F
 
-SpaxelSize = 0.43                       # Spaxel size in arcsec
-LbdaRef = 5000.                         # Use constant ref. for easy comparison
+N.set_printoptions(linewidth=150) # Wide lines
+
+SpaxelSize = 0.43   # Spaxel size in arcsec (check SNIFS_cube.spxSize)
+LbdaRef = 5000.     # Use constant ref. for easy comparison
 
 # Non-default colors
-blue='#0066CC'
-red='#CC0033'
-green='#009966'
-orange='#FF9900'
-purple='#FF00FF'
+blue   = '#0066CC'
+red    = '#CC0033'
+green  = '#009966'
+orange = '#FF9900'
+purple = '#FF00FF'
 
 # Definitions ================================================================
 
@@ -87,7 +89,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     # The PSF parameters are only the shape parameters. We set the intensity
     # of each slice to 1.
-    param = N.concatenate((psf_param,[1.]*cube.nslice))
+    param = N.concatenate((psf_param,N.ones(cube.nslice)))
 
     # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
 
@@ -339,6 +341,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
     
+    print_msg("  Set initial guess from simple Gaussian+constant fit", 2)
     print_msg("  Adjusted parameters: [delta=0,theta=0],xc,yc,PA,ell,alpha,I,"
               "%d bkgndCoeffs" % (skyDeg>=0 and npar_sky or 0), 2)
 
@@ -364,7 +367,6 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
             skyLev = model_sky.evalfit().squeeze() # Structure bkgnd estimate
 
         # Guess parameters for the current slice
-        print_msg("  Set initial guess from simple Gaussian+constant fit", 2)
         medstar = F.median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
         cube_sky.data -= skyLev
@@ -462,8 +464,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
         param_arr[i] = model_star.fitpar
         khi2_vec[i]  = model_star.khi2
         error_mat[i] = errorpar
-        print_msg("  Fit result [%d DoF=%d chi2=%f]: %s" % \
-                  (model_star.status,model_star.dof,model_star.khi2,
+        print_msg("  Fit result [%d chi2/dof=%.2f/%d]: %s" % \
+                  (model_star.status,model_star.khi2,model_star.dof,
                    model_star.fitpar), 1)
 
     return param_arr,khi2_vec,error_mat
@@ -513,7 +515,9 @@ def create_2D_log_file(filename,object,airmass,efftime,
 
     
 def create_3D_log_file(filename,object,airmass,efftime,
-                       cube,cube_fit,fitpar,khi3D,errorpar,lmin,lmax):
+                       cube,cube_fit,fitpar,khi3D,errorpar,lrange):
+
+    lmin,lmax = lrange
 
     logfile = open(filename,'w')
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
@@ -593,7 +597,7 @@ def build_sky_cube(cube, sky, sky_var, skyDeg):
     return bkg_cube,bkg_spec
 
 
-def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
+def fill_header(hdr, psfname, param, adr, lrange, opts, khi2, seeing, fluxes):
     """Fill header hdr with fit-related keywords."""
 
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
@@ -621,17 +625,25 @@ def fill_header(hdr, param, adr, lrange, opts, khi2, seeing, tflux, sflux):
     hdr.update('ES_XC',   x0,         'xc @lbdaRef [spx]')
     hdr.update('ES_YC',   y0,         'yc @lbdaRef [spx]')
     hdr.update('ES_XY',   param[4],   'XY coeff.')
+
     for i in xrange(opts.ellDeg + 1):
         hdr.update('ES_E%i' % i, c_ell[i], 'Y2 coeff. e%d' % i)
     for i in xrange(opts.alphaDeg + 1):
         hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
+
     hdr.update('ES_METH', opts.method, 'Extraction method')
     if method != 'psf':
         hdr.update('ES_APRAD', opts.radius, 'Aperture radius [arcsec or sigma]')
-    hdr.update('ES_TFLUX',tflux,      'Sum of the spectrum flux')
+    else:
+        hdr.update('ES_PSF', psfname, 'PSF name')
+
+    tflux, sflux = fluxes
+    hdr.update('ES_TFLUX',tflux, 'Sum of the spectrum flux')
     if opts.skyDeg >= 0:
-        hdr.update('ES_SFLUX',sflux,  'Sum of the sky flux')
+        hdr.update('ES_SFLUX',sflux, 'Sum of the sky flux')
+
     hdr.update('SEEING', seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
+
     if opts.supernova:
         hdr.update('ES_SNMOD', opts.supernova, 'Supernova mode')
     if opts.psf3Dconstraints:
@@ -892,9 +904,8 @@ if __name__ == "__main__":
     # Computing the initial guess for the 3D fitting from the results of the
     # slice by slice 2D fit
     nslice = cube.nslice
-    lmin,lmax = cube.lbda[0],cube.lbda[-1]
-    lbda_rel = ( 2*cube.lbda - (lmin+lmax) ) / ( lmax-lmin )
-    lref = (lmin + lmax)/2
+    lref = (cube.lstart + cube.lend)/2
+    lbda_rel = 2*(cube.lbda - lref)/(cube.lend-cube.lstart) # in [-1,1]
 
     # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
@@ -1006,8 +1017,8 @@ if __name__ == "__main__":
     cov = data_model.param_error(fitpar) # Covariance matrix
     errorpar = N.sqrt(cov.diagonal())
 
-    print_msg("  Fit result [%d]: DoF=%d, chi2=%f" % \
-              (data_model.status, data_model.dof, khi2), 1)
+    print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % \
+              (data_model.status, khi2, data_model.dof), 1)
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % \
               fitpar[npar_psf:npar_psf+nslice], 3)
@@ -1108,8 +1119,8 @@ if __name__ == "__main__":
     else:
         sflux = 0                       # Not stored anyway
     
-    fill_header(inhdr,fitpar[:npar_psf],adr,(lmin,lmax),
-                opts,khi2,seeing,tflux,sflux)
+    fill_header(inhdr,psfFn.name,fitpar[:npar_psf],adr,(cube.lstart,cube.lend),
+                opts,khi2,seeing,(tflux,sflux))
 
     # Save star spectrum =====================================================
 
@@ -1153,7 +1164,8 @@ if __name__ == "__main__":
     if opts.File:
         print "Producing 3D adjusted parameter file [%s]..." % opts.File
         create_3D_log_file(opts.File,obj,airmass,efftime,
-                           cube,cube_fit,fitpar,khi2,errorpar,lmin,lmax)
+                           cube,cube_fit,fitpar,khi2,errorpar,
+                           (cube.lstart,cube.lend))
     
     # Save adjusted PSF ========================================================
 

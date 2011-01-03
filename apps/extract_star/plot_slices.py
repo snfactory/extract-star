@@ -99,7 +99,7 @@ if __name__=='__main__':
         gdata = data[N.isfinite(data)] # Non-NaN values
         m,s = gdata.mean(),gdata.std()
         print "Slice #%02d/%d, %.0f A [%.0f-%.0f]: " \
-            "mean=%f, stddev=%f (%.2f%%)" % \
+            "mean=%g, stddev=%g (%.2f%%)" % \
             (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
              m,s,s/m*100)
 

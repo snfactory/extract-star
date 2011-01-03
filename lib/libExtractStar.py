@@ -405,8 +405,8 @@ class ExposurePSF:
             self.y = N.resize(y, (self.nslice,self.nlens))
         self.l = N.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
         if self.nslice > 1:
-            self.lmin = cube.lbda[0]
-            self.lmax = cube.lbda[-1]
+            self.lmin = cube.lstart
+            self.lmax = cube.lend
             self.lrel = chebNorm(self.l, self.lmin, self.lmax) # From -1 to +1
         else:
             self.lmin,self.lmax = -1,+1
