@@ -74,7 +74,10 @@ if __name__=='__main__':
     fig.subplots_adjust(left=0.06, bottom=0.25, top=0.95,
                         hspace=0.03, wspace=0.03)
 
-    fig.text(0.5, 0.97, "%s [%.0f A width]" % (basename,fcube.lstep*istep),
+    objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
+    fig.text(0.5, 0.97, 
+             u"%s [%s], slices of %.0f Å" % (basename, objname,
+                                             fcube.lstep*istep),
              fontsize='large', ha='center', va='center')
 
     ncol = int(P.floor(P.sqrt(cube.nslice)))
@@ -98,7 +101,7 @@ if __name__=='__main__':
 
         gdata = data[N.isfinite(data)] # Non-NaN values
         m,s = gdata.mean(),gdata.std()
-        print "Slice #%02d/%d, %.0f A [%.0f-%.0f]: " \
+        print "Slice #%02d/%d, %.0f Å [%.0f-%.0f]: " \
             "mean=%g, stddev=%g (%.2f%%)" % \
             (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
              m,s,s/m*100)
@@ -111,7 +114,7 @@ if __name__=='__main__':
                        origin='lower', extent=extent, interpolation='nearest',
                        vmin=vmin, vmax=vmax, cmap=M.cm.jet)
 
-        lbl = "%.0f A [%.0f-%.0f]" % (cube.lbda[i],lbounds[i],lbounds[i+1])
+        lbl = u"%.0f Å [%.0f-%.0f]" % (cube.lbda[i],lbounds[i],lbounds[i+1])
         if opts.spatialStats:
             lbl += "\nRMS=%.2f%%" % (s/m*100)
         ax.text(0.1,0.1, lbl, 
@@ -149,8 +152,12 @@ if __name__=='__main__':
                  fmt='go')
     
     ax2.set_xlim(fcube.lstart,fcube.lend)
-    ax2.set_xlabel("Wavelength [A]", fontsize=8)
-    ax2.set_ylabel("Flux", fontsize=8)
+    ax2.set_xlabel(u"Wavelength [Å]", fontsize=8)
+    fxlabel = "Flux"
+    fxunits = fcube.e3d_data_header.get("FLXUNITS", 'none given')
+    if fxunits.lower() != 'none given':
+        fxlabel += " [%s]" % fxunits
+    ax2.set_ylabel(fxlabel, fontsize=8)
     P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize=8)
     
     # Metaslice boundaries

@@ -488,6 +488,9 @@ class SNIFS_cube:
         else:
             l = slices
             s = False
+
+        self.data = None
+        self.var = None
                 
         if e3d_file is not None:
             e3d_cube = pyfits.open(e3d_file)
@@ -510,7 +513,7 @@ class SNIFS_cube:
             step      = e3d_cube[1].header['CDELTS']
             self.lstep = step
             if 'STAT_SPE' in e3d_cube[1].columns.names:
-                var  = e3d_cube[1].data.field('STAT_SPE')
+                var = e3d_cube[1].data.field('STAT_SPE')
             else:
                 var = None
             data  = e3d_cube[1].data.field('DATA_SPE')
@@ -558,9 +561,6 @@ class SNIFS_cube:
                     if var is not None:
                         self.var = tvar[lmin - common_lstart: \
                                         lmax - common_lstart:lstep]
-                else:
-                    self.data = None
-                    self.var = None
                 self.lbda = lbda[lmin - common_lstart: \
                                  lmax - common_lstart:lstep]
             else:
@@ -572,9 +572,6 @@ class SNIFS_cube:
                         self.var = F.uniform_filter(tvar,(lstep,1)) \
                                    [lmin - common_lstart + lstep/2: \
                                     lmax - common_lstart+lstep/2:lstep]/lstep
-                else:
-                    self.data = None
-                    self.var = None
                 self.lbda = lbda[lmin - common_lstart+lstep/2: \
                                  lmax - common_lstart+lstep/2:lstep]
             self.lstep = self.lstep * lstep
@@ -654,9 +651,6 @@ class SNIFS_cube:
                     self.data = data
                     if var is not None:
                         self.var = var
-                else:
-                    self.data = None
-                    self.var = None
                 self.lbda = lbda
             else:
                 if not nodata:
@@ -669,9 +663,6 @@ class SNIFS_cube:
                                                     (lstep,1))[lmin + lstep/2:
                                                                lmax+lstep/2:
                                                                lstep] / lstep
-                else:
-                    self.data = None
-                    self.var = None
                 self.lbda = lbda[lmin+lstep/2:lmax+lstep/2:lstep]
             self.lstep = self.lstep * lstep
             self.lstart = self.lbda[0]
@@ -684,7 +675,7 @@ class SNIFS_cube:
             # Search the indexes of the spectra containing only nan
             ind = num.where(num.min(num.isnan(num.transpose(self.data)),1)==False)[0]
             self.data = num.transpose(num.transpose(self.data)[ind])
-            if self.var != None:
+            if self.var is not None:
                self.var = num.transpose(num.transpose(self.var)[ind])
             self.i = self.i[ind]
             self.j = self.j[ind]
@@ -703,7 +694,6 @@ class SNIFS_cube:
             self.nlens = 225
             if lbda is None:
                 self.data = num.zeros(self.nlens,num.float32)
-                self.var = None
                 self.lbda = None  
                 self.nslice = None
             else:
@@ -729,7 +719,6 @@ class SNIFS_cube:
                 self.i = num.array(i)
                 self.j = num.array(j)
                 self.no = num.array(no)
-                self.var = None
           
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):
         """

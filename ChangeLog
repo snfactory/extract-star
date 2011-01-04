@@ -1,3 +1,12 @@
+2011-01-04  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/subtract_psf.py: should be functional now.
+
+	* apps/extract_star/plot_slices.py: minor updates.
+
+	* lib/pySNIFS.py (SNIFS_cube.__init__): initialize self.data =
+	self.var = None beforehand.
+
 2011-01-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py: reconstruct and subtract

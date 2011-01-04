@@ -13,7 +13,7 @@
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 __version__ = '$Id$'
 
-import re
+import os, re
 import numpy as N
 from pySnurp import Spectrum
 import pySNIFS
@@ -64,18 +64,25 @@ def read_psf_param(hdr):
     airmass = hdr['ES_AIRM']    # Effective airmass
     parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
     delta = N.tan(N.arccos(1/airmass)) # ADR intensity
-    theta = parang/57.295779513082323 # Parallactic angle [rad]
+    theta = parang/57.295779513082323  # Parallactic angle [rad]
 
     x0 = hdr['ES_XC']           # Reference position [spx]
     y0 = hdr['ES_YC']
     pa = hdr['ES_XY']           # (Nearly) position angle
 
-    ecoeffs = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) is not None ]
-    acoeffs = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) is not None ]
+    # Polynomial coeffs in lr~ = lambda/LbdaRef - 1
+    c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) is not None ]
+    c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) is not None ]
 
-    # Convert polynomial coeffs from lr=(2*lambda + (lmin+lmax))/(lmax-lmin)
-    # to lr~ = lambda/LbdaRef - 1 = a + b*lr
-    raise NotImplementedError
+    # Convert polynomial coeffs from lr~ = lambda/LbdaRef - 1 = a+b*lr
+    # back to lr = (2*lambda + (lmin+lmax))/(lmax-lmin)
+    lmin = hdr['CRVAL1']                      # Start
+    lmax = lmin + hdr['NAXIS1']*hdr['CDELT1'] # End
+    lref = hdr['ES_LREF']       # Reference wavelength [A]
+    a = (lmin+lmax) / (2*lref) - 1
+    b = (lmax-lmin) / (2*lref)
+    ecoeffs = libES.polyConvert(c_ell, trans=(a,b), backward=True).tolist()
+    acoeffs = libES.polyConvert(c_alp, trans=(a,b), backward=True).tolist()
 
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
         "refpos=%.2fx%.2f spx" % (airmass,parang,x0,y0)
@@ -89,24 +96,38 @@ if __name__ == '__main__':
 
     usage = "Usage: [%prog] [options] inspec.fits"
     parser = optparse.OptionParser(usage, version=__version__)
+
     parser.add_option("-r", "--ref", 
                       help="Reference datacube")
     parser.add_option("-o", "--out", 
-                      help="Output PSF datacube")
+                      help="Output point-source subtracted datacube")
+
+    parser.add_option("-k", "--keep", action="store_true",
+                      help="Save point-source datacube [psf_refcube]", 
+                      default=False)
+    parser.add_option("-n", "--nosubtract", 
+                      dest="subtract", action="store_false",
+                      help="Do *not* subtract point-source from datacube",
+                      default=True)
+
     opts,args = parser.parse_args()
+
+    if opts.subtract and not opts.out:
+        parser.error("Name for output point-source subtracted cube "
+                     "not specified")
 
     # Input spectrum
     print "Opening input spectrum %s" % args[0]
     spec = Spectrum(args[0])
     print spec
 
-    # Reference cube
+    # Reference/input cube
     print "Opening reference cube %s" % opts.ref
     cube = pySNIFS.SNIFS_cube(e3d_file=opts.ref)
     print "  %d slices [%.2f-%.2f], %d spaxels" % \
         (cube.nslice, cube.lstart, cube.lend, cube.nlens)
 
-    # Check spectral sampling
+    # Check spectral samplings are coherent
     assert (spec.npts,spec.start,spec.step) == \
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and reference cube"
@@ -127,9 +148,16 @@ if __name__ == '__main__':
     sig = psf * spec.y.reshape(-1,1)
     var = (psf**2) * spec.v.reshape(-1,1)
 
-    # Save simulated PSF
-    cube.data = sig.copy()
-    cube.var = var.copy()
+    if opts.subtract:
+        cube.data -= sig        # Signal
+        cube.var += var         # Variance
+        print "Saving point-source subtracted cube %s" % (opts.out)
+        cube.WR_e3d_file(opts.out)
 
-    cube.WR_e3d_file("PSF.fits")
+    if opts.keep:
+        cube.data = sig.copy()  # Signal
+        cube.var  = var.copy()  # Variance
+        outname = 'psf_' + os.path.basename(opts.ref)
+        print "Saving point-source cube %s" % (outname)
+        cube.WR_e3d_file(outname)
 
