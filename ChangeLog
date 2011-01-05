@@ -1,3 +1,11 @@
+2011-01-05  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/subtract_psf.py: now supports 3D
+	cubes (request from S.Bailey).
+
+	* apps/extract_star/plot_slices.py: new option '-V/--variance' to
+	plot variance rather than signal.
+
 2011-01-04  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py: should be functional now.

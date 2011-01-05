@@ -123,9 +123,16 @@ if __name__ == '__main__':
 
     # Reference/input cube
     print "Opening reference cube %s" % opts.ref
-    cube = pySNIFS.SNIFS_cube(e3d_file=opts.ref)
-    print "  %d slices [%.2f-%.2f], %d spaxels" % \
-        (cube.nslice, cube.lstart, cube.lend, cube.nlens)
+    try:                        # Try Euro3D
+        cube = pySNIFS.SNIFS_cube(e3d_file=opts.ref)
+        cube.writeto = cube.WR_e3d_file
+        cubetype = "Euro3D"
+    except ValueError:          # Try 3D
+        cube = pySNIFS.SNIFS_cube(fits3d_file=opts.ref)
+        cube.writeto = cube.WR_3d_fits
+        cubetype = "3D"
+    print "  %s, %d slices [%.2f-%.2f], %d spaxels" % \
+        (cubetype, cube.nslice, cube.lstart, cube.lend, cube.nlens)
 
     # Check spectral samplings are coherent
     assert (spec.npts,spec.start,spec.step) == \
@@ -148,16 +155,16 @@ if __name__ == '__main__':
     sig = psf * spec.y.reshape(-1,1)
     var = (psf**2) * spec.v.reshape(-1,1)
 
-    if opts.subtract:
-        cube.data -= sig        # Signal
-        cube.var += var         # Variance
-        print "Saving point-source subtracted cube %s" % (opts.out)
-        cube.WR_e3d_file(opts.out)
+    if opts.subtract:           # Save point-source subtracted cube
+        cube.data -= sig
+        cube.var += var
+        print "Saving point-source subtracted %s cube %s" % (cubetype, opts.out)
+        cube.writeto(opts.out)
 
-    if opts.keep:
-        cube.data = sig.copy()  # Signal
-        cube.var  = var.copy()  # Variance
+    if opts.keep:               # Save PSF cube
+        cube.data = sig
+        cube.var = var
         outname = 'psf_' + os.path.basename(opts.ref)
-        print "Saving point-source cube %s" % (outname)
-        cube.WR_e3d_file(outname)
+        print "Saving point-source %s cube %s" % (cubetype, outname)
+        cube.writeto(outname)
 

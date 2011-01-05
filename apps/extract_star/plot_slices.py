@@ -29,6 +29,9 @@ if __name__=='__main__':
     parser.add_option("-g", "--graph", type="string",
                       help="Graphic output format [%default]",
                       default='pylab')
+    parser.add_option("-V", "--variance", action='store_true',
+                      help="Plot variance rather than signal.",
+                      default=False)
 
     opts,args = parser.parse_args()
     inname = args[0]
@@ -46,6 +49,8 @@ if __name__=='__main__':
     except ValueError:                  # Try to read a 3D FITS cube
         fcube = pySNIFS.SNIFS_cube(fits3d_file=inname)
         isE3D = False
+    print "Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
+        (basename, fcube.nslice, fcube.lstart, fcube.lend, fcube.nlens)
 
     # Meta-slice definition (min,max,step [px])
     imin = 10                           # 1st slice [px]
@@ -65,7 +70,7 @@ if __name__=='__main__':
     assert len(lbounds)==len(cube.lbda)+1
 
     import matplotlib as M
-    backend,figname = get_backend(opts.graph, name='slices_%s' % args[0])
+    backend,figname = get_backend(opts.graph, name='slices_%s' % basename)
     if backend:
         M.use(backend)
     import pylab as P
@@ -86,10 +91,14 @@ if __name__=='__main__':
               cube.y.min()-0.5,cube.y.max()+0.5)
 
     if not opts.rangePerSlice:
-        vmin,vmax = P.prctile(cube.data[P.isfinite(cube.var)], (fmin,fmax))
-        print "Flux range [%.0f-%.0f%%]: %g,%g" % (fmin,fmax,vmin,vmax)
-
-        fig.subplots_adjust(right=0.91)
+        if opts.variance:
+            data = cube.var
+        else:
+            data = cube.data
+        vmin,vmax = P.prctile(data[P.isfinite(cube.var)], (fmin,fmax))
+        print "%s range [%.0f-%.0f%%]: %g,%g" % \
+            (opts.variance and 'Variance' or 'Flux', fmin,fmax,vmin,vmax)
+        fig.subplots_adjust(right=0.90)
     else:
         fig.subplots_adjust(right=0.95)
 
@@ -97,7 +106,10 @@ if __name__=='__main__':
     # Loop over slices
     for i in xrange(cube.nslice):        # Loop over meta-slices
         ax = fig.add_subplot(ncol, nrow, i+1, aspect='equal')
-        data = cube.slice2d(i, coord='p')
+        if opts.variance:
+            data = cube.slice2d(i, coord='p', var=True)
+        else:
+            data = cube.slice2d(i, coord='p')
 
         gdata = data[N.isfinite(data)] # Non-NaN values
         m,s = gdata.mean(),gdata.std()
@@ -153,10 +165,15 @@ if __name__=='__main__':
     
     ax2.set_xlim(fcube.lstart,fcube.lend)
     ax2.set_xlabel(u"Wavelength [Å]", fontsize=8)
-    fxlabel = "Flux"
+    if opts.variance:
+        fxlabel = "Variance"
+    else:
+        fxlabel = "Flux"
     fxunits = fcube.e3d_data_header.get("FLXUNITS", 'none given')
     if fxunits.lower() != 'none given':
         fxlabel += " [%s]" % fxunits
+        if opts.variance:
+            fxlabel += u"²"
     ax2.set_ylabel(fxlabel, fontsize=8)
     P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize=8)
     
