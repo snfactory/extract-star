@@ -1,3 +1,7 @@
+2011-01-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: minor refactoring.
+
 2011-01-05  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py: now supports 3D

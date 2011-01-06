@@ -471,8 +471,8 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2):
     return param_arr,khi2_vec,error_mat
 
 
-def create_2D_log_file(filename,object,airmass,efftime,
-                       cube,param_arr,khi2,error_mat):
+def create_2Dlog(filename,objname,airmass,efftime,
+                 cube,param_arr,khi2,error_mat):
 
     npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
     
@@ -484,7 +484,7 @@ def create_2D_log_file(filename,object,airmass,efftime,
 
     logfile = open(filename,'w')
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
-    logfile.write('# object  : %s   \n' % object)
+    logfile.write('# object  : %s   \n' % objname)
     logfile.write('# airmass : %.2f \n' % airmass)
     logfile.write('# efftime : %.2f \n' % efftime)
 
@@ -514,14 +514,12 @@ def create_2D_log_file(filename,object,airmass,efftime,
     logfile.close()
 
     
-def create_3D_log_file(filename,object,airmass,efftime,
-                       cube,cube_fit,fitpar,khi3D,errorpar,lrange):
-
-    lmin,lmax = lrange
+def create_3Dlog(filename,objname,airmass,efftime,
+                 cube,cube_fit,fitpar,khi3D,errorpar):
 
     logfile = open(filename,'w')
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
-    logfile.write('# object  : %s   \n' % object)
+    logfile.write('# object  : %s   \n' % objname)
     logfile.write('# airmass : %.2f \n' % airmass)
     logfile.write('# efftime : %.2f \n' % efftime)
 
@@ -534,8 +532,7 @@ def create_3D_log_file(filename,object,airmass,efftime,
                   '        chi2\n')
     fmt = '%6.0f  %6.0f  ' + \
           '  '.join(["%10.4g"]*((5+(ellDeg+1)+(alphaDeg+1))*2+1)) + '\n'
-    list3D = [lmin,
-              lmax,
+    list3D = [cube.lstart, cube.lend,
               fitpar[0],errorpar[0],
               fitpar[1],errorpar[1],
               fitpar[2],errorpar[2],
@@ -559,8 +556,8 @@ def create_3D_log_file(filename,object,airmass,efftime,
                   '        chi2\n')
     fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((1+npar_sky)*2+1)) + '\n'
     for n in xrange(cube.nslice):
-        list2D  = [cube.lbda[n],
-                   fitpar[npar_psf+n], errorpar[npar_psf+n]]
+        list2D = [cube.lbda[n],
+                  fitpar[npar_psf+n], errorpar[npar_psf+n]]
         for i in xrange(npar_sky):
             list2D.extend([fitpar[npar_psf+nslice+n*npar_sky+i],
                            errorpar[npar_psf+nslice+n*npar_sky+i]])
@@ -701,12 +698,16 @@ if __name__ == "__main__":
                       help="Output point source spectrum")
     parser.add_option("-s", "--sky", type="string",
                       help="Output sky spectrum")
+
+    # Variance management
     parser.add_option("-V", "--variance", action='store_true',
                       help="Store variance spectrum in extension",
                       default=True)
-    parser.add_option("--varianceAside", dest='variance', action='store_false',
+    parser.add_option("--varianceAside", dest='variance', 
+                      action='store_false',
                       help="Store variance in individual spectrum")
 
+    # Parameters
     parser.add_option("-S", "--skyDeg", type="int",
                       help="Sky polynomial background degree [%default]",
                       default=0)
@@ -721,18 +722,21 @@ if __name__ == "__main__":
                       help="Number of meta-slices [%default].",
                       default=12)
 
+    # PSF correlations
     parser.add_option("-c", "--correlations", type="string",
                       help="PSF correlation (new|old) [%default]",
                       default='old') 
 
+    # Extraction method and parameters
     parser.add_option("-m", "--method", type="string",
                       help="Extraction method ['%default']",
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
-                          "(>0: in arcsec, <0: in seeing sigma) " \
-                      "[%default]", default=-5.)
+                          "(>0: in arcsec, <0: in seeing sigma) [%default]", 
+                      default=-5.)
 
+    # Plotting
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag (= '-g pylab')")
     parser.add_option("-g", "--graph", type="string",
@@ -741,16 +745,19 @@ if __name__ == "__main__":
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
 
-    parser.add_option("-f", "--file", type="string",
-                      help="Save 2D adjustment results in file.")
-    parser.add_option("-F", "--File", type="string",
-                      help="Save 3D adjustment results in file.")
+    # Debug logs
+    parser.add_option("-f", "--file", type="string", dest="log2D",
+                      help="2D adjustment logfile name.")
+    parser.add_option("-F", "--File", type="string", dest="log3D",
+                      help="3D adjustment logfile name.")
 
+    # Expert options
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (no final 3D fit).")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes.")
-    parser.add_option("--psf3Dconstraints", type='string', action='append',
+    parser.add_option("--psf3Dconstraints", type='string', 
+                      action='append',
                       help="Constraints on PSF parameters (n:val,[val]).")
 
     opts,args = parser.parse_args()
@@ -800,7 +807,7 @@ if __name__ == "__main__":
                full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
 
-    obj = inhdr.get('OBJECT', 'Unknown')
+    objname = inhdr.get('OBJECT', 'Unknown')
     efftime = inhdr['EFFTIME']
     airmass = inhdr['AIRMASS']
     parangle = libES.read_parangle(inhdr)
@@ -834,7 +841,7 @@ if __name__ == "__main__":
                 libES.Short_ExposurePSF
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
-          (obj, airmass, efftime, psfFn.name)
+          (objname, airmass, efftime, psfFn.name)
 
     # Test channel and set default output name
     if channel not in ('B','R'):
@@ -892,10 +899,10 @@ if __name__ == "__main__":
 
     # Save 2D adjusted parameter file ==========================================
     
-    if opts.file:
-        print "Producing 2D adjusted parameter file [%s]..." % opts.file
-        create_2D_log_file(opts.file,obj,airmass,efftime,
-                           cube,param_arr,khi2_vec,error_mat)
+    if opts.log2D:
+        print "Producing 2D adjusted parameter logfile %s..." % opts.log2D
+        create_2Dlog(opts.log2D,objname,airmass,efftime,
+                     cube,param_arr,khi2_vec,error_mat)
 
     # 3D model fitting =========================================================
     
@@ -1161,11 +1168,10 @@ if __name__ == "__main__":
 
     # Save 3D adjusted parameter file ========================================
     
-    if opts.File:
-        print "Producing 3D adjusted parameter file [%s]..." % opts.File
-        create_3D_log_file(opts.File,obj,airmass,efftime,
-                           cube,cube_fit,fitpar,khi2,errorpar,
-                           (cube.lstart,cube.lend))
+    if opts.log3D:
+        print "Producing 3D adjusted parameter logfile %s..." % opts.log3D
+        create_3Dlog(opts.log3D,objname,airmass,efftime,
+                     cube,cube_fit,fitpar,khi2,errorpar)
     
     # Save adjusted PSF ========================================================
 
@@ -1226,7 +1232,7 @@ if __name__ == "__main__":
                     xticklabels=[])
             axN.plot(bkg_spec.x, bkg_spec.data/N.sqrt(bkg_spec.var), green)
 
-        axS.set(title="Point-source spectrum [%s, %s]" % (obj,method),
+        axS.set(title="Point-source spectrum [%s, %s]" % (objname,method),
                 xlim=(star_spec.x[0],star_spec.x[-1]), xticklabels=[])
         axN.set(title="Signal/Noise",
                 xlabel=u"Wavelength [Å]", 
@@ -1243,7 +1249,7 @@ if __name__ == "__main__":
         fig2 = pylab.figure()
         fig2.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
-        fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (obj, airmass),
+        fig2.text(0.5,0.97,"Slices plot [%s, airmass=%.2f]" % (objname,airmass),
                   fontsize='large', ha='center',va='center')
         
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
@@ -1288,7 +1294,7 @@ if __name__ == "__main__":
             fig3.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
             fig3.text(0.5,0.97, "Rows and columns plot [%s, airmass=%.2f]" % \
-                      (obj, airmass),
+                      (objname,airmass),
                       fontsize='large', ha='center', va='center')
             
             for i in xrange(nslice):        # Loop over slices
@@ -1421,7 +1427,7 @@ if __name__ == "__main__":
                   u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % \
                   (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle()),
                   transform=ax4c.transAxes, fontsize='small')
-        fig4.text(0.5, 0.97, "ADR plot [%s, airmass=%.2f]" % (obj, airmass),
+        fig4.text(0.5, 0.97, "ADR plot [%s, airmass=%.2f]" % (objname,airmass),
                   ha='center', va='center', size='large')
 
         # Plot of the other model parameters ---------------------------------
@@ -1450,7 +1456,7 @@ if __name__ == "__main__":
         ax6a = fig6.add_subplot(2, 1, 1,
                                 title='Model parameters ' \
                                     '[%s, seeing %.2f" FWHM]' % \
-                                    (obj,seeing),
+                                    (objname,seeing),
                                 xticklabels=[],
                                 ylabel=r'$\alpha$ [spx]')
         ax6b = fig6.add_subplot(4, 1, 3,
@@ -1550,7 +1556,7 @@ if __name__ == "__main__":
         fig7.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
 
         fig7.text(0.5,0.97,
-                  "Radial profile plot [%s, airmass=%.2f]" % (obj, airmass),
+                  "Radial profile plot [%s, airmass=%.2f]" % (objname,airmass),
                   fontsize='large', ha='center', va='center')
 
         def ellRadius(x,y, x0,y0, ell, q):
@@ -1682,7 +1688,8 @@ if __name__ == "__main__":
         fig8.subplots_adjust(left=0.05, right=0.96, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
-        fig8.text(0.5,0.97,"Contour plot [%s, airmass=%.2f]" % (obj, airmass),
+        fig8.text(0.5,0.97,
+                  "Contour plot [%s, airmass=%.2f]" % (objname,airmass),
                   fontsize='large', ha='center', va='center')
 
         extent = (cube.x.min()-0.5,cube.x.max()+0.5,
@@ -1724,7 +1731,8 @@ if __name__ == "__main__":
         fig5.subplots_adjust(left=0.06, right=0.90, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
-        fig5.text(0.5,0.97,"Residuals plot [%s, airmass=%.2f]" % (obj, airmass),
+        fig5.text(0.5,0.97,
+                  "Residuals plot [%s, airmass=%.2f]" % (objname,airmass),
                   fontsize='large', ha='center', va='center')
 
         images = []

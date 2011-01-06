@@ -1338,6 +1338,7 @@ def gaus_array(ima_shape,center,sigma,I,pa=None):
     return gaus
 
 def comp_cdg(ima):
+
     ima = num.abs(ima).astype('d')
     x,y = num.indices(num.shape(ima))
     norm = ima.sum()
@@ -1349,6 +1350,7 @@ def comp_cdg(ima):
     return xc,yc,sx,sy
 
 def zerolike(cube):
+
     newcube = SNIFS_cube()
     newcube.x = cube.x
     newcube.y = cube.y
@@ -1364,8 +1366,6 @@ def zerolike(cube):
     newcube.no = cube.no
     newcube.nslice = cube.nslice
 
-   
-
     try:
         newcube.e3d_data_header = cube.e3d_data_header
         newcube.e3d_extra_hdu_list = cube.e3d_extra_hdu_list
@@ -1376,4 +1376,5 @@ def zerolike(cube):
         newcube.e3d_extra_hdu_list = None
         newcube.e3d_file = None 
         newcube.e3d_grp_hdu = None 
+
     return newcube
