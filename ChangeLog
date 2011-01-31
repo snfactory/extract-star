@@ -1,3 +1,8 @@
+2011-01-31  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: new option '-s/--stack' to
+	display stacked spectra instead of mean spectrum.
+
 2011-01-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: minor refactoring.
