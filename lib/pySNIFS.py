@@ -51,7 +51,7 @@ class spectrum:
         """
         self.file = file
         if data_file is not None:
-            data_fits = pyfits.open(data_file)
+            data_fits = pyfits.open(data_file, ignore_missing_end=True)
             if data_fits[0].header.has_key('EURO3D'):
                 # Case where the spectrum belongs to an e3d datacube
                 if no is None:
@@ -89,7 +89,7 @@ class spectrum:
                     self.var = num.array(data_fits[1].data)
                 elif var_file is not None:
                     # The variance is read from a fits file 
-                    var_fits = pyfits.open(var_file)
+                    var_fits = pyfits.open(var_file, ignore_missing_end=True)
                     self.var = num.array(var_fits[0].data)
                 else:
                     self.var = None
@@ -355,7 +355,7 @@ class image_array:
             fits file.
         """
         if data_file is not None:
-            data_fits = pyfits.open(data_file)
+            data_fits = pyfits.open(data_file, ignore_missing_end=True)
             if data_fits[0].header.get('NAXIS') != 2:
                 raise TypeError('This is not a 2D fits image')
             else:
@@ -493,7 +493,7 @@ class SNIFS_cube:
         self.var = None
                 
         if e3d_file is not None:
-            e3d_cube = pyfits.open(e3d_file)
+            e3d_cube = pyfits.open(e3d_file, ignore_missing_end=True)
             gen_header = dict(e3d_cube[0].header.items())
             if not gen_header.has_key('EURO3D') or \
                    gen_header['EURO3D'] not in ('T', pyfits.TRUE):
@@ -601,7 +601,7 @@ class SNIFS_cube:
             
         elif fits3d_file is not None:
             
-            fits3d_cube = pyfits.open(fits3d_file)
+            fits3d_cube = pyfits.open(fits3d_file, ignore_missing_end=True)
             # Get keywords from primary header
             gen_header = dict(fits3d_cube[0].header.items())
             if gen_header['NAXIS'] != 3:
@@ -1028,8 +1028,8 @@ class SNIFS_mask:
                '-inputformat euro3d -outputformat euro3d' % \
                (offx,offy,order,order,step), grep='ERROR')
 
-        mask_tbl = pyfits.open('tmp_mask.fits')
-        tmp_tbl = pyfits.open('tmp_tbl.fits')
+        mask_tbl = pyfits.open('tmp_mask.fits', ignore_missing_end=True)
+        tmp_tbl = pyfits.open('tmp_tbl.fits', ignore_missing_end=True)
         self.no = mask_tbl[1].data.field('no').tolist()
         self.lbda_list = []
         i = 1

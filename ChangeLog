@@ -1,3 +1,8 @@
+2011-03-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/pySNIFS.py (spectrum.__init__): add ignore_missing_end=True
+	to please latest pyfits.
+
 2011-01-31  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: new option '-s/--stack' to
