@@ -6,6 +6,7 @@ import optparse
 import numpy as N
 import pySNIFS
 from ToolBox.MPL import get_backend
+from ToolBox.ReST import rst_table
 
 __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 __version__ = '$Id$'
@@ -50,8 +51,8 @@ try:                                # Try to read a Euro3D cube
 except ValueError:                  # Try to read a 3D FITS cube
     fcube = pySNIFS.SNIFS_cube(fits3d_file=inname)
     isE3D = False
-print "Cube %s: %d slices [%.2f-%.2f], %d spaxels" % \
-    (basename, fcube.nslice, fcube.lstart, fcube.lend, fcube.nlens)
+print "%s: %d spaxels, %d slices [%.0f-%.0f A]" % \
+    (basename, fcube.nlens, fcube.nslice, fcube.lstart, fcube.lend)
 
 # Meta-slice definition (min,max,step [px])
 imin = 10                           # 1st slice [px]
@@ -104,6 +105,9 @@ else:
     fig.subplots_adjust(right=0.95)
 
 # Loop over slices
+hdr = ["#/%d" % cube.nslice, "lcen", "lmin", "lmax", "mean", "std", "[%]"]
+fmt = ['%3s','%5.0f','%5.0f','%5.0f','%8.3g','%8.3g','%4.1f']
+rows = []
 for i in xrange(cube.nslice):        # Loop over meta-slices
     ax = fig.add_subplot(ncol, nrow, i+1, aspect='equal')
     if opts.variance:
@@ -113,10 +117,11 @@ for i in xrange(cube.nslice):        # Loop over meta-slices
 
     gdata = data[N.isfinite(data)] # Non-NaN values
     m,s = gdata.mean(),gdata.std()
-    print "Slice #%02d/%d, %.0f Å [%.0f-%.0f]: " \
-        "mean=%g, stddev=%g (%.2f%%)" % \
-        (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
-         m,s,s/m*100)
+    #print "Slice #%02d/%d, %.0f Å [%.0f-%.0f]: " \
+    #    "mean=%g, stddev=%g (%.2f%%)" % \
+    #    (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
+    #     m,s,s/m*100)
+    rows += [[i+1,cube.lbda[i],lbounds[i],lbounds[i+1],m,s,s/m*100]]
 
     if opts.rangePerSlice:
         var = cube.slice2d(i, coord='p', var=True)
@@ -144,18 +149,20 @@ for i in xrange(cube.nslice):        # Loop over meta-slices
     if not ax.is_first_col():
         P.setp(ax.get_yticklabels(), visible=False)
 
+print rst_table(rows,fmt,hdr)
+
 # Colorbar
 if not opts.rangePerSlice:
     cax = fig.add_axes([0.92,0.25,0.02,0.7])
     cbar = fig.colorbar(im, cax, orientation='vertical')
 
-ax2 = fig.add_axes([0.06,0.06,0.88,0.15])
+ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
 
 if opts.stack:                  # Stacked spectra
     vmin,vmax = P.prctile(fcube.data[P.isfinite(fcube.var)], (fmin,fmax))
     ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
                extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
-    ax2.set_aspect(3, adjustable='box')
+    ax2.set_aspect('auto', adjustable='box')
     ax2.set_xlabel(u"Wavelength [Å]", fontsize=8)
     ax2.set_ylabel("Spx #", fontsize=8)
     P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize=8)
