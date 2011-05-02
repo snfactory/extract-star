@@ -1,12 +1,18 @@
+2011-05-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new option
+	'-L/--leastSquares' to perform least-square fits (previously
+	introduced option '--no_var' was buggy and has been removed).
+
 2011-04-28  Clement BUTON  <cbuton@pi-intra-143.physik.uni-bonn.de>
 
-	* apps/extract_star/extract_star.py:   Add  the option  '--no_var'
-	which fix the variance of the cube  to 1.0 (or to NaN if the value
+	* apps/extract_star/extract_star.py: Add the option '--no_var'
+	which fix the variance of the cube to 1.0 (or to NaN if the value
 	was a NaN and to -1 if the value was <0).
 
 2011-04-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
-	* apps/extract_star/plot_slices.py: update.
+	* apps/extract_star/plot_slices.py: minor update.
 
 2011-03-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 

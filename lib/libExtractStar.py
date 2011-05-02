@@ -16,46 +16,17 @@ import numpy as N
 import scipy as S
 import scipy.special
 
-MK_pressure = 616.                      # Default pressure [mbar]
-MK_temp = 2.                            # Default temperature [C]
+from ToolBox.Astro import Coords
 
-RAD2DEG = 57.295779513082323            # 180/pi
+def read_PT(hdr, MK_pressure=616., MK_temp=2.):
+    """Read pressure [mbar] and temperature [C] from hdr (or use default
+    Mauna-Kea values), and check value consistency."""
 
-def atmosphericIndex(lbda, P=616., T=2.):
-    """Compute atmospheric refractive index: lbda in angstrom, P in mbar, T in
-    C. Relative humidity effect is neglected. From Fillipenko, 1982 (from
-    Edlen 1953).
-
-    Cohen & Cromer 1988 (PASP, 100, 1582) give P=456 mmHg=608 mbar and T=2C
-    for Mauna Kea. However, SNIFS observations show an average recorded
-    pression of 616 mbar and temperature of 2C (see
-    https://projects.lbl.gov/mantis/view.php?id=1341).
-
-    The difference between sea-level and MK refractive index is ~1e-4. The
-    index fluctuations with typical P,T MK-variations (+/-5mbar, +/-5C) is +/-
-    ~3e-6. Water vapor contribution is around ~1e-10.
-
-    See also Peck & Reeder (1972, J.Opt.Soc.Am., 62, 958) and
-    http://emtoolbox.nist.gov/Wavelength/Documentation.asp"""
-
-    # Sea-level (P=760 mmHg, T=15C)
-    iml2 = 1/(lbda*1e-4)**2             # lambda in microns
-    n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
-
-    if P is not None and T is not None:
-        # (P,T) correction
-        P *= 0.75006168                 # Convert P to mmHg: *= 760./1013.25
-        n = 1 + (n-1) * P * \
-            ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
-
-    return n
-
-
-def read_PT(hdr):
-    """Read pressure and temperature from hdr, and check value consistency."""
+    if hdr is None:
+        return MK_pressure, MK_temp
 
     pressure = hdr.get('PRESSURE', N.nan)
-    if not 550<pressure<650:        # Non-std pressure
+    if not 550 < pressure < 650:        # Non-std pressure
         print "WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
               (pressure, MK_pressure)
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
@@ -65,7 +36,7 @@ def read_PT(hdr):
         pressure = MK_pressure
 
     temp = hdr.get('TEMP', N.nan)
-    if not -20<temp<20:             # Non-std temperature
+    if not -20 < temp < 20:             # Non-std temperature
         print "WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
               (temp, MK_temp)
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
@@ -75,150 +46,6 @@ def read_PT(hdr):
         temp = MK_temp
 
     return pressure,temp
-
-
-def read_parangle(hdr):
-    """Read or estimate parallactic angle [degree] from header keywords."""
-
-    parang = hdr.get('PARANG', N.nan)
-    if N.isfinite(parang):              # PARANG keyword is available
-        return parang
-
-    # PARANG keyword is absent, estimate it from LATITUDE,HA,DEC
-    print "WARNING: cannot read PARANG keyword, estimate it from header"
-
-    from math import sin,cos,pi,sqrt,atan2
-
-    d2r = pi/180.                       # Degree to Radians
-    # DTCS latitude is probably not the most precise one (see fit_ADR.py)
-    phi = hdr['LATITUDE']*d2r           # Latitude [rad]
-    sinphi = sin(phi)
-    cosphi = cos(phi)
-    try:
-        ha = hdr['HAMID']               # Hour angle (format: 04:04:52.72)
-    except KeyError:
-        ha = hdr['HA']                  # Hour angle (format: 04:04:52.72)
-    try:
-        dec = hdr['TELDEC']             # Declination (format 08:23:19.20)
-    except KeyError:
-        dec = hdr['DEC']                # Declination (format 08:23:19.20)
-    # We neglect position offset (see
-    # https://projects.lbl.gov/mantis/view.php?id=280 note 773) since offset
-    # keywords are not universal...
-
-    def dec_deg(dec):
-        """Convert DEC string (DD:MM:SS.SS) to degrees."""
-        l = [ float(x) for x in dec.split(':') ]
-        return l[0] + l[1]/60. + l[2]/3600.
-
-    ha  = dec_deg(ha)*15*d2r            # Hour angle [rad]
-    dec = dec_deg(dec)*d2r              # Declination [rad]
-    sinha = sin(ha)
-    cosha = cos(ha)
-    sindec = sin(dec)
-    cosdec = cos(dec)
-
-    # Zenithal angle (to be compared to dec_deg(hdr['ZD']))
-    cosdz = sindec*sinphi + cosphi*cosdec*cosha
-    sindz = sqrt(1. - cosdz**2)
-
-    # Parallactic angle (to be compared to hdr['PARANG'])
-    sineta = sinha*cosphi / sindz
-    coseta = ( cosdec*sinphi - sindec*cosphi*cosha ) / sindz
-    eta = atan2(sineta,coseta)          # [rad]
-
-    parang = eta/d2r                    # [deg]
-    print "  Estimated parallactic angle: %.2f deg" % parang
-    if isinstance(hdr, dict):           # pySNIFS.SNIFS_cube.e3d_data_header
-        hdr['PARANG'] = parang
-    else:                               # True pyfits header, add comment
-        hdr.update('PARANG',parang,"Parallactic angle [deg]")
-
-    return parang
-
-
-class ADR_model:
-
-    def __init__(self, pressure=616., temp=2., **kwargs):
-        """ADR_model(pressure, temp,
-        [lref=, delta=, theta=, airmass=, parangle=])."""
-
-        if not 550<pressure<650 and not not -20<temp<20:
-            raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
-                             "temperature (%.0f C)" % (pressure, temp))
-        self.P = pressure
-        self.T = temp
-        if 'lref' in kwargs:
-            self.set_ref(lref=kwargs['lref'])
-        else:
-            self.set_ref()
-        if 'airmass' in kwargs and 'parangle' in kwargs:
-            self.set_param(kwargs['airmass'], kwargs['parangle'], obs=True)
-        elif 'delta' in kwargs and 'theta' in kwargs:
-            self.set_param(kwargs['delta'],kwargs['theta'])
-
-    def __str__(self):
-
-        s = "ADR [ref:%.0fA]: P=%.0f mbar, T=%.0fC" % \
-            (self.lref,self.P,self.T)
-        if hasattr(self, 'delta') and hasattr(self, 'theta'):
-            s += ", airmass=%.2f, parangle=%.1f deg" % \
-                 (self.get_airmass(),self.get_parangle())
-
-        return s
-
-    def set_ref(self, lref=5000.):
-
-        self.lref = lref                # [Angstrom]
-        self.nref = atmosphericIndex(self.lref, P=self.P, T=self.T)
-
-    def set_param(self, p1, p2, obs=False):
-
-        if obs:                         # p1 = airmass, p2 = parangle [deg]
-            self.delta = N.tan(N.arccos(1./p1))
-            self.theta = p2/RAD2DEG
-        else:                           # p1 = delta, p2 = theta [rad]
-            self.delta = p1
-            self.theta = p2
-
-    def refract(self, x, y, lbda, backward=False, unit=1.):
-        """Return refracted position at wavelength lbda from reference
-        position x,y (in units of unit in arcsec)."""
-
-        if not hasattr(self, 'delta'):
-            raise AttributeError("ADR parameters 'delta' and 'theta' "
-                                 "are not set.")
-
-        x0 = N.atleast_1d(x)            # (npos,)
-        y0 = N.atleast_1d(y)
-        npos = len(x0)
-        assert len(x0)==len(y0), "Incompatible x and y vectors."
-        lbda = N.atleast_1d(lbda)       # (nlbda,)
-        nlbda = len(lbda)
-
-        dz = (self.nref - atmosphericIndex(lbda, P=self.P, T=self.T)) * \
-             206265. / unit             # (nlbda,)
-        dz *= self.delta
-
-        if backward:
-            assert npos==nlbda, "Incompatible x,y and lbda vectors."
-            x = x0 - dz*N.sin(self.theta)
-            y = y0 + dz*N.cos(self.theta) # (nlbda=npos,)
-            out = N.vstack((x,y))       # (2,npos)
-        else:
-            dz = dz[:,N.newaxis]        # (nlbda,1)
-            x = x0 + dz*N.sin(self.theta) # (nlbda,npos)
-            y = y0 - dz*N.cos(self.theta) # (nlbda,npos)
-            out = N.dstack((x.T,y.T)).T # (2,nlbda,npos)
-            assert out.shape == (2,nlbda,npos), "ARGH"
-
-        return N.squeeze(out)
-
-    def get_airmass(self):
-        return 1/N.cos(N.arctan(self.delta))
-
-    def get_parangle(self):
-        return self.theta*RAD2DEG       # Parangle in deg.
 
 
 # Polynomial utilities ======================================================
@@ -352,7 +179,7 @@ def flatAndPA(cy2, c2xy):
     x0,y0,a,b,phi = quadEllipse(1,c2xy,cy2,0,0,-1)
     assert a>0 and b>0, "Input equation does not correspond to an ellipse"
     q = b/a                             # Flattening
-    pa = phi*RAD2DEG                    # From rad to deg
+    pa = phi*Coords.RAD2DEG             # From rad to deg
 
     return q,pa
 
@@ -416,11 +243,11 @@ class ExposurePSF:
         if hasattr(cube,'e3d_data_header'): # Read from cube if possible
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
-            pressure,temp = MK_pressure,MK_temp # Default values for P and T
-        self.n_ref = atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
-        self.ADR_coeff = ( self.n_ref - \
-                           atmosphericIndex(self.l, P=pressure, T=temp) ) * \
-                           206265 / self.spxSize # l > l_ref <=> coeff > 0
+            pressure,temp = read_PT(None)   # Get default values for P and T
+        self.n_ref = Coords.atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
+        self.ADR_coeff = ( self.n_ref - 
+                           Coords.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
+                           Coords.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
 
     def comp(self, param, normed=False):
         """
@@ -696,3 +523,92 @@ class ShortRed_ExposurePSF(ExposurePSF):
     sigma1 = [ 0.212,-0.017, 0.000] # s10,s11,s12
     eta0   = [ 0.704,-0.060, 0.044] # e00,e01,e02
     eta1   = [ 0.343, 0.113,-0.045] # e10,e11,e12
+
+
+# Deprecated functions and classes ==============================
+
+class ADR_model:
+
+    def __init__(self, pressure=616., temp=2., **kwargs):
+        """ADR_model(pressure, temp,
+        [lref=, delta=, theta=, airmass=, parangle=])."""
+
+        import warnings
+        warnings.warn("Replaced by ToolBox.Astro.Coords", DeprecationWarning)
+
+        if not 550<pressure<650 and not not -20<temp<20:
+            raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
+                             "temperature (%.0f C)" % (pressure, temp))
+        self.P = pressure
+        self.T = temp
+        if 'lref' in kwargs:
+            self.set_ref(lref=kwargs['lref'])
+        else:
+            self.set_ref()
+        if 'airmass' in kwargs and 'parangle' in kwargs:
+            self.set_param(kwargs['airmass'], kwargs['parangle'], obs=True)
+        elif 'delta' in kwargs and 'theta' in kwargs:
+            self.set_param(kwargs['delta'],kwargs['theta'])
+
+    def __str__(self):
+
+        s = "ADR [ref:%.0fA]: P=%.0f mbar, T=%.0fC" % \
+            (self.lref,self.P,self.T)
+        if hasattr(self, 'delta') and hasattr(self, 'theta'):
+            s += ", airmass=%.2f, parangle=%.1f deg" % \
+                 (self.get_airmass(),self.get_parangle())
+
+        return s
+
+    def set_ref(self, lref=5000.):
+
+        self.lref = lref                # [Angstrom]
+        self.nref = Coords.atmosphericIndex(self.lref, P=self.P, T=self.T)
+
+    def set_param(self, p1, p2, obs=False):
+
+        if obs:                         # p1 = airmass, p2 = parangle [deg]
+            self.delta = N.tan(N.arccos(1./p1))
+            self.theta = p2/Coords.RAD2DEG
+        else:                           # p1 = delta, p2 = theta [rad]
+            self.delta = p1
+            self.theta = p2
+
+    def refract(self, x, y, lbda, backward=False, unit=1.):
+        """Return refracted position at wavelength lbda from reference
+        position x,y (in units of unit in arcsec)."""
+
+        if not hasattr(self, 'delta'):
+            raise AttributeError("ADR parameters 'delta' and 'theta' "
+                                 "are not set.")
+
+        x0 = N.atleast_1d(x)            # (npos,)
+        y0 = N.atleast_1d(y)
+        npos = len(x0)
+        assert len(x0)==len(y0), "Incompatible x and y vectors."
+        lbda = N.atleast_1d(lbda)       # (nlbda,)
+        nlbda = len(lbda)
+
+        dz = (self.nref - Coords.atmosphericIndex(lbda, P=self.P, T=self.T)) * \
+             Coords.RAD2ARC / unit      # (nlbda,)
+        dz *= self.delta
+
+        if backward:
+            assert npos==nlbda, "Incompatible x,y and lbda vectors."
+            x = x0 - dz*N.sin(self.theta)
+            y = y0 + dz*N.cos(self.theta) # (nlbda=npos,)
+            out = N.vstack((x,y))         # (2,npos)
+        else:
+            dz = dz[:,N.newaxis]          # (nlbda,1)
+            x = x0 + dz*N.sin(self.theta) # (nlbda,npos)
+            y = y0 - dz*N.cos(self.theta) # (nlbda,npos)
+            out = N.dstack((x.T,y.T)).T   # (2,nlbda,npos)
+            assert out.shape == (2,nlbda,npos), "ARGH"
+
+        return N.squeeze(out)
+
+    def get_airmass(self):
+        return 1/N.cos(N.arctan(self.delta))
+
+    def get_parangle(self):
+        return self.theta*Coords.RAD2DEG # Parangle in deg.
