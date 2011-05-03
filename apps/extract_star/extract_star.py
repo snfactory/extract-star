@@ -506,7 +506,7 @@ def fit_slices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True):
 
 
 def create_2Dlog(filename, objname, airmass, efftime,
-                 cube, param_arr, chi2, error_mat):
+                 cube, param_arr, error_mat, chi2):
 
     npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
 
@@ -516,18 +516,22 @@ def create_2Dlog(filename, objname, airmass, efftime,
     intensity    = param_arr[-npar_sky-1]
     sky          = param_arr[-npar_sky:]
 
-    logfile = open(filename,'w')
+    logfile = file(filename,'w')
+
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
     logfile.write('# object  : %s   \n' % objname)
-    logfile.write('# airmass : %.2f \n' % airmass)
-    logfile.write('# efftime : %.2f \n' % efftime)
+    logfile.write('# airmass : %.3f \n' % airmass)
+    logfile.write('# efftime : %.3f \n' % efftime)
 
-    logfile.write('# lbda  ' + \
-                  '  '.join('%8s +/- d%-8s' % (n,n)
-                            for n in ['delta','theta','xc','yc','PA',
-                                      'ell','alpha','I'] + \
-                            ['sky%d' % d for d in xrange(npar_sky)] ) + \
-                  '        chi2\n')
+    labels = '# lbda  ' + \
+        '  '.join('%8s +/- d%-8s' % (n,n)
+                  for n in ['delta','theta','xc','yc','PA','ell','alpha','I'] + 
+                  ['sky%d' % d for d in xrange(npar_sky)])
+    if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
+        labels += '        RSS\n'
+    else:                       # Chi2 fit: compute chi2 per slice
+        labels += '        chi2\n'
+    logfile.write(labels)
     fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((8+npar_sky)*2+1)) + '\n'
 
     for n in xrange(cube.nslice):
@@ -545,25 +549,32 @@ def create_2Dlog(filename, objname, airmass, efftime,
             list2D += tmp.T.flatten().tolist()
         list2D += [chi2[n]]
         logfile.write(fmt % tuple(list2D))
+
     logfile.close()
 
 
 def create_3Dlog(filename, objname, airmass, efftime,
-                 cube, cube_fit, fitpar, chi2, errorpar, var=True):
+                 cube, cube_fit, fitpar, errorpar, chi2):
 
-    logfile = open(filename,'w')
+    logfile = file(filename,'w')
+
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
     logfile.write('# object  : %s   \n' % objname)
-    logfile.write('# airmass : %.2f \n' % airmass)
-    logfile.write('# efftime : %.2f \n' % efftime)
+    logfile.write('# airmass : %.3f \n' % airmass)
+    logfile.write('# efftime : %.3f \n' % efftime)
 
     # Global parameters
-    logfile.write('# lmin  lmax' + \
-                  '  '.join('%8s +/- d%-8s' % (n,n)
-                            for n in ['delta','theta','xc','yc','PA'] + \
-                            ['ell%d' % d for d in xrange(ellDeg+1)] +
-                            ['alpha%d' % d for d in xrange(alphaDeg+1)]) + \
-                  '        chi2\n')
+    # lmin  lmax  delta +/- ddelta  ...  alphaN +/- dalphaN chi2|RSS
+    labels = '# lmin  lmax' + \
+        '  '.join('%8s +/- d%-8s' % (n,n)
+                  for n in ['delta','theta','xc','yc','PA'] + 
+                  ['ell%d' % d for d in xrange(ellDeg+1)] +
+                  ['alpha%d' % d for d in xrange(alphaDeg+1)])
+    if cube.var is None:        # Least-square fit: Residual Sum of Squares
+        labels += '        RSS\n'
+    else:                       # Chi2 fit: true chi2
+        labels += '        chi2\n'
+    logfile.write(labels)
     fmt = '%6.0f  %6.0f  ' + \
           '  '.join(["%10.4g"]*((5+(ellDeg+1)+(alphaDeg+1))*2+1)) + '\n'
     list3D = [cube.lstart, cube.lend,
@@ -572,34 +583,41 @@ def create_3Dlog(filename, objname, airmass, efftime,
               fitpar[2],errorpar[2],
               fitpar[3],errorpar[3],
               fitpar[4],errorpar[4]]
-    for i in xrange(ellDeg+1):
+    for i in xrange(ellDeg+1):   # Ellipticity coefficiens
         list3D += [fitpar[5+i],errorpar[5+i]]
-    for i in xrange(alphaDeg+1):
+    for i in xrange(alphaDeg+1): # Alpha coefficients
         list3D += [fitpar[6+ellDeg+i],errorpar[6+ellDeg+i]]
-    list3D += [chi2]
+    list3D += [chi2]             # chi2|RSS
     logfile.write(fmt % tuple(list3D))
 
-    # Megaslice parameters
+    # Metaslice parameters
+    # lbda  I -/- dI  sky0 +/- dsky0  sky1 +/- dsky1  ...  chi2|RSS
     npar_psf = 7 + ellDeg + alphaDeg
     npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
 
-    logfile.write('# lbda  ' + \
-                  '  '.join('%8s +/- d%-8s' % (n,n)
-                            for n in ['I'] + \
-                            ['sky%d' % d for d in xrange(npar_sky)] ) + \
-                  '        chi2\n')
+    labels = '# lbda  ' + \
+        '  '.join( '%8s +/- d%-8s' % (par,par) 
+                   for par in ['I']+['sky%d' % d for d in range(npar_sky)] )
+    if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
+        labels += '        RSS\n'
+    else:                       # Chi2 fit: compute chi2 per slice
+        labels += '        chi2\n'
+    logfile.write(labels)
     fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((1+npar_sky)*2+1)) + '\n'
-    for n in xrange(cube.nslice):
-        list2D = [cube.lbda[n],
-                  fitpar[npar_psf+n], errorpar[npar_psf+n]]
-        for i in xrange(npar_sky):
+    for n in xrange(cube.nslice): # Loop over metaslices
+        # Wavelength, intensity and error on intensity
+        list2D = [cube.lbda[n], fitpar[npar_psf+n], errorpar[npar_psf+n]]
+        for i in xrange(npar_sky): # Add background parameters
             list2D.extend([fitpar[npar_psf+nslice+n*npar_sky+i],
                            errorpar[npar_psf+nslice+n*npar_sky+i]])
-        chi2 = N.nan_to_num((cube.slice2d(n, coord='p') - \
-                             cube_fit.slice2d(n, coord='p'))**2 / \
-                            cube.slice2d(n, coord='p', var=var))
-        list2D += [chi2.sum()]          # Slice chi2
+        # Compute chi2|RSS
+        chi2 = N.nan_to_num((cube.slice2d(n, coord='p') - 
+                             cube_fit.slice2d(n, coord='p'))**2)
+        if cube.var is not None:    # chi2: divide by variance
+            chi2 /= cube.slice2d(n, coord='p', var=True)
+        list2D += [chi2.sum()]      # Slice chi2|RSS
         logfile.write(fmt % tuple(list2D))
+
     logfile.close()
 
 
@@ -941,7 +959,7 @@ if __name__ == "__main__":
     if opts.log2D:
         print "Producing 2D adjusted parameter logfile %s..." % opts.log2D
         create_2Dlog(opts.log2D, objname, airmass, efftime,
-                     cube, param_arr, chi2_vec, error_mat)
+                     cube, param_arr, error_mat, chi2_vec)
 
     # 3D model fitting =========================================================
 
@@ -1215,12 +1233,8 @@ if __name__ == "__main__":
 
     if opts.log3D:
         print "Producing 3D adjusted parameter logfile %s..." % opts.log3D
-        if not opts.chi2fit:
-            create_3Dlog(opts.log3D, objname, airmass, efftime,
-                         cube, cube_fit, fitpar, chi2, errorpar, var=False)
-        else:
-            create_3Dlog(opts.log3D, objname, airmass, efftime,
-                         cube, cube_fit, fitpar, chi2, errorpar) 
+        create_3Dlog(opts.log3D, objname, airmass, efftime,
+                     cube, cube_fit, fitpar, errorpar, chi2)
 
     # Save adjusted PSF ========================================================
 
@@ -1348,26 +1362,33 @@ if __name__ == "__main__":
 
             for i in xrange(nslice):        # Loop over slices
                 ax = fig3.add_subplot(nrow, ncol, i+1)
+
+                # Signal
                 sigSlice = cube.slice2d(i, coord='p', NAN=False)
-                if not opts.chi2fit:
-                    varSlice = cube.slice2d(i, coord='p', var=False, NAN=False)
-                else:
-                    varSlice = cube.slice2d(i, coord='p', var=True, NAN=False)
-                modSlice = cube_fit.slice2d(i, coord='p')
                 prof_I = sigSlice.sum(axis=0) # Sum along rows
                 prof_J = sigSlice.sum(axis=1) # Sum along columns
-                err_I = N.sqrt(varSlice.sum(axis=0))
-                err_J = N.sqrt(varSlice.sum(axis=1))
+                # Errors
+                if opts.chi2fit: # Chi2 fit: plot errorbars
+                    varSlice = cube.slice2d(i, coord='p', var=True, NAN=False)
+                    err_I = N.sqrt(varSlice.sum(axis=0))
+                    err_J = N.sqrt(varSlice.sum(axis=1))
+                    ax.errorbar(range(len(prof_I)),prof_I,err_I, 
+                                fmt='o', c=blue, ecolor=blue, ms=3)
+                    ax.errorbar(range(len(prof_J)),prof_J,err_J, 
+                                fmt='^', c=red, ecolor=red, ms=3)
+                else:            # Least-square fit
+                    ax.plot(range(len(prof_I)),prof_I, 
+                            marker='o', c=blue, ms=3, ls='None')
+                    ax.plot(range(len(prof_J)),prof_J, 
+                            marker='^', c=red, ms=3, ls='None')
+                # Model
+                modSlice = cube_fit.slice2d(i, coord='p')
                 mod_I = modSlice.sum(axis=0)
                 mod_J = modSlice.sum(axis=1)
-                ax.errorbar(range(len(prof_I)),prof_I,err_I, marker='o',
-                            mfc=blue, mec=blue, ms=3, ls='None')
                 ax.plot(mod_I, ls='-', color=blue)
-                ax.errorbar(range(len(prof_J)),prof_J,err_J, marker='^',
-                            mfc=red, mec=red, ms=3, ls='None')
                 ax.plot(mod_J, ls='-', color=red)
-                pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(),
-                           fontsize=6)
+
+                pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(),fontsize=6)
                 ax.text(0.1,0.8, "%.0f" % cube.lbda[i], fontsize=8,
                         horizontalalignment='left', transform=ax.transAxes)
                 if ax.is_last_row() and ax.is_first_col():
@@ -1780,23 +1801,23 @@ if __name__ == "__main__":
         print_msg("Producing residual plot %s..." % plot5, 1)
 
         fig5 = pylab.figure()
-        fig5.subplots_adjust(left=0.06, right=0.90, bottom=0.06, top=0.95,
+        fig5.subplots_adjust(left=0.06, right=0.89, bottom=0.06, top=0.95,
                              hspace=0.02, wspace=0.02)
 
         fig5.text(0.5,0.97,
-                  "Residuals plot [%s, airmass=%.2f]" % (objname,airmass),
+                  "Residual plot [%s, airmass=%.2f]" % (objname,airmass),
                   fontsize='large', ha='center', va='center')
 
         images = []
         for i in xrange(nslice):        # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
-            data = cube.slice2d(i, coord='p')
-            if not opts.chi2fit:
-                var  = cube.slice2d(i, coord='p', var=False)
-            else:
-                var  = cube.slice2d(i, coord='p', var=True)
-            fit  = cube_fit.slice2d(i, coord='p')
-            res  = N.nan_to_num((data - fit)/N.sqrt(var))
+            data = cube.slice2d(i, coord='p') # Signal
+            fit  = cube_fit.slice2d(i, coord='p') # Model
+            if opts.chi2fit:    # Chi2 fit: display residuals in units of sigma
+                var = cube.slice2d(i, coord='p', var=True, NAN=False)
+                res = N.nan_to_num((data - fit)/N.sqrt(var))
+            else:               # Least-squares: display relative residuals
+                res  = N.nan_to_num((data - fit)/fit)*100 # [%]
 
             # List of images, to be commonly normalized latter on
             images.append(ax.imshow(res, origin='lower', extent=extent,
@@ -1825,10 +1846,13 @@ if __name__ == "__main__":
             im.set_norm(norm)
 
         # Colorbar
-        cax = fig5.add_axes([0.91,0.07,0.02,0.87])
+        cax = fig5.add_axes([0.90,0.07,0.02,0.87])
         cbar = fig5.colorbar(images[0], cax, orientation='vertical')
         pylab.setp(cbar.ax.get_yticklabels(), fontsize=10)
-        cbar.set_label(r'Residuals [$\sigma$]')
+        if opts.chi2fit:    # Chi2 fit
+            cbar.set_label(r'Residuals [$\sigma$]')
+        else:
+            cbar.set_label(r'Residuals [%]')
 
         # Show or save figures -------------------------------------------------
 
