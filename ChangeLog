@@ -1,3 +1,9 @@
+2011-05-03  Clement BUTON  <cbuton@pi-intra-143.physik.uni-bonn.de>
+
+	* apps/extract_star/extract_star.py: Propagate the changes related
+	to  the   previously  introduced  option   '-L/--leastSquares'  in
+	create_3Dlog definition and in the 'residuals' plots.
+
 2011-05-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new option

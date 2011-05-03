@@ -7,7 +7,7 @@
 ## Author:            Clément BUTON <buton@physik.uni-bonn.de>
 ## Author:            $Author$
 ## Created at:        $Date$
-## Modified at:       2011/04/28 18:12:29
+## Modified at:       2011/05/03 15:59:49
 ## $Id$
 ##############################################################################
 
@@ -549,7 +549,7 @@ def create_2Dlog(filename, objname, airmass, efftime,
 
 
 def create_3Dlog(filename, objname, airmass, efftime,
-                 cube, cube_fit, fitpar, chi2, errorpar):
+                 cube, cube_fit, fitpar, chi2, errorpar, var=True):
 
     logfile = open(filename,'w')
     logfile.write('# cube    : %s   \n' % os.path.basename(opts.input))
@@ -597,7 +597,7 @@ def create_3Dlog(filename, objname, airmass, efftime,
                            errorpar[npar_psf+nslice+n*npar_sky+i]])
         chi2 = N.nan_to_num((cube.slice2d(n, coord='p') - \
                              cube_fit.slice2d(n, coord='p'))**2 / \
-                            cube.slice2d(n, coord='p', var=True))
+                            cube.slice2d(n, coord='p', var=var))
         list2D += [chi2.sum()]          # Slice chi2
         logfile.write(fmt % tuple(list2D))
     logfile.close()
@@ -1215,8 +1215,12 @@ if __name__ == "__main__":
 
     if opts.log3D:
         print "Producing 3D adjusted parameter logfile %s..." % opts.log3D
-        create_3Dlog(opts.log3D, objname, airmass, efftime,
-                     cube, cube_fit, fitpar, chi2, errorpar)
+        if not opts.chi2fit:
+            create_3Dlog(opts.log3D, objname, airmass, efftime,
+                         cube, cube_fit, fitpar, chi2, errorpar, var=False)
+        else:
+            create_3Dlog(opts.log3D, objname, airmass, efftime,
+                         cube, cube_fit, fitpar, chi2, errorpar) 
 
     # Save adjusted PSF ========================================================
 
@@ -1345,7 +1349,10 @@ if __name__ == "__main__":
             for i in xrange(nslice):        # Loop over slices
                 ax = fig3.add_subplot(nrow, ncol, i+1)
                 sigSlice = cube.slice2d(i, coord='p', NAN=False)
-                varSlice = cube.slice2d(i, coord='p', var=True, NAN=False)
+                if not opts.chi2fit:
+                    varSlice = cube.slice2d(i, coord='p', var=False, NAN=False)
+                else:
+                    varSlice = cube.slice2d(i, coord='p', var=True, NAN=False)
                 modSlice = cube_fit.slice2d(i, coord='p')
                 prof_I = sigSlice.sum(axis=0) # Sum along rows
                 prof_J = sigSlice.sum(axis=1) # Sum along columns
@@ -1784,7 +1791,10 @@ if __name__ == "__main__":
         for i in xrange(nslice):        # Loop over meta-slices
             ax   = fig5.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = cube.slice2d(i, coord='p')
-            var  = cube.slice2d(i, coord='p', var=True)
+            if not opts.chi2fit:
+                var  = cube.slice2d(i, coord='p', var=False)
+            else:
+                var  = cube.slice2d(i, coord='p', var=True)
             fit  = cube_fit.slice2d(i, coord='p')
             res  = N.nan_to_num((data - fit)/N.sqrt(var))
 
