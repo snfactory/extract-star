@@ -91,8 +91,8 @@ for inname in args:
                         hspace=0.03, wspace=0.03)
 
     objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
-    efftime = fcube.e3d_data_header.get("EFFTIME", NaN)
-    airmass = fcube.e3d_data_header.get("AIRMASS", NaN)
+    efftime = fcube.e3d_data_header.get("EFFTIME", N.NaN)
+    airmass = fcube.e3d_data_header.get("AIRMASS", N.NaN)
     fig.text(0.5, 0.97, 
              u"%s [%s, %ds @%.2f], slices of %.0f Å" % \
                  (basename, objname, efftime, airmass, fcube.lstep*istep),
