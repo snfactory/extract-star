@@ -1,6 +1,7 @@
 2011-05-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
-	* apps/extract_star/plot_slices.py: now handle multiple arguments.
+	* apps/extract_star/plot_slices.py: now handle multiple arguments,
+	display efftime and airmass.
 
 2011-05-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
