@@ -1,3 +1,7 @@
+2011-05-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: now handle multiple arguments.
+
 2011-05-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: the "chi2" quantities
