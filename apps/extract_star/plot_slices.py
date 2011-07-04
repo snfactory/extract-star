@@ -37,6 +37,12 @@ parser.add_option("-s", "--stack", action='store_true',
 
 opts,args = parser.parse_args()
 
+try:
+    fmin,fmax = [ float(t) for t in opts.range.split(',') ]
+    assert 0<=fmin<100 and 0<fmax<=100 and fmin<fmax
+except (ValueError,AssertionError):
+    parser.error("invalid option '-r/--range %s'" % opts.range)
+
 # Matplolib backend
 import matplotlib as M
 backend,figext = get_backend(opts.graph, name='')
@@ -49,16 +55,10 @@ hdr = ["#/%d" % opts.nmeta, "lcen", "lmin", "lmax", "mean", "std", "[%]"]
 fmt = ['%3s','%5.0f','%5.0f','%5.0f','%8.3g','%8.3g','%6.2f']
 rows = []
 
-for inname in args:
+for n,inname in enumerate(args):
     basename,ext = os.path.splitext(os.path.basename(inname))
     if len(args)>1:             # Multiple arguments
         rows += [[basename]]
-
-    try:
-        fmin,fmax = [ float(t) for t in opts.range.split(',') ]
-        assert 0<=fmin<100 and 0<fmax<=100 and fmin<fmax
-    except (ValueError,AssertionError):
-        parser.error("invalid option '-r/--range %s'" % opts.range)
 
     try:                                # Try to read a Euro3D cube
         fcube = pySNIFS.SNIFS_cube(e3d_file=inname)

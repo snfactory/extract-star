@@ -103,8 +103,12 @@ if __name__ == '__main__':
                       help="Output point-source subtracted datacube")
 
     parser.add_option("-k", "--keep", action="store_true",
-                      help="Save point-source datacube [psf_refcube]", 
+                      help="Save point-source datacube (with --psfname)", 
                       default=False)
+    parser.add_option("--psfname", 
+                      help="Name of point-source datacube [psf_refcube]", 
+                      default=None)
+
     parser.add_option("-n", "--nosubtract", 
                       dest="subtract", action="store_false",
                       help="Do *not* subtract point-source from datacube",
@@ -112,9 +116,15 @@ if __name__ == '__main__':
 
     opts,args = parser.parse_args()
 
+    if not opts.ref:
+        parser.error("Reference cube not specified")
     if opts.subtract and not opts.out:
         parser.error("Name for output point-source subtracted cube "
                      "not specified")
+    if opts.psfname is None: # Default name for output PSF cube
+        opts.psfname = 'psf_' + os.path.basename(opts.ref)
+    else:                    # Assume that user wants to keep the PSF...
+        opts.keep = True
 
     # Input spectrum
     print "Opening input spectrum %s" % args[0]
@@ -164,7 +174,5 @@ if __name__ == '__main__':
     if opts.keep:               # Save PSF cube
         cube.data = sig
         cube.var = var
-        outname = 'psf_' + os.path.basename(opts.ref)
-        print "Saving point-source %s cube %s" % (cubetype, outname)
-        cube.writeto(outname)
-
+        print "Saving point-source %s cube %s" % (cubetype, opts.psfname)
+        cube.writeto(opts.psfname)

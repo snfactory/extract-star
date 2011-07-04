@@ -1,3 +1,8 @@
+2011-07-04  Yannick Copin  <yannick@lyopc469>
+
+	* apps/extract_star/subtract_psf.py: new option '--psfname' to
+	specify output point-source cube name (requested by SZB).
+
 2011-05-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: now handle multiple arguments,
