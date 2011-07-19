@@ -47,7 +47,7 @@ from pyfits import getheader
 import pySNIFS
 import pySNIFS_fit
 import libExtractStar as libES
-from ToolBox.Astro import Coords # ADR
+from ToolBox import Atmosphere as Atm # ADR
 
 import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
 #N.seterr(divide='raise',invalid='ignore')
@@ -975,8 +975,8 @@ if __name__ == "__main__":
     # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position
-    adr = Coords.ADR(pressure, temp, lref=lref,
-                     airmass=airmass, parangle=parangle)
+    adr = Atm.ADR(pressure, temp, lref=lref,
+                  airmass=airmass, parangle=parangle)
     delta0 = adr.delta                  # ADR power = tan(zenithal distance)
     theta0 = adr.theta                  # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)

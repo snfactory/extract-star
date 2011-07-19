@@ -1,3 +1,9 @@
+2011-07-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py:
+	* lib/libExtractStar.py: atmospheric routines are now in
+	ToolBox.Atmosphere.
+
 2011-07-04  Yannick Copin  <yannick@lyopc469>
 
 	* apps/extract_star/subtract_psf.py: new option '--psfname' to

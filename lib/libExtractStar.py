@@ -16,7 +16,7 @@ import numpy as N
 import scipy as S
 import scipy.special
 
-from ToolBox.Astro import Coords
+from ToolBox import Atmosphere as A
 
 def read_PT(hdr, MK_pressure=616., MK_temp=2.):
     """Read pressure [mbar] and temperature [C] from hdr (or use default
@@ -179,7 +179,7 @@ def flatAndPA(cy2, c2xy):
     x0,y0,a,b,phi = quadEllipse(1,c2xy,cy2,0,0,-1)
     assert a>0 and b>0, "Input equation does not correspond to an ellipse"
     q = b/a                             # Flattening
-    pa = phi*Coords.RAD2DEG             # From rad to deg
+    pa = phi*A.RAD2DEG                  # From rad to deg
 
     return q,pa
 
@@ -244,10 +244,10 @@ class ExposurePSF:
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
             pressure,temp = read_PT(None)   # Get default values for P and T
-        self.n_ref = Coords.atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
+        self.n_ref = A.atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
         self.ADR_coeff = ( self.n_ref - 
-                           Coords.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
-                           Coords.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
+                           A.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
+                           A.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
 
     def comp(self, param, normed=False):
         """
@@ -534,7 +534,7 @@ class ADR_model:
         [lref=, delta=, theta=, airmass=, parangle=])."""
 
         import warnings
-        warnings.warn("Replaced by ToolBox.Astro.Coords", DeprecationWarning)
+        warnings.warn("Replaced by ToolBox.Atmosphere", DeprecationWarning)
 
         if not 550<pressure<650 and not not -20<temp<20:
             raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
@@ -563,13 +563,13 @@ class ADR_model:
     def set_ref(self, lref=5000.):
 
         self.lref = lref                # [Angstrom]
-        self.nref = Coords.atmosphericIndex(self.lref, P=self.P, T=self.T)
+        self.nref = A.atmosphericIndex(self.lref, P=self.P, T=self.T)
 
     def set_param(self, p1, p2, obs=False):
 
         if obs:                         # p1 = airmass, p2 = parangle [deg]
             self.delta = N.tan(N.arccos(1./p1))
-            self.theta = p2/Coords.RAD2DEG
+            self.theta = p2/A.RAD2DEG
         else:                           # p1 = delta, p2 = theta [rad]
             self.delta = p1
             self.theta = p2
@@ -589,8 +589,8 @@ class ADR_model:
         lbda = N.atleast_1d(lbda)       # (nlbda,)
         nlbda = len(lbda)
 
-        dz = (self.nref - Coords.atmosphericIndex(lbda, P=self.P, T=self.T)) * \
-             Coords.RAD2ARC / unit      # (nlbda,)
+        dz = (self.nref - A.atmosphericIndex(lbda, P=self.P, T=self.T)) * \
+             A.RAD2ARC / unit           # (nlbda,)
         dz *= self.delta
 
         if backward:
@@ -611,4 +611,4 @@ class ADR_model:
         return 1/N.cos(N.arctan(self.delta))
 
     def get_parangle(self):
-        return self.theta*Coords.RAD2DEG # Parangle in deg.
+        return self.theta*A.RAD2DEG # Parangle in deg.
