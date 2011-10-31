@@ -18,8 +18,8 @@ Todo:
 
 * one could use Aitchison (or 'additive log-ratio') transform to
   enforce the normalization constraint on alphas (see
-  http://thread.gmane.org/gmane.comp.python.scientific.user/16180/focus=16187
-  or ) or Multinomial logit (see
+  http://thread.gmane.org/gmane.comp.python.scientific.user/16180/focus=16187)
+  or Multinomial logit (see
   http://en.wikipedia.org/wiki/Multinomial_logit and
   http://thread.gmane.org/gmane.comp.python.scientific.user/20318/focus=20320)
 
@@ -781,7 +781,8 @@ if __name__ == "__main__":
 
     # Extraction method and parameters
     parser.add_option("-m", "--method", type="string",
-                      help="Extraction method ['%default']",
+                      help="Extraction method (psf|optimal|aperture) "
+                      "['%default']",
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
@@ -1779,7 +1780,7 @@ if __name__ == "__main__":
             ax.errorbar((xc_vec[i],),(yc_vec[i],),
                         xerr=(error_mat[i,2],),yerr=(error_mat[i,3],),
                         fmt=None, ecolor=good[i] and 'k' or red)
-            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)
+            ax.plot((xfit[i],),(yfit[i],), marker='.', color=green)
             if opts.method != 'psf':
                 ax.add_patch(M.patches.Circle((xfit[i],yfit[i]),
                                               radius/SpaxelSize,
@@ -1823,7 +1824,7 @@ if __name__ == "__main__":
             images.append(ax.imshow(res, origin='lower', extent=extent,
                                     cmap=M.cm.jet, interpolation='nearest'))
 
-            ax.plot((xfit[i],),(yfit[i],), marker='+', color=green)
+            ax.plot((xfit[i],),(yfit[i],), marker='*', color='k')
             pylab.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=6)
             ax.text(0.1,0.1, "%.0f" % cube.lbda[i], fontsize=8,
                     horizontalalignment='left', transform=ax.transAxes)

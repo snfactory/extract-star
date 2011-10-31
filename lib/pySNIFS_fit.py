@@ -811,7 +811,7 @@ class model:
  
     def unflat_param(self,param):
         
-        if S.size(param) != S.size(self.param):
+        if S.size(param) != S.size(self.flatparam):
             raise ValueError, "Parameter list does not have the right size."
         newparam = []
         i = 0

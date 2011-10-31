@@ -18,6 +18,7 @@ import pyfits
 
 from pySnurp import Spectrum
 from pySNIFS import spectrum as SNIFS_spectrum
+from pySNIFS import SNIFS_cube
 import pySNIFS_fit
 from ToolBox.MPL import errorband
 
@@ -32,6 +33,11 @@ def find_max(lbda, flux, lrange):
 
     lmin,lmax = lrange
     g = (lmin<=lbda) & (lbda<=lmax)
+
+    if not lbda[g].any():
+        raise ValueError("Reasearch range %.2f-%.2f incompatible with "
+                         "wavelength domaine %.2f-%.2f" %
+                         (lmin,lmax,lbda[0],lbda[-1]))
 
     return lbda[g][flux[g].argmax()]
 
@@ -73,10 +79,45 @@ class LinesBackground:
         return grad
 
 
+class LinesOI:
+    """[OI] night-sky line is described by 1 gaussian"""
+
+    name = "[OI] night-sky line"
+    l0 = 5577.34                        # [OI] night sky line [air]
+    parnames = ['1+z','sigma','[OI]']
+
+    def __init__(self, cube):
+
+        self.npar_ind = 0
+        self.npar_cor = len(self.parnames) # 1+z,sigma,I
+        self.npar = self.npar_ind*cube.nslice + self.npar_cor
+        self.l = N.reshape(cube.lbda,cube.data.shape)
+
+    def __str__(self):
+        return "[OI] line"
+
+    def comp(self, param):
+
+        self.param = zp1,sig,i = param
+        return i * N.exp(-0.5*( (self.l - self.l0*zp1)/sig )**2)
+
+    def deriv(self, param):
+
+        self.param = zp1,sig,i = param
+        d = (self.l - self.l0*zp1) / sig
+        g = N.exp(-0.5*d**2)
+        grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
+        grad[0] = i*g*self.l0*d/sig     # dval/dzp1
+        grad[1] = i*g*d**2/sig          # dval/dsig
+        grad[2] = g                     # dval/di
+
+        return grad
+
+
 class LinesOII:
     """[OII] doublet is described by 2 independant gaussians"""
 
-    name = "LinesOII"
+    name = "[OII] doublet"
     l1 = 3726.03                        # [OII] doublet
     l2 = 3728.73
     parnames = ['1+z','sigma','[OII]1','[OII]2']
@@ -93,24 +134,24 @@ class LinesOII:
 
     def comp(self, param):
 
-        self.param = zp1,s,i1,i2 = param
-        val = i1 * N.exp(-0.5*( (self.l - self.l1*zp1)/s )**2) + \
-              i2 * N.exp(-0.5*( (self.l - self.l2*zp1)/s )**2)
+        self.param = zp1,sig,i1,i2 = param
+        val = i1 * N.exp(-0.5*( (self.l - self.l1*zp1)/sig )**2) + \
+              i2 * N.exp(-0.5*( (self.l - self.l2*zp1)/sig )**2)
         return val
 
     def deriv(self, param):
 
-        self.param = zp1,s,i1,i2 = param
-        d1 = (self.l - self.l1*zp1) / s
-        d2 = (self.l - self.l2*zp1) / s
+        self.param = zp1,sig,i1,i2 = param
+        d1 = (self.l - self.l1*zp1) / sig
+        d2 = (self.l - self.l2*zp1) / sig
         g1 = N.exp(-0.5*d1**2)
         g2 = N.exp(-0.5*d2**2)
-        # val = i1*g1(zp1,s) + i2*g2(zp1,s)
+        # val = i1*g1(zp1,sig) + i2*g2(zp1,sig)
         grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
-        grad[0] = i1*g1*self.l1*d1/s + i2*g2*self.l2*d2/s  # dval/dzp1
-        grad[1] = i1*g1*d1**2/s + i2*g2*d2**2/s            # dval/ds
-        grad[2] = g1                                       # dval/di1
-        grad[3] = g2                                       # dval/di2
+        grad[0] = i1*g1*self.l1*d1/sig + i2*g2*self.l2*d2/sig # dval/dzp1
+        grad[1] = i1*g1*d1**2/sig + i2*g2*d2**2/sig           # dval/dsig
+        grad[2] = g1                                          # dval/di1
+        grad[3] = g2                                          # dval/di2
 
         return grad
 
@@ -119,7 +160,7 @@ class LinesNIIHa:
     """[NII],Halpha complex is described by 1 gaussian for Ha + 2
     correlated gaussians for [NII]."""
 
-    name = "LinesNIIHa"
+    name = "[NII]+Ha complex"
     lHa = 6562.80                       # Halpha
     lNII1 = 6547.96                     # [NII]1
     lNII2 = 6583.34                     # [NII]2
@@ -139,31 +180,31 @@ class LinesNIIHa:
     def comp(self, param):
         """Halpha(G1) + [NII](G2,G3)"""
 
-        self.param = zp1,s,iH,iN = param
-        val = iH * N.exp(-0.5*( (self.l - self.lHa*zp1)/s )**2) # Halpha
-        val+= ( N.exp(-0.5*( (self.l - self.lNII1*zp1)/s )**2) * self.rNII +
-                N.exp(-0.5*( (self.l - self.lNII2*zp1)/s )**2) ) * iN # [NII]
+        self.param = zp1,sig,iH,iN = param
+        val = iH*N.exp(-0.5*( (self.l - self.lHa*zp1)/sig )**2) # Halpha
+        val+= ( N.exp(-0.5*( (self.l - self.lNII1*zp1)/sig )**2) * self.rNII +
+                N.exp(-0.5*( (self.l - self.lNII2*zp1)/sig )**2) ) * iN # [NII]
         return val
 
     def deriv(self, param):
 
-        self.param = zp1,s,iH,iN = param
-        dH = (self.l - self.lHa*zp1) / s
-        d1 = (self.l - self.lNII1*zp1) / s
-        d2 = (self.l - self.lNII2*zp1) / s
+        self.param = zp1,sig,iH,iN = param
+        dH = (self.l - self.lHa*zp1) / sig
+        d1 = (self.l - self.lNII1*zp1) / sig
+        d2 = (self.l - self.lNII2*zp1) / sig
         gH = N.exp(-0.5*dH**2)
         g1 = N.exp(-0.5*d1**2)
         g2 = N.exp(-0.5*d2**2)
-        # val = iH*gH(zp1,s) + iN*(r*g1(zp1,s) + g2(zp1,s))
+        # val = iH*gH(zp1,sig) + iN*(r*g1(zp1,sig) + g2(zp1,sig))
         grad = N.zeros((self.npar_cor,)+self.l.shape,'d')
-        grad[0] = iH * gH * self.lHa*dH/s + \
-            iN * ( g1 * self.lNII1*d1/s * self.rNII + 
-                   g2 * self.lNII2*d2/s ) # dval/dzp1
-        grad[1] = iH * gH * dH**2/s + \
-            iN * ( g1 * d1**2/s * self.rNII + 
-                   g2 * d2**2/s )         # dval/ds
-        grad[2] = gH                      # dval/diH
-        grad[3] = g1*self.rNII + g2       # dval/diN
+        grad[0] = iH * gH * self.lHa*dH/sig + \
+            iN * ( g1 * self.lNII1*d1/sig * self.rNII + 
+                   g2 * self.lNII2*d2/sig ) # dval/dzp1
+        grad[1] = iH * gH * dH**2/sig + \
+            iN * ( g1 * d1**2/sig * self.rNII + 
+                   g2 * d2**2/sig )         # dval/dsig
+        grad[2] = gH                        # dval/diH
+        grad[3] = g1*self.rNII + g2         # dval/diN
 
         return grad
 
@@ -217,7 +258,7 @@ def addRedshiftedLines(ax, z):
                         verticalalignment='center',
                         rotation='vertical')
 
-def plot_correlation(ax, corr, parnames=None):
+def plot_correlation_matrix(ax, corr, parnames=None):
 
     npar = len(corr)
     im = ax.imshow(N.absolute(corr), 
@@ -236,11 +277,14 @@ def plot_correlation(ax, corr, parnames=None):
 
 if __name__ == '__main__':
 
-    usage = "usage: [PYSHOW=1] %prog [options] spec_galaxy.fits"
+    usage = "usage: [PYSHOW=1] %prog [options] spec|cube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag.")
+    parser.add_option("-l", "--line", 
+                      help="Emission line to be adjusted [%default]",
+                      default='auto')
 
     opts,args = parser.parse_args()
     if len(args) != 1:
@@ -252,40 +296,71 @@ if __name__ == '__main__':
         path,name = os.path.split(specname)
         figname = 'z_'+os.path.splitext(name)[0]+'.png'
 
-    s = Spectrum(specname)
-    print s
+    try:
+        pspec = Spectrum(specname)
+        print pspec
+        isSpec = True
+        step = pspec.step
+    except KeyError:
+        cube = SNIFS_cube(specname)
+        print "Cube %s: %d spx, %d px [%.2f-%.2f]" % \
+              (specname, cube.nlens, cube.nslice, cube.lstart, cube.lend)
+        isSpec = False
+        step = cube.lstep
 
-    lbda = s.x
-    resSpec = s.y
-    assert s.varname, "Input spectrum has no variance extension."
-    resVar = s.v
+    if isSpec:                          # Input is a Spectrum
+        lbda = pspec.x
+        resSpec = pspec.y
+        assert pspec.varname, "Input spectrum has no variance extension."
+        resVar = pspec.v
 
-    X = s.readKey('CHANNEL')[0].upper() # B or R
-    obj = s.readKey('OBJECT', 'Unknown')
-    filename = s.readKey('FILENAME', 'Unknown')
-    flxunits = s.readKey('FLXUNITS', 'counts')
+        X = pspec.readKey('CHANNEL')[0].upper() # B or R
+        obj = pspec.readKey('OBJECT', 'Unknown')
+        filename = pspec.readKey('FILENAME', 'Unknown')
+        flxunits = pspec.readKey('FLXUNITS', 'counts')
+    else:                               # Input is a Cube
+        lbda = cube.lbda
+        resSpec = cube.data.mean(axis=1)
+        resVar = N.sqrt(cube.var.sum(axis=1)/cube.nlens**2)
+        
+        X = cube.e3d_data_header.get('CHANNEL')[0].upper() # B or R
+        obj = cube.e3d_data_header.get('OBJECT', 'Unknown')
+        filename = cube.e3d_data_header.get('FILENAME', 'Unknown')
+        flxunits = cube.e3d_data_header.get('FLXUNITS', 'counts')
+        
     print "%s: %s" % (obj, filename)
 
-    # Convert array to pySNIFS.spectrum on a restricted range
-    if X=='B':
-        l0 = find_max(lbda, resSpec, (3700,4200)) # OII from 1+z=1 to 1.13
-        print "Fit [OII] doublet around %.0f Å (%.0f Å window)" % (l0,100)
-        lmin,lmax = l0-50,l0+50
-        g = (lmin<=lbda) & (lbda<=lmax)
-    elif X=='R':
-        l0 = find_max(lbda, resSpec, (6560,7400)) # Ha from 1+z=1 to 1.13
-        print "Fit [NII],Ha complex around %.0f Å (%.0f Å window)" % (l0,200)
-        lmin,lmax = l0-100,l0+100
-        g = (lmin<=lbda) & (lbda<=lmax)
+    # Automatic mode: [OII] for B-channel, [NIIHa] for R-channel
+    if (opts.line=='auto' and X=='B'):
+        opts.line=='OII'
+    elif (opts.line=='auto' and X=='R'):
+        opts.line=='NIIHa'
 
+    # Convert array to pySNIFS.spectrum on a restricted range
+    if opts.line=='OII':
+        l0 = find_max(lbda, resSpec, (3700,4200)) # OII from 1+z=1 to 1.13
+        lmin,lmax = l0-50,l0+50
+        print "Fit [OII] doublet around %.0f Å (%.0f Å window)" % (l0,100)
+    elif opts.line=='NIIHa':
+        l0 = find_max(lbda, resSpec, (6560,7400)) # Ha from 1+z=1 to 1.13
+        lmin,lmax = l0-100,l0+100
+        print "Fit [NII],Ha complex around %.0f Å (%.0f Å window)" % (l0,200)
+    elif opts.line=='OI':
+        l0 = find_max(lbda, resSpec, (5527,5627)) # OI at z=0
+        lmin,lmax = l0-50,l0+50
+        print "Fit [OI] sky line around %.0f Å (%.0f Å window)" % (l0,100)
+    else:
+        parser.error("Unknown line '%s'" % opts.line)
+
+    g = (lmin<=lbda) & (lbda<=lmax)
     x = lbda[g]
     bkg = N.median(resSpec[g])
     norm = resSpec[g].max() - bkg
     y = (resSpec[g] - bkg) / norm
     v = resVar[g] / norm**2
-    spec = SNIFS_spectrum(data=y, var=v, start=x[0], step=s.step)
+    sspec = SNIFS_spectrum(data=y, var=v, start=x[0], step=step)
 
-    if X=='B':                      # [OII] doublet + background
+    if opts.line=='OII':                # [OII] doublet + background
         funcs = [ LinesOII.name, 
                   '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
         # 1+z,sigma,I1,I2 + bkgnd(d=1)
@@ -293,10 +368,9 @@ if __name__ == '__main__':
         params = [ [zp1, 3, 0.5, 0.5], [0, 0] ]
         bounds = [ [[1.0,1.13],[2,5],[0,1],[0,1]],
                    [[None,None]]*2] # No constraints on background
-        myfunc = {LinesOII.name:LinesOII, 
-                  LinesBackground.name:LinesBackground}
-
-    elif X=='R':                    # [NII]+Halpha complex + background
+        myfunc = {LinesOII.name: LinesOII, 
+                  LinesBackground.name: LinesBackground}
+    elif opts.line=='NIIHa':       # [NII]+Halpha complex + background
         funcs = [ LinesNIIHa.name, 
                   '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
         # 1+z,sigma,IHa,I[NII] + bkgnd(d=1)
@@ -304,11 +378,21 @@ if __name__ == '__main__':
         params = [ [zp1, 4, 1, 0.5], [0, 0] ]
         bounds = [ [[1.0,1.13],[2,5],[0.1,2],[0,1]],
                    [[None,None]]*2] # No constraints on background
-        myfunc = {LinesNIIHa.name:LinesNIIHa, 
-                  LinesBackground.name:LinesBackground}
+        myfunc = {LinesNIIHa.name: LinesNIIHa, 
+                  LinesBackground.name: LinesBackground}
+    elif opts.line=='OI':           # [OI] night sky line + background
+        funcs = [ LinesOI.name, 
+                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+        # 1+z,sigma,I + bkgnd(d=1)
+        zp1 = x[resSpec[g].argmax()] / LinesOI.l0
+        params = [ [zp1, 4, 1], [0, 0] ]
+        bounds = [ [[0.95,1.05],[2,5],[0.1,2]],
+                   [[None,None]]*2] # No constraints on background
+        myfunc = {LinesOI.name: LinesOI, 
+                  LinesBackground.name: LinesBackground}
 
     # Actual fit
-    model = pySNIFS_fit.model(data=spec, func=funcs,
+    model = pySNIFS_fit.model(data=sspec, func=funcs,
                               param=params, bounds=bounds, myfunc=myfunc)
 
     parnames = [ model.func[i].parnames for i in range(len(funcs)) ]
@@ -319,8 +403,8 @@ if __name__ == '__main__':
     model.fit(save=True, msge=False)
     model.khi2 *= model.dof             # True Chi2
 
-    print "Status: %d, Chi2 (DoF=%d): %f" % \
-          (model.status, model.dof, model.khi2)
+    print "Status: %d, Chi2/DoF: %f/%d" % \
+          (model.status, model.khi2, model.dof)
     
     # Quadratic errors, including correlations (tested against Minuit)
     hess = pySNIFS_fit.approx_deriv(model.objgrad, model.fitpar, order=3)
@@ -338,23 +422,6 @@ if __name__ == '__main__':
     #print "Correlation matrix:"
     #print N.array2string(corr, 79, 3)
 
-    # Mean redshift
-    zsys = model.fitpar[0] - 1
-    dzsys = dfitpar[0]
-    #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
-    #    (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
-
-    # Barycentric correction: amount to add to an observed radial
-    # velocity to correct it to the solar system barycenter
-    v = s.get_skycalc('baryvcor')       # Relative velocity [km/s]
-    print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
-    zsys += v/CLIGHT
-    dzsys = N.hypot(dzsys, 0.01/CLIGHT) # Correction precision: 0.01 km/s
-    print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
-        (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
-    
-    print "Sigma: %.2f ± %.2f Å" % (model.fitpar[1],dfitpar[1])
-
     # Detection level: flux(Ha) in units of sig(flux).
     func = model.func[0]
     if hasattr(func,'flux'):
@@ -367,42 +434,70 @@ if __name__ == '__main__':
             "cannot compute detection level" % func.name
         nsig = 0
 
+    print "Sigma: %.2f ± %.2f Å" % (model.fitpar[1],dfitpar[1])
+
+    if opts.line=='OI':
+        print "Night-sky line [OI]=%.2f Å: " \
+              "obs: %.2f ± %.2f Å, offset: %.2f Å" % \
+              (LinesOI.l0,
+               LinesOI.l0*model.fitpar[0], LinesOI.l0*dfitpar[0],
+               LinesOI.l0*(model.fitpar[0]-1))
+
+    # Mean redshift
+    zsys0 = model.fitpar[0] - 1
+    dzsys = dfitpar[0]
+    #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+    #    (zsys0,dzsys,zsys0*CLIGHT,dzsys*CLIGHT)
+
+    if isSpec:
+        # Barycentric correction: amount to add to an observed radial
+        # velocity to correct it to the solar system barycenter
+        v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
+        print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
+        zsys = zsys0 + v/CLIGHT
+        dzsys = N.hypot(dzsys, 0.01/CLIGHT) # Correction precision: 0.01 km/s
+        print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+            (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+    else:
+        zsys = zsys0
+    
     # Store results in input spectra (awkward way, but pySnurp is too dumb...)
-    if model.status==0:
-        hdu = pyfits.open(specname, mode='update', ignore_missing_end=True)
-        hdu[0].header.update('CVSEXTZ',__version__)
-        hdu[0].header.update('EXTZ_Z',zsys,"extract_z heliocentric redshift")
-        hdu[0].header.update('EXTZ_DZ',dzsys,"extract_z error on redshift")
-        hdu[0].header.update('EXTZ_K2',model.khi2,"extract_z chi2")
-        hdu[0].header.update('EXTZ_NS',nsig,"extract_z detection level")
-        hdu[0].header.update('EXTZ_L',funcs[0],"extract_z lines")
-        hdu.close()
+    if model.status==0 and isSpec:
+            hdu = pyfits.open(specname, mode='update', ignore_missing_end=True)
+            hdu[0].header.update('CVSEXTZ',__version__)
+            hdu[0].header.update('EXTZ_Z',zsys,
+                                 "extract_z heliocentric redshift")
+            hdu[0].header.update('EXTZ_DZ',dzsys,
+                                 "extract_z error on redshift")
+            hdu[0].header.update('EXTZ_K2',model.khi2,
+                                 "extract_z chi2")
+            hdu[0].header.update('EXTZ_NS',nsig,
+                                 "extract_z detection level")
+            hdu[0].header.update('EXTZ_L',funcs[0],
+                                 "extract_z lines")
+            hdu.close()
 
-    makeMap = False and not opts.nofit
-    if makeMap:
-        raise NotImplementedError
-
-        #zmap = N.zeros_like(ima) * N.nan # Redshift
-        #params = [ model.fitpar ] # Use global fit result as initial guess
-        #for ino,ii,ij in zip(cube.no,cube.i,cube.j):
-        #    print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
-        #    y = cube.spec(no=ino)[g]
-        #    ibkg = N.median(y)
-        #    inorm = y.max() - ibkg
-        #    y = ( y - ibkg ) / inorm
-        #    v = cube.spec(no=ino, var=True)[g] / inorm**2
-        #    ispec = SNIFS_spectrum(data=y, var=v, start=x[0], step=cube.lstep)
-        #    imodel = SNIFS_fit.model(data=ispec, func=funcs,
-        #                              param=params,bounds=bounds,myfunc=myfunc)
-        #    imodel.fit(msge=False, deriv=False)
-        #    imodel.khi2 *= imodel.dof   # True Chi2
-        #    #print "   Fitpar:", imodel.fitpar
-        #    z = imodel.fitpar[0] - 1
-        #    print "Chi2 (DoF=%d)=%.2f, v=%+.2f km/s" % \
-        #        (imodel.dof, imodel.khi2, (z-zsys)*CLIGHT)
-        #    zmap[ii,ij] = z
-
-        # Could now compute flux-weighted redshift
+    if not isSpec:
+        ima = cube.slice2d([0,cube.nslice],'p')
+        zmap = ima * N.nan                        # Redshift map
+        params = model.unflat_param(model.fitpar) # Use global fit result as initial guess
+        for ino,ii,ij in zip(cube.no,cube.i,cube.j):
+            print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
+            y = cube.spec(no=ino)[g]
+            ibkg = N.median(y)
+            inorm = y.max() - ibkg
+            y = ( y - ibkg ) / inorm
+            v = cube.spec(no=ino, var=True)[g] / inorm**2
+            ispec = SNIFS_spectrum(data=y, var=v, start=x[0], step=step)
+            imodel = pySNIFS_fit.model(data=ispec, func=funcs,
+                                       param=params, bounds=bounds, myfunc=myfunc)
+            imodel.fit(msge=False, deriv=False)
+            imodel.khi2 *= imodel.dof   # True Chi2
+            #print "   Fitpar:", imodel.fitpar
+            z = imodel.fitpar[0] - 1
+            print "Chi2/DoF=%.2f/%d, v=%+7.2f km/s" % \
+                (imodel.khi2, imodel.dof, (z-zsys0)*CLIGHT)
+            zmap[ii,ij] = z
 
     if opts.plot or os.environ.has_key('PYSHOW'):
         import matplotlib.pyplot as P
@@ -447,22 +542,21 @@ if __name__ == '__main__':
         # Correlation matrix
         if model.status==0:
             ax3 = fig.add_subplot(1,4,4)
-            plot_correlation(ax3, corr, parnames=flatparnames)
+            plot_correlation_matrix(ax3, corr, parnames=flatparnames)
 
-        if makeMap:
-            raise NotImplementedError
-
-            #fig2 = P.figure(figsize=(6,6))
-            #axv = fig2.add_subplot(1,1,1, title=title,
-            #                       xlabel='I [spx]', ylabel='J [spx]')
-            ## Velocity map
-            #vmap = (zmap - zsys)*CLIGHT # Convert redshift to velocity
-            #vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
-            #imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
-            #                 extent=(-7.5,7.5,-7.5,7.5))
-            #cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
-            #cbv.set_label('Velocity [km/s]')
-            ## Intensity contours
+        if not isSpec:
+            fig2 = P.figure(figsize=(6,6))
+            axv = fig2.add_subplot(1,1,1, title=title,
+                                   xlabel='I [spx]', ylabel='J [spx]',
+                                   aspect='equal')
+            # Velocity map
+            vmap = (zmap - zsys0)*CLIGHT # Convert redshift to velocity
+            vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
+            imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
+                             extent=(-7.5,7.5,-7.5,7.5))
+            cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
+            cbv.set_label('Velocity [km/s]')
+            # Intensity contours
             #axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
             #            extent=(-7.5,7.5,-7.5,7.5))
 

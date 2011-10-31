@@ -1,3 +1,8 @@
+2011-10-31  Yannick Copin  <yannick@lyopc469>
+
+	* apps/extract_star/extract_z.py: add [OI] night-sky line
+	analysis, revive velocity map (not really tested though...).
+
 2011-07-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py:
