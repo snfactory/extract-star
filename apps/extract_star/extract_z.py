@@ -282,7 +282,7 @@ if __name__ == '__main__':
     parser = optparse.OptionParser(usage, version=__version__)
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag.")
-    parser.add_option("-l", "--line", 
+    parser.add_option("-e", "--emissionline", dest='line',
                       help="Emission line to be adjusted [%default]",
                       default='auto')
 
@@ -291,10 +291,6 @@ if __name__ == '__main__':
         parser.error("No or too many arguments")
     else:
         specname = args[0]
-
-    if opts.plot:
-        path,name = os.path.split(specname)
-        figname = 'z_'+os.path.splitext(name)[0]+'.png'
 
     try:
         pspec = Spectrum(specname)
@@ -314,7 +310,7 @@ if __name__ == '__main__':
         assert pspec.varname, "Input spectrum has no variance extension."
         resVar = pspec.v
 
-        X = pspec.readKey('CHANNEL')[0].upper() # B or R
+        X = pspec.readKey('CHANNEL','X')[0].upper() # B or R
         obj = pspec.readKey('OBJECT', 'Unknown')
         filename = pspec.readKey('FILENAME', 'Unknown')
         flxunits = pspec.readKey('FLXUNITS', 'counts')
@@ -323,7 +319,7 @@ if __name__ == '__main__':
         resSpec = cube.data.mean(axis=1)
         resVar = N.sqrt(cube.var.sum(axis=1)/cube.nlens**2)
         
-        X = cube.e3d_data_header.get('CHANNEL')[0].upper() # B or R
+        X = cube.e3d_data_header.get('CHANNEL','X')[0].upper() # B or R
         obj = cube.e3d_data_header.get('OBJECT', 'Unknown')
         filename = cube.e3d_data_header.get('FILENAME', 'Unknown')
         flxunits = cube.e3d_data_header.get('FLXUNITS', 'counts')
@@ -335,6 +331,8 @@ if __name__ == '__main__':
         opts.line=='OII'
     elif (opts.line=='auto' and X=='R'):
         opts.line=='NIIHa'
+    elif (opts.line=='auto' and X=='X'):
+        parser.error("Unrecognized input channel")
 
     # Convert array to pySNIFS.spectrum on a restricted range
     if opts.line=='OII':
@@ -403,7 +401,7 @@ if __name__ == '__main__':
     model.fit(save=True, msge=False)
     model.khi2 *= model.dof             # True Chi2
 
-    print "Status: %d, Chi2/DoF: %f/%d" % \
+    print "Status: %d, Chi2/DoF: %.1f/%d" % \
           (model.status, model.khi2, model.dof)
     
     # Quadratic errors, including correlations (tested against Minuit)
@@ -449,7 +447,7 @@ if __name__ == '__main__':
     #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
     #    (zsys0,dzsys,zsys0*CLIGHT,dzsys*CLIGHT)
 
-    if isSpec:
+    if isSpec and opts.line!='OI':
         # Barycentric correction: amount to add to an observed radial
         # velocity to correct it to the solar system barycenter
         v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
@@ -482,7 +480,7 @@ if __name__ == '__main__':
         zmap = ima * N.nan                        # Redshift map
         params = model.unflat_param(model.fitpar) # Use global fit result as initial guess
         for ino,ii,ij in zip(cube.no,cube.i,cube.j):
-            print "Spx #%03d at %02dx%02d:" % (ino,ii,ij),
+            print "Spx #%03d at %+2dx%+2d:" % (ino,ii-7,ij-7),
             y = cube.spec(no=ino)[g]
             ibkg = N.median(y)
             inorm = y.max() - ibkg
@@ -495,9 +493,9 @@ if __name__ == '__main__':
             imodel.khi2 *= imodel.dof   # True Chi2
             #print "   Fitpar:", imodel.fitpar
             z = imodel.fitpar[0] - 1
-            print "Chi2/DoF=%.2f/%d, v=%+7.2f km/s" % \
+            print "Chi2/DoF=%.1f/%d, v=%+.2f km/s" % \
                 (imodel.khi2, imodel.dof, (z-zsys0)*CLIGHT)
-            zmap[ii,ij] = z
+            zmap[ij,ii] = z
 
     if opts.plot or os.environ.has_key('PYSHOW'):
         import matplotlib.pyplot as P
@@ -532,7 +530,7 @@ if __name__ == '__main__':
             ax2.plot(x, model.evalfit()*norm + bkg, 'r-')
             addRedshiftedLines(ax2, zsys)
             ax2.text(0.1,0.9,
-                     "Chi2=%.1f (DoF=%d)\nDetection: %.1f sigma" % \
+                     "Chi2/DoF=%.1f/%d\nDetection: %.1f sigma" % \
                      (model.khi2, model.dof, nsig),
                      transform=ax2.transAxes, fontsize='small')
         else:
@@ -559,9 +557,18 @@ if __name__ == '__main__':
             # Intensity contours
             #axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
             #            extent=(-7.5,7.5,-7.5,7.5))
+            for ino,ii,ij in zip(cube.no,cube.i,cube.j):
+                axv.text(ii-7,ij-7,str(ino),
+                         size='x-small', ha='center', va='center')
 
         if opts.plot:
-            print "Saving figure in", figname
+            path,name = os.path.split(specname)
+            figname = 'z_'+os.path.splitext(name)[0]+'.png'
+            print "Saving emission-line figure in", figname
             fig.savefig(figname)
+            if not isSpec:
+                figname = 'v_'+os.path.splitext(name)[0]+'.png'
+                print "Saving velocity-map in", figname
+                fig2.savefig(figname)
         if os.environ.has_key('PYSHOW'):
             P.show()
