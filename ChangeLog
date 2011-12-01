@@ -1,3 +1,8 @@
+2011-12-01  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/extract_z.py: on the way to generalize the
+	code to allow arbitrary night sky line studies.
+
 2011-10-31  Yannick Copin  <yannick@lyopc469>
 
 	* apps/extract_star/extract_z.py: add [OI] night-sky line

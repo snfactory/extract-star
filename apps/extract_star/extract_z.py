@@ -30,6 +30,7 @@ import os
 CLIGHT = 299792.458             # km/s
 
 def find_max(lbda, flux, lrange):
+    """Look for lbda of maximum flux within wavelength range lrange."""
 
     lmin,lmax = lrange
     g = (lmin<=lbda) & (lbda<=lmax)
@@ -42,10 +43,10 @@ def find_max(lbda, flux, lrange):
     return lbda[g][flux[g].argmax()]
 
 
-class LinesBackground:
+class PolyBackground:
     """Polynomial background."""
 
-    name = "LinesBackground"
+    name = "PolyBackground"
 
     def __init__(self, params, cube):
 
@@ -58,7 +59,7 @@ class LinesBackground:
         self.parnames = [ 'b%d' % i for i in range(self.npar_cor) ]
 
     def __str__(self):
-        return "background [deg=%d]" % self.deg
+        return "Polynomial background [deg=%d]" % self.deg
 
     def comp(self, param):
 
@@ -79,14 +80,19 @@ class LinesBackground:
         return grad
 
 
-class LinesOI:
-    """[OI] night-sky line is described by 1 gaussian"""
+class AbstractLineSingle:
+    """Simple 1-gaussian emission line ABSTRACT class (without
+    resorting to Python ABC)."""
 
-    name = "[OI] night-sky line"
-    l0 = 5577.34                        # [OI] night sky line [air]
-    parnames = ['1+z','sigma','[OI]']
+    name = ""                           # Descriptive name
+    l0 = None                           # Emission line wavelength (std air)
+    parnames = ['1+z','sigma','intensity']
 
     def __init__(self, cube):
+
+        if self.l0 is None or not self.name:
+            raise TypeError("'%s' should not be instanciated directly" %
+                            self.__class__.__name__)
 
         self.npar_ind = 0
         self.npar_cor = len(self.parnames) # 1+z,sigma,I
@@ -94,7 +100,7 @@ class LinesOI:
         self.l = N.reshape(cube.lbda,cube.data.shape)
 
     def __str__(self):
-        return "[OI] line"
+        return self.name
 
     def comp(self, param):
 
@@ -113,6 +119,18 @@ class LinesOI:
 
         return grad
 
+def SingleLineFactory(name, l0):
+    """Generate a class derived from abstract class EmissionLineSingle."""
+
+    class Line(AbstractLineSingle):
+        pass
+
+    Line.name = name                    # Descriptive name
+    Line.l0 = float(l0)                 # Emission line wavelength
+
+    return Line
+
+LinesOI = SingleLineFactory("night-sky line [OI]", 5577.34)
 
 class LinesOII:
     """[OII] doublet is described by 2 independant gaussians"""
@@ -239,7 +257,7 @@ def addRedshiftedLines(ax, z):
              ('Hb',      (4861.32,)),
              ('[OIII]',  (4958.83,5006.77)),
              ('[NI]',    (5197.90,5200.39)),
-             ('[OI]',    (6300.20,)),
+             ('[OI]',    (5577.34,6300.20,)),
              ('[NII]',   (6547.96,6583.34)),
              ('Ha',      (6562.80,)),
              ('[SII]',   (6716.31,6730.68))]
@@ -280,11 +298,17 @@ if __name__ == '__main__':
     usage = "usage: [PYSHOW=1] %prog [options] spec|cube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
-    parser.add_option("-p", "--plot", action='store_true',
-                      help="Plot flag.")
+
     parser.add_option("-e", "--emissionline", dest='line',
                       help="Emission line to be adjusted [%default]",
                       default='auto')
+
+    parser.add_option("--obsFrame", action='store_true',
+                      help="Adjust line in observer frame (not for redshift).",
+                      default=False)
+
+    parser.add_option("-p", "--plot", action='store_true',
+                      help="Plot flag.")
 
     opts,args = parser.parse_args()
     if len(args) != 1:
@@ -326,13 +350,15 @@ if __name__ == '__main__':
         
     print "%s: %s" % (obj, filename)
 
-    # Automatic mode: [OII] for B-channel, [NIIHa] for R-channel
-    if (opts.line=='auto' and X=='B'):
-        opts.line=='OII'
-    elif (opts.line=='auto' and X=='R'):
-        opts.line=='NIIHa'
-    elif (opts.line=='auto' and X=='X'):
-        parser.error("Unrecognized input channel")
+    if opts.line=='auto':
+        # Automatic redshift mode: use [OII] for B-channel, and
+        # [NIIHa] for R-channel
+        if X=='B':
+            opts.line = 'OII'
+        elif X=='R':
+            opts.line = 'NIIHa'
+        else:
+            raise IOError("Unrecognized input channel")
 
     # Convert array to pySNIFS.spectrum on a restricted range
     if opts.line=='OII':
@@ -344,9 +370,10 @@ if __name__ == '__main__':
         lmin,lmax = l0-100,l0+100
         print "Fit [NII],Ha complex around %.0f Å (%.0f Å window)" % (l0,200)
     elif opts.line=='OI':
-        l0 = find_max(lbda, resSpec, (5527,5627)) # OI at z=0
+        Line = LinesOI
+        l0 = find_max(lbda, resSpec, (Line.l0-50,Line.l0+50))
         lmin,lmax = l0-50,l0+50
-        print "Fit [OI] sky line around %.0f Å (%.0f Å window)" % (l0,100)
+        print "Fit %s around %.0f Å (%.0f Å window)" % (Line.name,l0,100)
     else:
         parser.error("Unknown line '%s'" % opts.line)
 
@@ -360,34 +387,34 @@ if __name__ == '__main__':
 
     if opts.line=='OII':                # [OII] doublet + background
         funcs = [ LinesOII.name, 
-                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+                  '%s;1,%f,%f' % (PolyBackground.name,lmin,lmax) ]
         # 1+z,sigma,I1,I2 + bkgnd(d=1)
         zp1 = x[resSpec[g].argmax()] / LinesOII.l2
         params = [ [zp1, 3, 0.5, 0.5], [0, 0] ]
         bounds = [ [[1.0,1.13],[2,5],[0,1],[0,1]],
                    [[None,None]]*2] # No constraints on background
         myfunc = {LinesOII.name: LinesOII, 
-                  LinesBackground.name: LinesBackground}
+                  PolyBackground.name: PolyBackground}
     elif opts.line=='NIIHa':       # [NII]+Halpha complex + background
         funcs = [ LinesNIIHa.name, 
-                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+                  '%s;1,%f,%f' % (PolyBackground.name,lmin,lmax) ]
         # 1+z,sigma,IHa,I[NII] + bkgnd(d=1)
         zp1 = x[resSpec[g].argmax()] / LinesNIIHa.lHa
         params = [ [zp1, 4, 1, 0.5], [0, 0] ]
         bounds = [ [[1.0,1.13],[2,5],[0.1,2],[0,1]],
                    [[None,None]]*2] # No constraints on background
         myfunc = {LinesNIIHa.name: LinesNIIHa, 
-                  LinesBackground.name: LinesBackground}
+                  PolyBackground.name: PolyBackground}
     elif opts.line=='OI':           # [OI] night sky line + background
-        funcs = [ LinesOI.name, 
-                  '%s;1,%f,%f' % (LinesBackground.name,lmin,lmax) ]
+        funcs = [ Line.name, 
+                  '%s;1,%f,%f' % (PolyBackground.name,lmin,lmax) ]
         # 1+z,sigma,I + bkgnd(d=1)
-        zp1 = x[resSpec[g].argmax()] / LinesOI.l0
+        zp1 = x[resSpec[g].argmax()] / Line.l0
         params = [ [zp1, 4, 1], [0, 0] ]
         bounds = [ [[0.95,1.05],[2,5],[0.1,2]],
                    [[None,None]]*2] # No constraints on background
-        myfunc = {LinesOI.name: LinesOI, 
-                  LinesBackground.name: LinesBackground}
+        myfunc = {Line.name: Line, 
+                  PolyBackground.name: PolyBackground}
 
     # Actual fit
     model = pySNIFS_fit.model(data=sspec, func=funcs,
@@ -429,38 +456,39 @@ if __name__ == '__main__':
         print "Detection level: %.1f-sigma (flux: %f ± %f)" % (nsig, f, df)
     else:
         print "WARNING: %s has no flux method, " \
-            "cannot compute detection level" % func.name
+              "cannot compute detection level" % func.name
         nsig = 0
 
-    print "Sigma: %.2f ± %.2f Å" % (model.fitpar[1],dfitpar[1])
-
-    if opts.line=='OI':
-        print "Night-sky line [OI]=%.2f Å: " \
+    if opts.obsFrame:
+        print "%s@%.2f Å: " \
               "obs: %.2f ± %.2f Å, offset: %.2f Å" % \
-              (LinesOI.l0,
-               LinesOI.l0*model.fitpar[0], LinesOI.l0*dfitpar[0],
-               LinesOI.l0*(model.fitpar[0]-1))
-
-    # Mean redshift
-    zsys0 = model.fitpar[0] - 1
-    dzsys = dfitpar[0]
-    #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
-    #    (zsys0,dzsys,zsys0*CLIGHT,dzsys*CLIGHT)
-
-    if isSpec and opts.line!='OI':
-        # Barycentric correction: amount to add to an observed radial
-        # velocity to correct it to the solar system barycenter
-        v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
-        print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
-        zsys = zsys0 + v/CLIGHT
-        dzsys = N.hypot(dzsys, 0.01/CLIGHT) # Correction precision: 0.01 km/s
-        print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
-            (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+              (Line.name, Line.l0,
+               Line.l0*model.fitpar[0], Line.l0*dfitpar[0],
+               Line.l0*(model.fitpar[0]-1))
+        zsys = 0
+        dzsys = 0
     else:
-        zsys = zsys0
+        # Mean redshift
+        zsys0 = model.fitpar[0] - 1
+        dzsys = dfitpar[0]
+        #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+        #    (zsys0,dzsys,zsys0*CLIGHT,dzsys*CLIGHT)
+
+        if isSpec:
+            # Barycentric correction: amount to add to an observed radial
+            # velocity to correct it to the solar system barycenter
+            v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
+            print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
+            zsys = zsys0 + v/CLIGHT  # Correction precision: 0.01 km/s
+            dzsys = N.hypot(dzsys, 0.01/CLIGHT)
+            print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+                (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+        else:
+            zsys = zsys0
     
-    # Store results in input spectra (awkward way, but pySnurp is too dumb...)
-    if model.status==0 and isSpec:
+        # Store results in input spectra (awkward way, but pySnurp is
+        # too dumb...)
+        if model.status==0 and isSpec:
             hdu = pyfits.open(specname, mode='update', ignore_missing_end=True)
             hdu[0].header.update('CVSEXTZ',__version__)
             hdu[0].header.update('EXTZ_Z',zsys,
@@ -469,8 +497,9 @@ if __name__ == '__main__':
                                  "extract_z error on redshift")
             hdu[0].header.update('EXTZ_K2',model.khi2,
                                  "extract_z chi2")
-            hdu[0].header.update('EXTZ_NS',nsig,
-                                 "extract_z detection level")
+            if nsig:
+                hdu[0].header.update('EXTZ_NS',nsig,
+                                     "extract_z detection level")
             hdu[0].header.update('EXTZ_L',funcs[0],
                                  "extract_z lines")
             hdu.close()
@@ -478,7 +507,8 @@ if __name__ == '__main__':
     if not isSpec:
         ima = cube.slice2d([0,cube.nslice],'p')
         zmap = ima * N.nan                        # Redshift map
-        params = model.unflat_param(model.fitpar) # Use global fit result as initial guess
+        # Use global fit result as initial guess
+        params = model.unflat_param(model.fitpar) 
         for ino,ii,ij in zip(cube.no,cube.i,cube.j):
             print "Spx #%03d at %+2dx%+2d:" % (ino,ii-7,ij-7),
             y = cube.spec(no=ino)[g]
@@ -488,7 +518,8 @@ if __name__ == '__main__':
             v = cube.spec(no=ino, var=True)[g] / inorm**2
             ispec = SNIFS_spectrum(data=y, var=v, start=x[0], step=step)
             imodel = pySNIFS_fit.model(data=ispec, func=funcs,
-                                       param=params, bounds=bounds, myfunc=myfunc)
+                                       param=params, bounds=bounds,
+                                       myfunc=myfunc)
             imodel.fit(msge=False, deriv=False)
             imodel.khi2 *= imodel.dof   # True Chi2
             #print "   Fitpar:", imodel.fitpar
