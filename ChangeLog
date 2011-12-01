@@ -1,3 +1,10 @@
+2011-12-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_z.py: option '-e/--emissionLine' now
+	accepts arbitrary emission line 'name,l0', to be used with option
+	'-O/--obsFrame'. New option '-M/--map' to produce spatial map from
+	input cube.
+
 2011-12-01  Yannick Copin  <ycopin@lyopc469>
 
 	* apps/extract_star/extract_z.py: on the way to generalize the
@@ -6,7 +13,7 @@
 2011-10-31  Yannick Copin  <yannick@lyopc469>
 
 	* apps/extract_star/extract_z.py: add [OI] night-sky line
-	analysis, revive velocity map (not really tested though...).
+	analysis, revive velocity map.
 
 2011-07-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 

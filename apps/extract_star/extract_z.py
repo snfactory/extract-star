@@ -24,9 +24,6 @@ from ToolBox.MPL import errorband
 
 from matplotlib.mlab import prctile
 
-import optparse
-import os
-
 CLIGHT = 299792.458             # km/s
 
 def find_max(lbda, flux, lrange):
@@ -130,7 +127,6 @@ def SingleLineFactory(name, l0):
 
     return Line
 
-LinesOI = SingleLineFactory("night-sky line [OI]", 5577.34)
 
 class LinesOII:
     """[OII] doublet is described by 2 independant gaussians"""
@@ -295,6 +291,9 @@ def plot_correlation_matrix(ax, corr, parnames=None):
 
 if __name__ == '__main__':
 
+    import os
+    import optparse
+
     usage = "usage: [PYSHOW=1] %prog [options] spec|cube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
@@ -303,8 +302,12 @@ if __name__ == '__main__':
                       help="Emission line to be adjusted [%default]",
                       default='auto')
 
-    parser.add_option("--obsFrame", action='store_true',
+    parser.add_option("-O", "--obsFrame", action='store_true',
                       help="Adjust line in observer frame (not for redshift).",
+                      default=False)
+
+    parser.add_option("-M", "--map", action='store_true',
+                      help="Generate spatial map (for cube input).",
                       default=False)
 
     parser.add_option("-p", "--plot", action='store_true',
@@ -340,7 +343,7 @@ if __name__ == '__main__':
         flxunits = pspec.readKey('FLXUNITS', 'counts')
     else:                               # Input is a Cube
         lbda = cube.lbda
-        resSpec = cube.data.mean(axis=1)
+        resSpec = cube.data.mean(axis=1) # Mean spectrum
         resVar = N.sqrt(cube.var.sum(axis=1)/cube.nlens**2)
         
         X = cube.e3d_data_header.get('CHANNEL','X')[0].upper() # B or R
@@ -370,12 +373,21 @@ if __name__ == '__main__':
         lmin,lmax = l0-100,l0+100
         print "Fit [NII],Ha complex around %.0f Å (%.0f Å window)" % (l0,200)
     elif opts.line=='OI':
-        Line = LinesOI
+        Line = SingleLineFactory("night-sky line [OI]", 5577.34)
         l0 = find_max(lbda, resSpec, (Line.l0-50,Line.l0+50))
         lmin,lmax = l0-50,l0+50
         print "Fit %s around %.0f Å (%.0f Å window)" % (Line.name,l0,100)
-    else:
-        parser.error("Unknown line '%s'" % opts.line)
+    else:                               # Read 'name,l0' from option
+        try:
+            name,l0 = opts.line.split(',')
+            l0 = float(l0)
+            Line = SingleLineFactory(name, l0)
+            l0 = find_max(lbda, resSpec, (Line.l0-50,Line.l0+50))
+            lmin,lmax = l0-50,l0+50
+            print "Fit %s around %.0f Å (%.0f Å window)" % (Line.name,l0,100)
+        except ValueError:
+            parser.error("Unknown line '%s' ('OII'|'NIIHa'|'OI'|'name,l0')" % \
+                         opts.line)
 
     g = (lmin<=lbda) & (lbda<=lmax)
     x = lbda[g]
@@ -405,7 +417,7 @@ if __name__ == '__main__':
                    [[None,None]]*2] # No constraints on background
         myfunc = {LinesNIIHa.name: LinesNIIHa, 
                   PolyBackground.name: PolyBackground}
-    elif opts.line=='OI':           # [OI] night sky line + background
+    else:                              # Single-gaussian emission line
         funcs = [ Line.name, 
                   '%s;1,%f,%f' % (PolyBackground.name,lmin,lmax) ]
         # 1+z,sigma,I + bkgnd(d=1)
@@ -465,8 +477,12 @@ if __name__ == '__main__':
               (Line.name, Line.l0,
                Line.l0*model.fitpar[0], Line.l0*dfitpar[0],
                Line.l0*(model.fitpar[0]-1))
-        zsys = 0
+        zsys0 = zsys = 0
         dzsys = 0
+
+        label=u"%s@%.2f Å = %.2f ± %.2f Å" % \
+               (Line.name, Line.l0,
+                Line.l0*model.fitpar[0], Line.l0*dfitpar[0])
     else:
         # Mean redshift
         zsys0 = model.fitpar[0] - 1
@@ -474,17 +490,16 @@ if __name__ == '__main__':
         #print "Estimated redshift: %f ± %f (%.1f ± %.1f km/s)" % \
         #    (zsys0,dzsys,zsys0*CLIGHT,dzsys*CLIGHT)
 
-        if isSpec:
-            # Barycentric correction: amount to add to an observed radial
-            # velocity to correct it to the solar system barycenter
-            v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
-            print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
-            zsys = zsys0 + v/CLIGHT  # Correction precision: 0.01 km/s
-            dzsys = N.hypot(dzsys, 0.01/CLIGHT)
-            print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
-                (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
-        else:
-            zsys = zsys0
+        # Barycentric correction: amount to add to an observed radial
+        # velocity to correct it to the solar system barycenter
+        v = pspec.get_skycalc('baryvcor')       # Relative velocity [km/s]
+        print "Barycentric correction: %f (%.1f ± 0.01 km/s)" % (v/CLIGHT,v)
+        zsys = zsys0 + v/CLIGHT  # Correction precision: 0.01 km/s
+        dzsys = N.hypot(dzsys, 0.01/CLIGHT)
+        print "Heliocentric redshift: %f ± %f (%.1f ± %.1f km/s)" % \
+            (zsys,dzsys,zsys*CLIGHT,dzsys*CLIGHT)
+
+        label = u"z(Helio) = %.5f ± %.1g" % (zsys,dzsys)
     
         # Store results in input spectra (awkward way, but pySnurp is
         # too dumb...)
@@ -504,7 +519,7 @@ if __name__ == '__main__':
                                  "extract_z lines")
             hdu.close()
 
-    if not isSpec:
+    if not isSpec and opts.map:
         ima = cube.slice2d([0,cube.nslice],'p')
         zmap = ima * N.nan                        # Redshift map
         # Use global fit result as initial guess
@@ -524,8 +539,12 @@ if __name__ == '__main__':
             imodel.khi2 *= imodel.dof   # True Chi2
             #print "   Fitpar:", imodel.fitpar
             z = imodel.fitpar[0] - 1
-            print "Chi2/DoF=%.1f/%d, v=%+.2f km/s" % \
-                (imodel.khi2, imodel.dof, (z-zsys0)*CLIGHT)
+            if opts.obsFrame:
+                print "Chi2/DoF=%.1f/%d, offset=%+.2f A" % \
+                      (imodel.khi2, imodel.dof, z*Line.l0)
+            else:
+                print "Chi2/DoF=%.1f/%d, v=%+.2f km/s" % \
+                      (imodel.khi2, imodel.dof, (z-zsys0)*CLIGHT)
             zmap[ij,ii] = z
 
     if opts.plot or os.environ.has_key('PYSHOW'):
@@ -544,8 +563,7 @@ if __name__ == '__main__':
                               xlabel=u'Wavelength [Å]')
 
         # Galaxy spectrum
-        lgal, = ax1.plot(lbda, resSpec, 'g-', 
-                         label=u"zHelio = %.5f ± %.1g" % (zsys,dzsys))
+        lgal, = ax1.plot(lbda, resSpec, 'g-', label=label)
         if model.status==0:
             #ax1.plot(x, model.evalfit()*norm + bkg, 'r-')
             addRedshiftedLines(ax1, zsys)
@@ -573,21 +591,23 @@ if __name__ == '__main__':
             ax3 = fig.add_subplot(1,4,4)
             plot_correlation_matrix(ax3, corr, parnames=flatparnames)
 
-        if not isSpec:
+        if not isSpec and opts.map:
             fig2 = P.figure(figsize=(6,6))
             axv = fig2.add_subplot(1,1,1, title=title,
                                    xlabel='I [spx]', ylabel='J [spx]',
                                    aspect='equal')
             # Velocity map
-            vmap = (zmap - zsys0)*CLIGHT # Convert redshift to velocity
+            if opts.obsFrame:
+                vmap = zmap*Line.l0     # Convert to wavelength offset
+                label = u'Offset [Å]'
+            else:
+                vmap = (zmap - zsys0)*CLIGHT # Convert redshift to velocity
+                label = 'Velocity [km/s]'
             vmin,vmax = prctile(vmap[N.isfinite(zmap)], p=(3,97))
             imv = axv.imshow(vmap, vmin=vmin, vmax=vmax,
                              extent=(-7.5,7.5,-7.5,7.5))
             cbv = fig2.colorbar(imv, ax=axv, shrink=0.9)
-            cbv.set_label('Velocity [km/s]')
-            # Intensity contours
-            #axv.contour(ima, vmin=fsmin, vmax=fgmax, colors='k',
-            #            extent=(-7.5,7.5,-7.5,7.5))
+            cbv.set_label(label)
             for ino,ii,ij in zip(cube.no,cube.i,cube.j):
                 axv.text(ii-7,ij-7,str(ino),
                          size='x-small', ha='center', va='center')
@@ -597,7 +617,7 @@ if __name__ == '__main__':
             figname = 'z_'+os.path.splitext(name)[0]+'.png'
             print "Saving emission-line figure in", figname
             fig.savefig(figname)
-            if not isSpec:
+            if not isSpec and opts.map:
                 figname = 'v_'+os.path.splitext(name)[0]+'.png'
                 print "Saving velocity-map in", figname
                 fig2.savefig(figname)
