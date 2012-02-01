@@ -61,6 +61,7 @@ def main():
                    os.path.join('apps','extract_star','e3dto3d.py'),
                    os.path.join('apps','extract_star','plot_slices.py'),
                    os.path.join('apps','extract_star','subtract_psf.py'),
+                   os.path.join('apps','extract_star','extract_fixed_star.py'),
                    ],
           )
 

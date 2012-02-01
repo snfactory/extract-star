@@ -13,82 +13,11 @@
 __author__ = "Y. Copin <y.copin@ipnl.in2p3.fr>"
 __version__ = '$Id$'
 
-import os, re
+import os
 import numpy as N
 from pySnurp import Spectrum
 import pySNIFS
 import libExtractStar as libES
-
-def read_psf_name(hdr):
-    """Return PSF function name read (or guessed) from header."""
-
-    assert hdr['ES_METH']=='psf', \
-        "PSF reconstruction only works for PSF spectro-photometry"
-
-    try:
-        psfname = hdr['ES_PSF']
-    except KeyError:
-        efftime = hdr['EFFTIME']
-        print "WARNING: cannot read 'ES_PSF' keyword, " \
-            "guessing from EFFTIME=%.0fs" % efftime
-        # Assert it's an old correlation PSF (i.e. 'long' or 'short')
-        psfname = (efftime > 12.) and 'long' or 'short'
-    
-    # Convert PSF name (e.g. 'short red') to PSF function name
-    # ('ShortRed_ExposurePSF')
-    fnname = ''.join(map(str.capitalize,psfname.split())) + '_ExposurePSF'
-    print "PSF name: %s [%s]" % (psfname, fnname)
-
-    return fnname
-
-
-def read_psf_ctes(hdr):
-    """Read PSF constants [lbda_ref,alphaDeg,ellDeg] from header."""
-
-    lref = hdr['ES_LREF']       # Reference wavelength [A]
-    # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
-    # polynomial degrees
-    adeg = len([ k for k in hdr.keys() 
-                 if re.match('ES_A\d+$',k) is not None ]) - 1
-    edeg = len([ k for k in hdr.keys() 
-                 if re.match('ES_E\d+$',k) is not None ]) - 1
-    print "PSF constants: lref=%.2fA, alphaDeg=%d, ellDeg=%d" % (lref,adeg,edeg)
-
-    return [lref,adeg,edeg]
-
-
-def read_psf_param(hdr):
-    """Read (7+ellDeg+alphaDeg) PSF parameters from header:
-    delta,theta,x0,y0,PA,e0,...en,a0,...an."""
-
-    airmass = hdr['ES_AIRM']    # Effective airmass
-    parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
-    delta = N.tan(N.arccos(1/airmass)) # ADR intensity
-    theta = parang/57.295779513082323  # Parallactic angle [rad]
-
-    x0 = hdr['ES_XC']           # Reference position [spx]
-    y0 = hdr['ES_YC']
-    pa = hdr['ES_XY']           # (Nearly) position angle
-
-    # Polynomial coeffs in lr~ = lambda/LbdaRef - 1
-    c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) is not None ]
-    c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) is not None ]
-
-    # Convert polynomial coeffs from lr~ = lambda/LbdaRef - 1 = a+b*lr
-    # back to lr = (2*lambda + (lmin+lmax))/(lmax-lmin)
-    lmin = hdr['CRVAL1']                      # Start
-    lmax = lmin + hdr['NAXIS1']*hdr['CDELT1'] # End
-    lref = hdr['ES_LREF']       # Reference wavelength [A]
-    a = (lmin+lmax) / (2*lref) - 1
-    b = (lmax-lmin) / (2*lref)
-    ecoeffs = libES.polyConvert(c_ell, trans=(a,b), backward=True).tolist()
-    acoeffs = libES.polyConvert(c_alp, trans=(a,b), backward=True).tolist()
-
-    print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
-        "refpos=%.2fx%.2f spx" % (airmass,parang,x0,y0)
-
-    return [delta,theta,x0,y0,pa] + ecoeffs + acoeffs
-
 
 if __name__ == '__main__':
 
@@ -149,10 +78,25 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and reference cube"
 
+    lrange = ()
+    if not spec._hdr.has_key('ES_LMIN'):
+        # get sliced cube
+        nmeta = 12 # default for all old prods
+        imin = 10                           # 1st slice [px]
+        imax = cube.nslice - 10        # Last slice [px]
+        istep = (imax-imin)//nmeta     # Metaslice thickness [px]
+        imax = imin + nmeta*istep
+        slices = [imin,imax,istep]
+        try:
+            slice_cube = pySNIFS.SNIFS_cube(e3d_file=opts.cube, slices=slices)
+        except ValueError:
+            slice_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.cube, slices=slices)
+        lrange = (slice_cube.lstart, slice_cube.lend)
+
     # Read PSF function name and parameters from spectrum header
-    psf_fn = eval('libES.'+read_psf_name(spec._hdr))
-    psf_ctes = [cube.spxSize] + read_psf_ctes(spec._hdr) # [lref,aDeg,eDeg]
-    psf_param = read_psf_param(spec._hdr)
+    psf_fn = libES.read_psf_name(spec._hdr)
+    psf_ctes = [cube.spxSize] + libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
+    psf_param = libES.read_psf_param(spec._hdr, lrange)
 
     cube.x = cube.i - 7         # x in spaxel
     cube.y = cube.j - 7         # y in spaxel

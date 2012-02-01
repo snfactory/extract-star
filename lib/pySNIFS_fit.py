@@ -739,20 +739,12 @@ class model:
         objfun."""
 
         # From scipy 0.6.0, fmin_tnc's output was inverted, and auto-offset is buggy
-        if (S.__version__ >='0.6.0'): 
-            x,nfeval,rc = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                              fprime=deriv and self.objgrad or None, 
-                                              approx_grad=not deriv,
-                                              bounds=self.bounds, offset=[0]*self.nparam,
-                                              messages=msge,maxfun=maxfun,
-                                              scale=deriv and scale or None)
-        else:
-            rc,nfeval,x = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                              fprime=deriv and self.objgrad or None, 
-                                              approx_grad=not deriv,
-                                              bounds=self.bounds,
-                                              messages=msge,maxfun=maxfun,
-                                              scale=deriv and scale or None)
+        x,nfeval,rc = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                          fprime=deriv and self.objgrad or None,
+                                          approx_grad=not deriv,
+                                          bounds=self.bounds, offset=[0]*self.nparam,
+                                          messages=msge,maxfun=maxfun,
+                                          scale=deriv and scale or None)
 
         # See S.optimize.tnc.RCSTRINGS for status message
         self.status = rc>2 and rc or 0 # 0,1,2 means "fit has converged"

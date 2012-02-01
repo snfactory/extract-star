@@ -73,257 +73,6 @@ def print_msg(str, limit):
     if opts.verbosity >= limit:
         print str
 
-
-def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
-                 method='psf', radius=5., chi2fit=True):
-    """Extract object and sky spectra from cube according to PSF (described by
-    psf_fn, psf_ctes and psf_params) in presence of sky (polynomial degree
-    skyDeg) using method ('psf' or 'aperture' or 'optimal'). For aperture
-    related methods, radius gives aperture radius in arcsec.
-
-    Returns spec,var where spec and var are (nslice,npar+1)."""
-
-    assert method in ('psf','aperture','optimal'), \
-           "Extraction method '%s' unrecognized" % method
-    assert skyDeg >= -1, \
-           "skyDeg=%d is invalid (should be >=-1)" % skyDeg
-
-    if (cube.var>1e20).any():
-        print "WARNING: discarding infinite variances in extract_spec"
-        cube.var[cube.var>1e20] = 0
-    if (cube.var<0).any():              # There should be none anymore
-        print "WARNING: discarding negative variances in extract_spec"
-        cube.var[cube.var<0] = 0
-
-    # The PSF parameters are only the shape parameters. We set the intensity
-    # of each slice to 1.
-    param = N.concatenate((psf_param,N.ones(cube.nslice)))
-
-    # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
-
-    spxSize = psf_ctes[0]               # Spaxel size [arcsec]
-    cube.x  = cube.i - 7                # x in spaxel
-    cube.y  = cube.j - 7                # y in spaxel
-    model = psf_fn(psf_ctes, cube)
-    psf   = model.comp(param, normed=True) # nslice,nlens
-
-    npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb param. in polynomial bkgnd
-    Z = N.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
-    Z[:,:,0] = psf                      # Intensity
-    if npar_sky:                        # =0 when no background (skyDeg<=-1)
-        Z[:,:,1] = 1                    # Constant background
-        n = 2
-        for d in xrange(1,skyDeg+1):
-            for j in xrange(d+1):
-                Z[:,:,n] = cube.x**(d-j) * cube.y**j # Bkgnd polynomials
-                n += 1                  # Finally: n = npar_sky + 1
-
-    # Chi2 (weight=1/var) vs. Least-square (weight=1) fit
-    if chi2fit:
-        weight = N.where(cube.var>0, 1/N.sqrt(cube.var), 0) # nslice,nlens
-    else:
-        weight = N.where(cube.var>0, 1, 0) # nslice,nlens
-    X = (Z.T * weight.T).T              # nslice,nlens,npar+1
-    b = weight*cube.data                # nslice,nlens
-
-    # The linear least-squares fit could be done directly using
-    # spec = N.array([ N.linalg.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
-    # but A is needed anyway to compute covariance matrix C=1/A.
-    # Furthermore, linear resolution
-    # [ N.linalg.solve(aa,bb) for aa,bb in zip(A,B) ]
-    # can be replace by faster (~x10) matrix product
-    # [ N.dot(cc,bb) for cc,bb in zip(C,B) ]
-    # since C=1/A is readily available.
-    # See Numerical Recipes (2nd ed.), sect.15.4
-
-    # OTOH, "Solving Ax = b: inverse vs cholesky factorization" thread
-    # (http://thread.gmane.org/gmane.comp.python.numeric.general/41365)
-    # advocates to never invert a matrix directly.
-    
-    A = N.array([ N.dot(xx.T, xx) for xx in X ]) # nslice,npar+1,npar+1
-    B = N.array([ N.dot(xx.T, bb) for xx,bb in zip(X,b) ]) # nslice,npar+1
-    try:
-        C = N.array([ N.linalg.pinv(aa) for aa in A ]) # nslice,npar+1,npar+1
-    except N.linalg.LinAlgError:
-        raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
-    # spec & var = nslice x Star,Sky,[slope_x...]
-    spec = N.array([ N.dot(cc,bb) for cc,bb in zip(C,B) ]) # nslice,npar+1
-    var  = N.array([ N.diag(cc) for cc in C ]) # nslice,npar+1
-
-    # Compute the least-square variance using the chi2-case method
-    if not chi2fit: 
-        A = N.array([ N.dot(xx.T, xx) for xx in 
-                      (Z.T * N.where(cube.var>0, 1/N.sqrt(cube.var), 0).T).T ])
-        try:
-            C = N.array([ N.linalg.pinv(aa) for aa in A ])
-        except N.linalg.LinAlgError:
-            raise N.linalg.LinAlgError("Singular matrix during variance extraction")
-        var = N.array([ N.diag(cc) for cc in C ])
-
-    # Now, what about negative sky? The pb arises for short-exposures,
-    # where there's probably no sky whatsoever (except if taken during
-    # twilight), and where a (significantly) negative sky is actually
-    # a shortcoming of the PSF. For long exposures, one expects "some"
-    # negative sky values, where sky is compatible to 0.
-
-    # One could also use an NNLS fit to force parameter non-negativity:
-    # [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(A,B) ]
-    # *BUT* 1. it is incompatible w/ non-constant sky (since it will force all
-    # sky coeffs to >0). This can therefore be done only if skyDeg=0 (it would
-    # otherwise involve optimization with constraints on sky positivity).
-    # 2. There is no easy way to estimate covariance matrix from NNLS
-    # fit. Since an NNLS fit on a negative sky slice would probably always
-    # lead to a null sky, an NNLS fit is then equivalent to a standard 'PSF'
-    # fit without sky.
-
-    if skyDeg==0:
-        negSky = spec[:,1]<0            # Test for presence of negative sky
-        if negSky.any(): # and 'long' not in psf_fn.name.lower():
-            print "WARNING: %d slices w/ sky<0 in extract_spec" % \
-                  (len(negSky.nonzero()[0]))
-            print_msg(str(cube.lbda[negSky]), 2)
-        #if 'short' in psf_fn.name:
-            # For slices w/ sky<0, fit only PSF without background
-            A = N.array([ N.dot(xx,xx) for xx in X[negSky,:,0] ])
-            B = N.array([ N.dot(xx,bb)
-                          for xx,bb in zip(X[negSky,:,0],b[negSky]) ])
-            C = 1/A
-            spec[negSky,0] = C*B        # Linear fit without sky
-            spec[negSky,1] = 0          # Set sky to null
-            var[negSky,0] = C
-            var[negSky,1] = 0
-
-    if method == 'psf':                 # Nothing else to be done
-        return cube.lbda,spec,var
-
-    # Reconstruct background and subtract it from cube
-    bkgnd     = N.zeros_like(cube.data)
-    var_bkgnd = N.zeros_like(cube.var)
-    if npar_sky:
-        for d in xrange(1,npar_sky+1):      # Loop over sky components
-            bkgnd     += (Z[:,:,d].T * spec[:,d]).T
-            var_bkgnd += (Z[:,:,d].T**2 * var[:,d]).T
-    subData = cube.data - bkgnd         # Bkgnd subtraction (nslice,nlens)
-    subVar = cube.var.copy()
-    good = cube.var>0
-    subVar[good] += var_bkgnd[good]     # Variance of bkgnd-sub. signal
-
-    # Replace invalid data (var=0) by model PSF = Intensity*PSF
-    if not good.all():
-        print_msg("Replacing %d vx with modeled signal" % \
-                  len((~good).nonzero()[0]), 1)
-        subData[~good] = (spec[:,0]*psf.T).T[~good]
-
-    # Plain summation over aperture
-
-    # For the moment, a spaxel is either 100% or 0% within the aperture (same
-    # limitation as quick_extract). Potential development:
-    # 1. compute spaxel fraction inside the aperture
-    # 2. extrapolate missing flux if aperture is partially outside FoV
-    #    from PSF fit
-
-    # Aperture center [spx] (nslice)
-    xc = psf_param[2] + psf_param[0]*model.ADR_coeff[:,0]*N.cos(psf_param[1])
-    yc = psf_param[3] + psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
-    # Aperture radius in spaxels
-    aperRad = radius / spxSize
-    print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad), 1)
-
-    # Radius [spx] (nslice,nlens)
-    r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
-    # Circular aperture (nslice,nlens)
-    # Use r<aperRad[:,N.newaxis] if radius is a (nslice,) vec.
-    frac = (r < aperRad).astype('float')
-
-    # Check if aperture hits the FoV edges
-    hit = ((xc - aperRad) < -7.5) | ((xc + aperRad) > 7.5) | \
-          ((yc - aperRad) < -7.5) | ((yc + aperRad) > 7.5)
-    if hit.any():
-        # Find the closest edge
-        ld = (xc - aperRad + 7.5).min() # Dist. to left edge (<0 if outside)
-        rd =-(xc + aperRad - 7.5).max() # Dist. to right edge
-        bd = (yc - aperRad + 7.5).min() # Dist. to bottom edge
-        td =-(yc + aperRad - 7.5).max() # Dist. to top edge
-        cd = -min(ld,rd,bd,td)          # Should be positive
-        ns = int(cd) + 1                # Additional spaxels
-        print "WARNING: Aperture (r=%.2f spx) hits FoV edges by %.2f spx" % \
-              (aperRad, cd)
-
-        if method == 'optimal':
-            print "WARNING: Model extrapolation outside FoV " \
-                  "not implemented for optimal summation."
-
-    if hit.any() and method == 'aperture':
-
-        # Extrapolate signal from PSF model
-        print_msg("Signal extrapolation outside FoV...", 1)
-
-        # Extend usual range by ns spx on each side
-        nw = 15 + 2*ns                  # New FoV size in spaxels
-        mid = (7 + ns)                  # FoV center
-        extRange = N.arange(nw) - mid
-        extx,exty = N.meshgrid(extRange[::-1],extRange) # nw,nw
-        extnlens = extx.size                 # = nlens' = nw**2
-        print_msg("  Extend FoV by %d spx: nlens=%d -> %d" % \
-                  (ns, model.nlens, extnlens), 1)
-
-        # Compute PSF on extended range (nslice,extnlens)
-        extModel = psf_fn(psf_ctes, cube, coords=(extx,exty)) # Extended model
-        extPsf   = extModel.comp(param, normed=True) # nslice,extnlens
-
-        # Embed background-subtracted data in extended model PSF
-        origData = subData.copy()
-        origVar  = subVar.copy()
-        subData  = (spec[:,0]*extPsf.T).T   # Extended model, nslice,extnlens
-        subVar   = N.zeros((extModel.nslice,extModel.nlens))
-        for i in xrange(model.nlens):
-            # Embeb original spx i in extended model array by finding
-            # corresponding index j in new array
-            j, = ((extModel.x[0]==model.x[0,i]) & \
-                  (extModel.y[0]==model.y[0,i])).nonzero()
-            subData[:,j[0]] = origData[:,i]
-            subVar[:,j[0]]  = origVar[:,i]
-
-        r = N.hypot((extModel.x.T - xc).T, (extModel.y.T - yc).T)
-        frac = (r < aperRad).astype('float')
-
-    if method == 'aperture':
-        # Replace signal and variance estimates from plain summation
-        spec[:,0] = (frac    * subData).sum(axis=1)
-        var[:,0]  = (frac**2 * subVar).sum(axis=1)
-        return cube.lbda,spec,var
-
-    if method == 'optimal':
-        # Model signal = Intensity*PSF + bkgnd
-        modsig = (spec[:,0]*psf.T).T + bkgnd # nslice,nlens
-
-        # One has to have a model of the variance. This can be estimated from
-        # a simple 'photon noise + RoN' model on each slice: signal ~ alpha*N
-        # (alpha = 1/flat-field coeff and N = photon counts) and variance ~ (N
-        # + RoN**2) * alpha**2 = (signal/alpha + RoN**2) * alpha**2 =
-        # alpha*signal + beta. This model disregards spatial component of
-        # flat-field, which is supposed to be constant of FoV.
-
-        # Model variance = alpha*Signal + beta
-        coeffs = N.array([ libES.polyfit_clip(modsig[s], cube.var[s], 1, clip=5)
-                           for s in xrange(cube.nslice) ])
-        coeffs = F.median_filter(coeffs, (5,1)) # A bit of smoothing...
-        modvar = N.array([ N.polyval(coeffs[s], modsig[s])
-                           for s in xrange(cube.nslice) ]) # nslice,nlens
-
-        # Optimal weighting
-        norm = (frac * psf).sum(axis=1) # PSF norm, nslice
-        npsf = (psf.T / norm).T         # nslice,nlens
-        weight = frac * npsf / modvar   # Unormalized weights, nslice,nlens
-        norm = (weight * npsf).sum(axis=1) # Weight norm, nslice
-        weight = (weight.T / norm).T    # Normalized weights, nslice,nlens
-
-        # Replace signal and variance estimates from optimal summation
-        spec[:,0] = (weight    * subData).sum(axis=1)
-        var[:,0]  = (weight**2 * subVar).sum(axis=1)
-        return cube.lbda,spec,var
-
-
 def fit_slices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True):
     """Fit (meta)slices of (meta)cube using PSF psf_fn and a background of
     polynomial degree skyDeg."""
@@ -674,6 +423,8 @@ def fill_header(hdr, psfname, param, adr, lrange, opts, chi2, seeing, fluxes):
     hdr.update('ES_XC',   x0,         'xc @lbdaRef [spx]')
     hdr.update('ES_YC',   y0,         'yc @lbdaRef [spx]')
     hdr.update('ES_XY',   param[4],   'XY coeff.')
+    hdr.update('ES_LMIN', lmin, 'Meta-slices minimum lambda')
+    hdr.update('ES_LMAX', lmax, 'Meta-slices maximum lambda')
 
     for i in xrange(opts.ellDeg + 1):
         hdr.update('ES_E%i' % i, c_ell[i], 'Y2 coeff. e%d' % i)
@@ -681,7 +432,7 @@ def fill_header(hdr, psfname, param, adr, lrange, opts, chi2, seeing, fluxes):
         hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
 
     hdr.update('ES_METH', opts.method, 'Extraction method')
-    if method == 'psf':
+    if opts.method == 'psf':
         hdr.update('ES_PSF', psfname, 'PSF name')
     else:
         hdr.update('ES_APRAD', opts.radius, 'Aperture radius [arcsec or sigma]')
@@ -738,7 +489,7 @@ if __name__ == "__main__":
 
     # Options ================================================================
 
-    methods = ('psf','aperture','optimal')
+    methods = ('psf','aperture','subaperture','optimal')
 
     usage = "[%prog] [options] incube.fits"
 
@@ -781,7 +532,7 @@ if __name__ == "__main__":
 
     # Extraction method and parameters
     parser.add_option("-m", "--method", type="string",
-                      help="Extraction method (psf|optimal|aperture) "
+                      help="Extraction method (psf|optimal|aperture|subaperture) "
                       "['%default']",
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
@@ -1142,9 +893,10 @@ if __name__ == "__main__":
 
     psfCtes = [SpaxelSize,lref,alphaDeg,ellDeg]
 
-    lbda,spec,var = extract_spec(full_cube, psfFn, psfCtes, fitpar[:npar_psf], 
-                                 skyDeg=skyDeg, method=opts.method, 
-                                 radius=radius, chi2fit=opts.chi2fit)
+    lbda,spec,var = libES.extract_spec(full_cube, psfFn, psfCtes, fitpar[:npar_psf],
+                                       skyDeg=skyDeg, method=opts.method,
+                                       radius=radius, chi2fit=opts.chi2fit,
+                                       verbosity=opts.verbosity)
 
     if skyDeg >= 0:                     # Compute background
         spec[:,1:] /= SpaxelSize**2     # Per arcsec^2
@@ -1190,7 +942,7 @@ if __name__ == "__main__":
     else:
         sflux = 0                       # Not stored anyway
 
-    fill_header(inhdr, psfFn.name, fitpar[:npar_psf], adr, 
+    fill_header(inhdr, psfFn.name, fitpar[:npar_psf], adr,
                 (cube.lstart,cube.lend), opts, chi2, seeing, (tflux,sflux))
 
     # Save star spectrum =====================================================
