@@ -11,8 +11,7 @@
 __author__ = 'Rui Pereira <rui.pereira@in2p3.fr>'
 __version__ = '$Revision$'
 
-import os
-import numpy as N
+import pyfits
 from pySnurp import Spectrum
 import pySNIFS
 import libExtractStar as libES
@@ -29,7 +28,7 @@ if __name__ == '__main__':
     parser.add_option("-s", "--spec",
                       help="Reference spectrum for PSF parameters")
     parser.add_option("-o", "--out",
-                      help="Output spectrum")
+                      help="Output spectrum [%default]", default='spec.fits')
     parser.add_option("-m", "--method",
                       help="Extraction method (psf|optimal|aperture|subaperture) ['%default']",
                       default="psf")
@@ -48,9 +47,11 @@ if __name__ == '__main__':
     # Reference/input cube
     print "Opening cube %s" % opts.cube
     try:                        # Try Euro3D
+        inhdr = pyfits.getheader(opts.input, 1) # 1st extension
         cube = pySNIFS.SNIFS_cube(e3d_file=opts.cube)
         cubetype = "Euro3D"
     except ValueError:          # Try 3D
+        inhdr = pyfits.getheader(opts.input, 0) # Primary extension
         cube = pySNIFS.SNIFS_cube(fits3d_file=opts.cube)
         cubetype = "3D"
     print "  %s, %d slices [%.2f-%.2f], %d spaxels" % \
@@ -61,21 +62,7 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and cube"
 
-    lrange = ()
-    if not spec._hdr.has_key('ES_LMIN'):
-        # get sliced cube
-        nmeta = 12 # default for all old prods
-        imin = 10                           # 1st slice [px]
-        imax = cube.nslice - 10        # Last slice [px]
-        istep = (imax-imin)//nmeta     # Metaslice thickness [px]
-        imax = imin + nmeta*istep
-        slices = [imin,imax,istep]
-        try:
-            slice_cube = pySNIFS.SNIFS_cube(e3d_file=opts.cube, slices=slices)
-        except ValueError:
-            slice_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.cube, slices=slices)
-        lrange = (slice_cube.lstart, slice_cube.lend)
-
+    lrange = not spec._hdr.has_key('ES_LMIN') and libES.get_slices_lrange(cube) or ()
     # Read PSF function name and parameters from spectrum header
     psf_fn = libES.read_psf_name(spec._hdr)
     psf_ctes = [cube.spxSize] + libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
@@ -85,13 +72,12 @@ if __name__ == '__main__':
     if opts.method == 'psf':
         radius = None
     else:
-        # TODO: seeing based aperture
-        print 'go fetch the seeing somewhere!'
-        radius = opts.radius < 0 and -opts.radius * spec.readKey('SEEING')/2.355 or opts.radius # [sigma] or [arcsec]
+        radius = opts.radius < 0 and -opts.radius*spec.readKey('SEEING')/2.355 or opts.radius # [sigma] or [arcsec]
 
     lbda,spec,var = libES.extract_spec(cube, psf_fn, psf_ctes, psf_param,
                                        method=opts.method,
                                        radius=radius, verbosity=2)
 
-    import IPython
-    IPython.embed()
+    star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
+                                 start=lbda[0],step=step)
+    star_spec.WR_fits_file(opts.out, header_list=inhdr.items())

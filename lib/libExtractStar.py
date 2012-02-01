@@ -26,6 +26,27 @@ def print_msg(str, limit, verb=0):
     if verb >= limit:
         print str
 
+def get_slices_lrange(cube, nmeta=12):
+    """
+    Get wavelength range from meta-sliced cube
+
+    :param cube: pySNIFS.SNIFS_cube instance
+    :param nmeta: number of meta-slices
+    :return: (lstart, lend)
+    """
+    import pySNIFS
+
+    imin = 10                           # 1st slice [px]
+    imax = cube.nslice - 10             # Last slice [px]
+    istep = (imax - imin) // nmeta     # Metaslice thickness [px]
+    imax = imin + nmeta * istep
+    slices = [imin, imax, istep]
+    try:
+        slice_cube = pySNIFS.SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
+    except (ValueError, AttributeError):
+        slice_cube = pySNIFS.SNIFS_cube(fits3d_file=cube.fits3d_file, slices=slices)
+    return slice_cube.lstart, slice_cube.lend
+
 # Extraction ========================================================
 
 def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,

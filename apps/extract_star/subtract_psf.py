@@ -78,21 +78,7 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and reference cube"
 
-    lrange = ()
-    if not spec._hdr.has_key('ES_LMIN'):
-        # get sliced cube
-        nmeta = 12 # default for all old prods
-        imin = 10                           # 1st slice [px]
-        imax = cube.nslice - 10        # Last slice [px]
-        istep = (imax-imin)//nmeta     # Metaslice thickness [px]
-        imax = imin + nmeta*istep
-        slices = [imin,imax,istep]
-        try:
-            slice_cube = pySNIFS.SNIFS_cube(e3d_file=opts.cube, slices=slices)
-        except ValueError:
-            slice_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.cube, slices=slices)
-        lrange = (slice_cube.lstart, slice_cube.lend)
-
+    lrange = not spec._hdr.has_key('ES_LMIN') and libES.get_slices_lrange(cube) or ()
     # Read PSF function name and parameters from spectrum header
     psf_fn = libES.read_psf_name(spec._hdr)
     psf_ctes = [cube.spxSize] + libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
