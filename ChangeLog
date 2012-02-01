@@ -1,17 +1,21 @@
-2012/02/01  Rui Pereira  <rui.pereira@in2p3.fr>
+2012-02-01  Rui Pereira  <rui.pereira@in2p3.fr>
 
-    * apps/extract_star/extract_star.py: moved extract_spec into libExtractStar.py.
-     Added subaperture extraction method. Added ES_LMIN and ES_LMAX keys to spectrum
-     header and fixed ES_PSF.
-     * apps/extract_star/subtract_psf.py: moved read_psf_name(), read_psf_ctes() and
-     read_psf_param into libExtractStar.py. Recompute lrange from sliced cube if
-     ES_LMIN and ES_LMAX are not found in the spectrum header.
-     * apps/extract_star/extract_fixed_star.py: new script to extract a PSF constrained
-     with a spectrum header values from a (residuals) cube.
-     * lib/libExtractStar.py: added a print_msg() similar to the one on extract_star.py
-     for compatibility with the moved functions: extract_spec(), read_psf_name(),
-     read_psf_ctes(), read_psf_param(). Force S.misc.comb in polyConvMatrix().
-     * lib/pySNIFS_fit.py (model.fit): assume we now always use scipy > 0.6.
+	* apps/extract_star/extract_star.py: moved extract_spec into
+	libExtractStar.py.  Added subaperture extraction method. Added
+	ES_LMIN and ES_LMAX keys to spectrum header and fixed ES_PSF.
+	* apps/extract_star/subtract_psf.py: moved read_psf_name(),
+	read_psf_ctes() and read_psf_param into
+	libExtractStar.py. Recompute lrange from sliced cube if ES_LMIN
+	and ES_LMAX are not found in the spectrum header.
+	* apps/extract_star/extract_fixed_star.py: new script to extract a
+	PSF constrained with a spectrum header values from a (residuals)
+	cube.
+	* lib/libExtractStar.py: added a print_msg() similar to the one on
+	extract_star.py for compatibility with the moved functions:
+	extract_spec(), read_psf_name(), read_psf_ctes(),
+	read_psf_param(). Force S.misc.comb in polyConvMatrix().
+	* lib/pySNIFS_fit.py (model.fit): assume we now always use scipy >
+	0.6.
 
 2011-12-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
