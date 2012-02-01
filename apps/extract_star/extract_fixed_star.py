@@ -47,11 +47,11 @@ if __name__ == '__main__':
     # Reference/input cube
     print "Opening cube %s" % opts.cube
     try:                        # Try Euro3D
-        inhdr = pyfits.getheader(opts.input, 1) # 1st extension
+        inhdr = pyfits.getheader(opts.cube, 1) # 1st extension
         cube = pySNIFS.SNIFS_cube(e3d_file=opts.cube)
         cubetype = "Euro3D"
     except ValueError:          # Try 3D
-        inhdr = pyfits.getheader(opts.input, 0) # Primary extension
+        inhdr = pyfits.getheader(opts.cube, 0) # Primary extension
         cube = pySNIFS.SNIFS_cube(fits3d_file=opts.cube)
         cubetype = "3D"
     print "  %s, %d slices [%.2f-%.2f], %d spaxels" % \
@@ -79,5 +79,5 @@ if __name__ == '__main__':
                                        radius=radius, verbosity=2)
 
     star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
-                                 start=lbda[0],step=step)
+                                 start=lbda[0],step=cube.lstep)
     star_spec.WR_fits_file(opts.out, header_list=inhdr.items())
