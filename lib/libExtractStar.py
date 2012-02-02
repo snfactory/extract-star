@@ -21,10 +21,47 @@ from scipy.ndimage import filters as F
 from ToolBox import Atmosphere as A
 
 def print_msg(str, limit, verb=0):
-    """Print message 'str' if verbosity level (opts.verbosity) >= limit."""
+    """Print message 'str' if verbosity level (typically
+    opts.verbosity) >= limit."""
 
     if verb >= limit:
         print str
+
+def metaslice(alen, nmeta, trim=0, thickness=False):
+    """Return [imin,imax,istp] so that range(imin,imax,istp) are the
+    boundary indices for nmeta (centered) metaslices. If thickness,
+    nmeta is actually the thickness of metaslices. Non-null trim is
+    the number of trimmed elements at each edge of the array.
+
+    >>> a = range(0,141,10); a                        # 15 elements
+    [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]
+    >>> imin,imax,istp = metaslice(len(a), 3, trim=2) # Make 3 metaslices
+    >>> imin,imax,istp
+    (3, 13, 3)
+    >>> ibounds = range(imin,imax,istp); ibounds
+    [3, 6, 9, 12]
+    >>> for i in xrange(len(ibounds)-1): print a[ibounds[i]:ibounds[i+1]]
+    [30, 40, 50]
+    [60, 70, 80]
+    [90, 100, 110]
+    >>> N.reshape(a[imin:imax-1],(-1,istp))
+    array([[ 30,  40,  50],
+           [ 60,  70,  80],
+           [ 90, 100, 110]])
+    """
+
+    if thickness:
+        istep = nmeta                    # Metaslice thickness
+        nmeta = (alen - 2*trim) // istep # Nb of metaslices
+    else:
+        istep = (alen - 2*trim) // nmeta # Metaslice thickness
+
+    # Center metaslices on (trimmed) array
+    imin = trim + ((alen - 2*trim) % nmeta) // 2 
+    imax = imin + nmeta*istep            # imax will be included
+
+    return [imin, imax+1, istep]         # Return a list to please pySNIFS
+
 
 def get_slices_lrange(cube, nmeta=12):
     """
@@ -34,17 +71,15 @@ def get_slices_lrange(cube, nmeta=12):
     :param nmeta: number of meta-slices
     :return: (lstart, lend)
     """
-    import pySNIFS
+    from pySNIFS import SNIFS_cube
 
-    imin = 10                           # 1st slice [px]
-    imax = cube.nslice - 10             # Last slice [px]
-    istep = (imax - imin) // nmeta     # Metaslice thickness [px]
-    imax = imin + nmeta * istep
-    slices = [imin, imax, istep]
+    # Should be the same definition as in extract_star
+    slices = libES.metaslice(cube.nslice, nmeta, trim=10)
     try:
-        slice_cube = pySNIFS.SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
+        slice_cube = SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
     except (ValueError, AttributeError):
-        slice_cube = pySNIFS.SNIFS_cube(fits3d_file=cube.fits3d_file, slices=slices)
+        slice_cube = SNIFS_cube(fits3d_file=cube.fits3d_file, slices=slices)
+        
     return slice_cube.lstart, slice_cube.lend
 
 # Extraction ========================================================
@@ -85,12 +120,15 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb param. in polynomial bkgnd
     Z = N.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
     Z[:,:,0] = psf                      # Intensity
+    
     if npar_sky:                        # =0 when no background (skyDeg<=-1)
         Z[:,:,1] = 1                    # Constant background
         n = 2
         for d in xrange(1,skyDeg+1):
             for j in xrange(d+1):
-                Z[:,:,n] = cube.x**(d-j) * cube.y**j # Bkgnd polynomials
+                # Background polynomials as function of spaxel (centered)
+                # position [spx]
+                Z[:,:,n] = cube.x**(d-j) * cube.y**j 
                 n += 1                  # Finally: n = npar_sky + 1
 
     # Chi2 (weight=1/var) vs. Least-square (weight=1) fit
@@ -123,7 +161,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
     # spec & var = nslice x Star,Sky,[slope_x...]
     spec = N.array([ N.dot(cc,bb) for cc,bb in zip(C,B) ]) # nslice,npar+1
-    var  = N.array([ N.diag(cc) for cc in C ]) # nslice,npar+1
+    var  = N.array([ N.diag(cc) for cc in C ])             # nslice,npar+1
 
     # Compute the least-square variance using the chi2-case method
     if not chi2fit:
@@ -132,7 +170,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         try:
             C = N.array([ N.linalg.pinv(aa) for aa in A ])
         except N.linalg.LinAlgError:
-            raise N.linalg.LinAlgError("Singular matrix during variance extraction")
+            raise N.linalg.LinAlgError("Singular matrix "
+                                       "during variance extraction")
         var = N.array([ N.diag(cc) for cc in C ])
 
     # Now, what about negative sky? The pb arises for short-exposures,
@@ -196,7 +235,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     yc = psf_param[3] + psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
     # Aperture radius in spaxels
     aperRad = radius / spxSize
-    print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad), 1, verbosity)
+    print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad),
+              1, verbosity)
 
     # Radius [spx] (nslice,nlens)
     r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
@@ -420,7 +460,8 @@ def read_psf_ctes(hdr, lrange=()):
     assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange,\
        'ES_LMIN/ES_LMAX not found and lrange not set'
 
-    # this reproduces exactly the PSF parameters used by extract_spec(full_cube...)
+    # This reproduces exactly the PSF parameters used by
+    # extract_spec(full_cube...)
     if lrange:
         lmin, lmax = lrange
     else:
@@ -485,9 +526,10 @@ def read_psf_param(hdr, lrange=()):
     y0 = hdr['ES_YC']
     pa = hdr['ES_XY']           # (Nearly) position angle
 
-    # this reproduces exactly the PSF parameters used by extract_spec(full_cube...)
-    # we should NOT need this if everything was properly computed at 5000.A by ES
-    # which seems not to be the case for <pa>
+    # This reproduces exactly the PSF parameters used by
+    # extract_spec(full_cube...)
+    # We should NOT need this if everything was properly computed at
+    # 5000.A by ES which seems not to be the case for <pa>
     pressure,temp = read_PT(hdr)
     adr = A.ADR(pressure, temp, lref=(lmin+lmax)/2,
                 airmass=airmass, parangle=parang)
@@ -520,12 +562,12 @@ def polyConvMatrix(n, trans=(0,1)):
     ...) in polynomial coeffs for x (P = a0 + a1*x + a2*x**2 +
     ...). Therefore, (a,b)=(0,1) gives identity."""
 
-    import scipy.misc
+    from scipy.misc import comb
     a,b = trans
     m = N.zeros((n,n), dtype='d')
     for r in range(n):
         for c in range(r,n):
-            m[r,c] = S.misc.comb(c,r) * b**r * a**(c-r)
+            m[r,c] = comb(c,r) * b**r * a**(c-r)
     return m
 
 def polyConvert(coeffs, trans=(0,1), backward=False):

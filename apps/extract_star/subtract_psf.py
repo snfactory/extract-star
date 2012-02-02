@@ -19,6 +19,8 @@ from pySnurp import Spectrum
 import pySNIFS
 import libExtractStar as libES
 
+SpxSize = 0.43      # Spaxel size in arcsec (check SNIFS_cube.spxSize)
+
 if __name__ == '__main__':
 
     import optparse
@@ -80,10 +82,12 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and reference cube"
 
-    lrange = not spec._hdr.has_key('ES_LMIN') and libES.get_slices_lrange(cube) or ()
+    lrange = not spec._hdr.has_key('ES_LMIN') \
+             and libES.get_slices_lrange(cube) or ()
     # Read PSF function name and parameters from spectrum header
     psf_fn = libES.read_psf_name(spec._hdr)
-    psf_ctes = [cube.spxSize] + libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
+    psf_ctes = [cube.spxSize] + \
+               libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
     psf_param = libES.read_psf_param(spec._hdr, lrange)
 
     cube.x = cube.i - 7         # x in spaxel
@@ -102,10 +106,12 @@ if __name__ == '__main__':
         cube.var += var
         if opts.sky:
             sky = Spectrum(opts.sky)
-            assert sky.readKey('ES_SDEG') < 1, 'skyDeg > 0 subtraction is not yet implemented'
+            if sky.readKey('ES_SDEG') >= 1:
+                raise NotImplememtedError('skyDeg>0 subtraction '
+                                          'is not yet implemented')
             # from arcsec^-2 into spaxels^-1
-            cube.data -= sky.y.reshape(-1,1) * 0.43**2
-            cube.var += sky.v.reshape(-1,1) * 0.43**4
+            cube.data -= sky.y.reshape(-1,1) * SpxSize**2
+            cube.var  += sky.v.reshape(-1,1) * SpxSize**4
 
         print "Saving point-source subtracted %s cube %s" % (cubetype, opts.out)
         cube.writeto(opts.out)

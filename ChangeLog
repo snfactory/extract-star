@@ -1,3 +1,11 @@
+2012-02-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (metaslice): new routine to produce
+	centered metaslices.
+
+	* apps/extract_star/extract_star.py: remove obfuscated and mostly
+	useless function build_sky_cube.
+
 2012-02-02  Rui Pereira  <rui.pereira@in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py: added --sky option.
@@ -19,8 +27,8 @@
 	extract_star.py for compatibility with the moved functions:
 	extract_spec(), read_psf_name(), read_psf_ctes(),
 	read_psf_param(). Force S.misc.comb in polyConvMatrix().
-	* lib/pySNIFS_fit.py (model.fit): assume we now always use scipy >
-	0.6.
+	* lib/pySNIFS_fit.py (model.fit): assume we now always use
+	scipy>0.6.
 
 2011-12-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 

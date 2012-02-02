@@ -70,8 +70,7 @@ purple = '#FF00FF'
 def print_msg(str, limit):
     """Print message 'str' if verbosity level (opts.verbosity) >= limit."""
 
-    if opts.verbosity >= limit:
-        print str
+    libES.print_msg(str, limit, verb=opts.verbosity)
 
 def fit_slices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True):
     """Fit (meta)slices of (meta)cube using PSF psf_fn and a background of
@@ -370,31 +369,6 @@ def create_3Dlog(filename, objname, airmass, efftime,
     logfile.close()
 
 
-def build_sky_cube(cube, sky, sky_var, skyDeg):
-
-    assert skyDeg >= 0, \
-           "Cannot build_sky_cube with skyDeg=%d < 0." % skyDeg
-
-    nslices  = len(sky)
-    npar_sky = (skyDeg+1)*(skyDeg+2)/2
-    poly     = pySNIFS_fit.poly2D(skyDeg,cube)
-    cube2    = pySNIFS.zerolike(cube)
-    cube2.x  = (cube2.x)**2
-    cube2.y  = (cube2.y)**2
-    poly2    = pySNIFS_fit.poly2D(skyDeg,cube2)
-    param    = N.zeros((nslices,npar_sky),'d')
-    vparam   = N.zeros((nslices,npar_sky),'d')
-    for i in xrange(nslices):
-        param[i,:] = sky[i].data
-        vparam[i,:] = sky_var[i].data
-    bkg_cube = pySNIFS.zerolike(cube)
-    bkg_cube.data = poly.comp(param)
-    bkg_cube.var = poly2.comp(vparam)
-    bkg_spec = bkg_cube.get_spec(no=bkg_cube.no)
-
-    return bkg_cube,bkg_spec
-
-
 def fill_header(hdr, psfname, param, adr, lrange, opts, chi2, seeing, fluxes):
     """Fill header hdr with fit-related keywords."""
 
@@ -404,7 +378,7 @@ def fill_header(hdr, psfname, param, adr, lrange, opts, chi2, seeing, fluxes):
     print_msg("Reference position [%.0fA]: %.2f x %.2f spx" % \
               (LbdaRef,x0,y0), 1)
 
-    # Convert polynomial coeffs from lr=(2*lambda + (lmin+lmax))/(lmax-lmin)
+    # Convert polynomial coeffs from lr=(2*lambda - (lmin+lmax))/(lmax-lmin)
     # to lr~ = lambda/LbdaRef - 1 = a + b*lr
     a = (lmin+lmax) / (2*LbdaRef) - 1
     b = (lmax-lmin) / (2*LbdaRef)
@@ -658,13 +632,9 @@ if __name__ == "__main__":
         opts.out = 'spec_%s.fits' % (channel)
 
     # Meta-slice definition (min,max,step [px])
-    imin = 10                           # 1st slice [px]
-    imax = full_cube.nslice - 10        # Last slice [px]
-    istep = (imax-imin)//opts.nmeta     # Metaslice thickness [px]
-    imax = imin + opts.nmeta*istep
-    slices = [imin,imax,istep]
 
-    print "  Channel: '%s', extracting slices: %s" % (channel,slices)
+    slices = libES.metaslice(full_cube.nslice, opts.nmeta, trim=10)
+    print "  Channel: '%s', extracting slices: %s" % (channel, slices)
 
     if isE3D:
         cube = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
@@ -893,27 +863,16 @@ if __name__ == "__main__":
 
     psfCtes = [SpaxelSize,lref,alphaDeg,ellDeg]
 
-    lbda,spec,var = libES.extract_spec(full_cube, psfFn, psfCtes, fitpar[:npar_psf],
+    lbda,spec,var = libES.extract_spec(full_cube, psfFn, psfCtes,
+                                       fitpar[:npar_psf],
                                        skyDeg=skyDeg, method=opts.method,
                                        radius=radius, chi2fit=opts.chi2fit,
                                        verbosity=opts.verbosity)
 
     if skyDeg >= 0:                     # Compute background
-        spec[:,1:] /= SpaxelSize**2     # Per arcsec^2
-        var[:,1:]  /= SpaxelSize**4
-
-        sky_spec_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=s,
-                                                             start=lbda[0],
-                                                             step=step)
-                                            for s in spec[:,1:] ])
-        sky_var_list = pySNIFS.spec_list([ pySNIFS.spectrum(data=v,
-                                                            start=lbda[0],
-                                                            step=step)
-                                           for v in var[:,1:] ])
-        bkg_cube,bkg_spec = build_sky_cube(full_cube, sky_spec_list.list,
-                                           sky_var_list.list, skyDeg)
-        bkg_spec.data /= full_cube.nlens
-        bkg_spec.var  /= full_cube.nlens
+        # Convert mean sky spectrum to "per arcsec**2"
+        spec[:,1] /= SpaxelSize**2
+        var[:,1]  /= SpaxelSize**4
 
     # Creating a standard SNIFS cube with the adjusted data
     # We cannot directly use data_model.evalfit() because 1. we want
@@ -938,7 +897,7 @@ if __name__ == "__main__":
 
     tflux = spec[:,0].sum()             # Total flux of extracted spectrum
     if skyDeg >= 0:
-        sflux = bkg_spec.data.sum()     # Total flux of sky (per arcsec^2)
+        sflux = spec[:,1].sum()         # Total flux of sky (per arcsec**2)
     else:
         sflux = 0                       # Not stored anyway
 
@@ -949,13 +908,13 @@ if __name__ == "__main__":
 
     print "Saving output point-source spectrum to '%s'" % opts.out
 
-    if not opts.variance:
+    if not opts.variance:       # Separate files for signal and variance
         star_spec = pySNIFS.spectrum(data=spec[:,0],start=lbda[0],step=step)
-        star_spec.WR_fits_file(opts.out,header_list=inhdr.items())
+        star_spec.WR_fits_file(opts.out, header_list=inhdr.items())
         star_var = pySNIFS.spectrum(data=var[:,0],start=lbda[0],step=step)
         path,name = os.path.split(opts.out)
         outname = os.path.join(path,'var_'+name)
-        star_var.WR_fits_file(outname,header_list=inhdr.items())
+        star_var.WR_fits_file(outname, header_list=inhdr.items())
     else:                       # Store variance as extension to signal
         star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
                                      start=lbda[0],step=step)
@@ -968,18 +927,18 @@ if __name__ == "__main__":
             opts.sky = 'sky_%s.fits' % (channel)
         print "Saving output sky spectrum to '%s'" % opts.sky
 
-        if not opts.variance:
-            sky_spec = pySNIFS.spectrum(data=bkg_spec.data,
-                                        start=lbda[0],step=step)
+        if not opts.variance: # Separate files for signal and variance
+            sky_spec = pySNIFS.spectrum(data=spec[:,1],
+                                        start=lbda[0], step=step)
             sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
-            sky_var = pySNIFS.spectrum(data=bkg_spec.var,
-                                       start=lbda[0],step=step)
+            sky_var = pySNIFS.spectrum(data=var[:,1],
+                                       start=lbda[0], step=step)
             path,name = os.path.split(opts.sky)
             outname = os.path.join(path,'var_'+name)
             sky_var.WR_fits_file(outname,header_list=inhdr.items())
-        else:
-            sky_spec = pySNIFS.spectrum(data=bkg_spec.data, var=bkg_spec.var,
-                                        start=lbda[0],step=step)
+        else:                 # Store variance as extension to signal
+            sky_spec = pySNIFS.spectrum(data=spec[:,1], var=var[:,1],
+                                        start=lbda[0], step=step)
             sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
 
     # Save 3D adjusted parameter file ========================================
@@ -1036,17 +995,18 @@ if __name__ == "__main__":
             axN = fig1.add_subplot(2, 1, 2)
 
         axS.plot(star_spec.x, star_spec.data, blue)
-        axS.text(0.95,0.8, os.path.basename(opts.input), fontsize='small',
-                 horizontalalignment='right', transform=axS.transAxes)
+        axS.text(0.95, 0.8, os.path.basename(opts.input),
+                 fontsize='small', horizontalalignment='right',
+                 transform=axS.transAxes)
 
         axN.plot(star_spec.x, star_spec.data/N.sqrt(var[:,0]), blue)
 
         if skyDeg >= 0:
-            axB.plot(bkg_spec.x, bkg_spec.data, green)
+            axB.plot(sky_spec.x, sky_spec.data, green)
             axB.set(title=u"Background spectrum (per arcsec²)",
-                    xlim=(bkg_spec.x[0],bkg_spec.x[-1]),
+                    xlim=(sky_spec.x[0],sky_spec.x[-1]),
                     xticklabels=[])
-            axN.plot(bkg_spec.x, bkg_spec.data/N.sqrt(bkg_spec.var), green)
+            axN.plot(sky_spec.x, sky_spec.data/N.sqrt(var[:,1]), green)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (objname,method),
                 xlim=(star_spec.x[0],star_spec.x[-1]), xticklabels=[])
