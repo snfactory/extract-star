@@ -28,7 +28,9 @@ if __name__ == '__main__':
 
     parser.add_option("-r", "--ref", 
                       help="Reference datacube")
-    parser.add_option("-o", "--out", 
+    parser.add_option("-s", "--sky",
+                      help="Sky spectrum to be removed from output datacube")
+    parser.add_option("-o", "--out",
                       help="Output point-source subtracted datacube")
 
     parser.add_option("-k", "--keep", action="store_true",
@@ -98,6 +100,13 @@ if __name__ == '__main__':
     if opts.subtract:           # Save point-source subtracted cube
         cube.data -= sig
         cube.var += var
+        if opts.sky:
+            sky = Spectrum(opts.sky)
+            assert sky.readKey('ES_SDEG') < 1, 'skyDeg > 0 subtraction is not yet implemented'
+            # from arcsec^-2 into spaxels^-1
+            cube.data -= sky.y.reshape(-1,1) * 0.43**2
+            cube.var += sky.v.reshape(-1,1) * 0.43**4
+
         print "Saving point-source subtracted %s cube %s" % (cubetype, opts.out)
         cube.writeto(opts.out)
 
