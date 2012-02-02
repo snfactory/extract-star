@@ -29,6 +29,9 @@ if __name__ == '__main__':
                       help="Reference spectrum for PSF parameters")
     parser.add_option("-o", "--out",
                       help="Output spectrum [%default]", default='spec.fits')
+    parser.add_option("-S", "--skyDeg", type="int",
+                      help="Sky polynomial background degree [%default]",
+                      default=0)
     parser.add_option("-m", "--method",
                       help="Extraction method (psf|optimal|aperture|subaperture) ['%default']",
                       default="psf")
@@ -75,7 +78,7 @@ if __name__ == '__main__':
         radius = opts.radius < 0 and -opts.radius*spec.readKey('SEEING')/2.355 or opts.radius # [sigma] or [arcsec]
 
     lbda,spec,var = libES.extract_spec(cube, psf_fn, psf_ctes, psf_param,
-                                       method=opts.method,
+                                       method=opts.method, skyDeg=opts.skyDeg,
                                        radius=radius, verbosity=2)
 
     star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],

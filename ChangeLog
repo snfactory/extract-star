@@ -1,6 +1,7 @@
 2012-02-02  Rui Pereira  <rui.pereira@in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py: added --sky option.
+	* apps/extract_star/extract_fixed_psf.py: added --skyDeg option.
 
 2012-02-01  Rui Pereira  <rui.pereira@in2p3.fr>
 
