@@ -1,3 +1,10 @@
+2012-02-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (metaslice): sanity checks.
+
+	* apps/extract_star/plot_slices.py: should now handle meta-slice
+	cubes.
+
 2012-02-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (metaslice): new routine to produce

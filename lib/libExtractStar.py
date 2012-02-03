@@ -28,37 +28,54 @@ def print_msg(str, limit, verb=0):
         print str
 
 def metaslice(alen, nmeta, trim=0, thickness=False):
-    """Return [imin,imax,istp] so that range(imin,imax,istp) are the
-    boundary indices for nmeta (centered) metaslices. If thickness,
-    nmeta is actually the thickness of metaslices. Non-null trim is
-    the number of trimmed elements at each edge of the array.
+    """Return `[imin,imax,istp]` so that `range(imin,imax+1,istp)` are
+    the boundary indices for `nmeta` (centered) metaslices.
+
+    Note: `imax` is the end boundary index of last metaslice,
+          therefore element `imax` is *not* included in last
+          metaslice.
+
+    If `thickness` is True, `nmeta` is actually the thickness of
+    metaslices. Non-null `trim` is the number of trimmed elements at
+    each edge of the array.
 
     >>> a = range(0,141,10); a                        # 15 elements
     [0, 10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140]
     >>> imin,imax,istp = metaslice(len(a), 3, trim=2) # Make 3 metaslices
     >>> imin,imax,istp
-    (3, 13, 3)
-    >>> ibounds = range(imin,imax,istp); ibounds
+    (3, 12, 3)
+    >>> ibounds = range(imin,imax+1,istp); ibounds
     [3, 6, 9, 12]
     >>> for i in xrange(len(ibounds)-1): print a[ibounds[i]:ibounds[i+1]]
     [30, 40, 50]
     [60, 70, 80]
     [90, 100, 110]
-    >>> N.reshape(a[imin:imax-1],(-1,istp))
+    >>> N.reshape(a[imin:imax],(-1,istp))
     array([[ 30,  40,  50],
            [ 60,  70,  80],
            [ 90, 100, 110]])
     """
 
+    if alen<=0 or nmeta<=0 or trim<0:
+        raise ValueError("Invalid input (alen=%d>0, nmeta=%d>0, trim=%d>=0)" % \
+                         (alen, nmeta, trim))
+    elif alen <= 2*trim:
+        raise ValueError("Trimmed array would be empty")
+
     if thickness:
         istep = nmeta                    # Metaslice thickness
         nmeta = (alen - 2*trim) // istep # Nb of metaslices
+        if nmeta==0:
+            raise ValueError("Metaslice thickness is too big")
     else:
         istep = (alen - 2*trim) // nmeta # Metaslice thickness
 
+    if istep<=0:
+        raise ValueError("Null-thickness metaslices")
+
     # Center metaslices on (trimmed) array
-    imin = trim + ((alen - 2*trim) % nmeta) // 2 
-    imax = imin + nmeta*istep            # imax will be included
+    imin = trim + ((alen - 2*trim) % nmeta) // 2 # Index of 1st px of 1st slice
+    imax = imin + nmeta*istep - 1                # Index of last px of last sl.
 
     return [imin, imax+1, istep]         # Return a list to please pySNIFS
 

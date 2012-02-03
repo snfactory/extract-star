@@ -5,6 +5,7 @@ import os
 import optparse
 import numpy as N
 import pySNIFS
+from libExtractStar import metaslice
 from ToolBox.MPL import get_backend
 from ToolBox.ReST import rst_table
 
@@ -69,34 +70,41 @@ for n,inname in enumerate(args):
     print "%s: %d spaxels, %d slices [%.0f-%.0f A]" % \
         (basename, fcube.nlens, fcube.nslice, fcube.lstart, fcube.lend)
 
-    # Meta-slice definition (min,max,step [px])
-    imin = 10                           # 1st slice [px]
-    imax = fcube.nslice - 10            # Last slice [px]
-    istep = (imax-imin)//opts.nmeta     # Metaslice thickness [px]
-    imax = imin + opts.nmeta*istep
-    slices = [imin,imax,istep]
-
-    if isE3D:
-        cube = pySNIFS.SNIFS_cube(e3d_file=inname, slices=slices)
+    if fcube.nslice > 10*opts.nmeta:
+        trim = min(10, int(0.05*fcube.nslice))
+        print "Trimming: %d px" % trim
     else:
-        cube = pySNIFS.SNIFS_cube(fits3d_file=inname, slices=slices)
+        trim = 0
+
+    # Meta-slice definition (min,max,step [px])
+    imin,imax,istep = metaslice(fcube.nslice, opts.nmeta, trim=trim)
+    slices = [imin,imax,istep] # This is what pySNIFS.SNIFS_cube wants...
+
+    # Metaslice boundaries: metaslice #i is ibounds[i]:ibounds[i+1]
+    ibounds = range(imin,imax+1,istep)  # (fcube.nslice + 1,)
+
+    if istep==1:
+        cube = fcube    # No binning needed (buggy pySNIFS.SNIFS_cube)
+    else:
+        if opts.nmeta==1:               # Buggy pySNIFS.SNIFS_cube
+            slices = [imin,imax,istep-1]
+        if isE3D:
+            cube = pySNIFS.SNIFS_cube(e3d_file=inname, slices=slices)
+        else:
+            cube = pySNIFS.SNIFS_cube(fits3d_file=inname, slices=slices)
     cube.x = cube.i - 7                 # From arcsec to spx
     cube.y = cube.j - 7
 
-    lbounds = fcube.lbda[range(imin,imax+1,istep)]
-    assert len(lbounds)==len(cube.lbda)+1
-
     fig = P.figure(figsize=(10,8))
-    fig.subplots_adjust(left=0.06, bottom=0.25, top=0.95,
+    fig.subplots_adjust(left=0.06, bottom=0.25, top=0.96,
                         hspace=0.03, wspace=0.03)
 
     objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
     efftime = fcube.e3d_data_header.get("EFFTIME", N.NaN)
     airmass = fcube.e3d_data_header.get("AIRMASS", N.NaN)
-    fig.text(0.5, 0.97, 
-             u"%s [%s, %ds @%.2f], slices of %.0f Å" % \
+    fig.suptitle(u"%s [%s, %ds @%.2f], slices of %.0f Å" % \
                  (basename, objname, efftime, airmass, fcube.lstep*istep),
-             fontsize='large', ha='center', va='center')
+                 fontsize='large', y=0.99)
 
     ncol = int(P.floor(P.sqrt(cube.nslice)))
     nrow = int(P.ceil(cube.nslice/float(ncol)))
@@ -125,11 +133,9 @@ for n,inname in enumerate(args):
 
         gdata = data[N.isfinite(data)] # Non-NaN values
         m,s = gdata.mean(),gdata.std()
-        #print "Slice #%02d/%d, %.0f Å [%.0f-%.0f]: " \
-        #    "mean=%g, stddev=%g (%.2f%%)" % \
-        #    (i+1,cube.nslice,cube.lbda[i],lbounds[i],lbounds[i+1],
-        #     m,s,s/m*100)
-        rows += [[i+1,cube.lbda[i],lbounds[i],lbounds[i+1],m,s,s/m*100]]
+        rows += [[i+1, cube.lbda[i],
+                  fcube.lbda[ibounds[i]],fcube.lbda[ibounds[i+1]-1],
+                  m,s,s/m*100]]
 
         if opts.rangePerSlice:
             var = cube.slice2d(i, coord='p', var=True)
@@ -139,19 +145,21 @@ for n,inname in enumerate(args):
                        origin='lower', extent=extent, interpolation='nearest',
                        vmin=vmin, vmax=vmax, cmap=M.cm.jet)
 
-        lbl = u"%.0f Å [%.0f-%.0f]" % (cube.lbda[i],lbounds[i],lbounds[i+1])
+        lbl = u"%.0f Å [%.0f-%.0f]" % (cube.lbda[i],
+                                       fcube.lbda[ibounds[i]],
+                                       fcube.lbda[ibounds[i+1]-1])
         if opts.spatialStats:
             lbl += "\nRMS=%.2f%%" % (s/m*100)
         ax.text(0.1,0.1, lbl, 
-                fontsize=9, horizontalalignment='left', 
+                fontsize='small', horizontalalignment='left', 
                 transform=ax.transAxes)
         ax.axis(extent)
 
         # Axis
-        P.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize=8)
+        P.setp(ax.get_xticklabels()+ax.get_yticklabels(), fontsize='x-small')
         if ax.is_last_row() and ax.is_first_col():
-            ax.set_xlabel("X [spx]", fontsize=8)
-            ax.set_ylabel("Y [spx]", fontsize=8)
+            ax.set_xlabel("X [spx]", fontsize='small')
+            ax.set_ylabel("Y [spx]", fontsize='small')
         if not ax.is_last_row():
             P.setp(ax.get_xticklabels(), visible=False)
         if not ax.is_first_col():
@@ -161,6 +169,7 @@ for n,inname in enumerate(args):
     if not opts.rangePerSlice:
         cax = fig.add_axes([0.92,0.25,0.02,0.7])
         cbar = fig.colorbar(im, cax, orientation='vertical')
+        P.setp(cbar.ax.get_yticklabels(), fontsize='small')
 
     ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
 
@@ -169,9 +178,10 @@ for n,inname in enumerate(args):
         ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
                    extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
         ax2.set_aspect('auto', adjustable='box')
-        ax2.set_xlabel(u"Wavelength [Å]", fontsize=8)
-        ax2.set_ylabel("Spx #", fontsize=8)
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize=8)
+        ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
+        ax2.set_ylabel("Spx #", fontsize='small')
+        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
+               fontsize='x-small')
 
     else:                           # Mean spectrum
         spec = fcube.data.mean(axis=1)
@@ -186,7 +196,7 @@ for n,inname in enumerate(args):
                      fmt='go')
 
         ax2.set_xlim(fcube.lstart,fcube.lend)
-        ax2.set_xlabel(u"Wavelength [Å]", fontsize=8)
+        ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
         if opts.variance:
             fxlabel = "Variance"
         else:
@@ -196,12 +206,14 @@ for n,inname in enumerate(args):
             fxlabel += " [%s]" % fxunits
             if opts.variance:
                 fxlabel += u"²"
-        ax2.set_ylabel(fxlabel, fontsize=8)
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize=8)
+        ax2.set_ylabel(fxlabel, fontsize='small')
+        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
+               fontsize='x-small')
 
     # Metaslice boundaries
-    for l in lbounds:
-        ax2.axvline(l, c='0.8', zorder=0)
+    for i in ibounds[:-1]:
+        ax2.axvline(fcube.lbda[i], c='0.8', zorder=0)
+    ax2.axvline(fcube.lbda[ibounds[-1]-1], c='0.8', zorder=0)
 
     if backend:
         figname = ('slices_%s' % basename) + figext
