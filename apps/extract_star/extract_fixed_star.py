@@ -31,7 +31,7 @@ if __name__ == '__main__':
                       help="Output spectrum [%default]", default='spec.fits')
     parser.add_option("-S", "--skyDeg", type="int",
                       help="Sky polynomial background degree [%default]",
-                      default=0)
+                      default=-1)
     parser.add_option("-m", "--method",
                       help="Extraction method (psf|optimal|aperture|subaperture) ['%default']",
                       default="psf")
