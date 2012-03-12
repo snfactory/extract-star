@@ -1,3 +1,8 @@
+2012-03-12  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: support cubes without
+	variance (e.g. LFFF).
+
 2012-02-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (metaslice): sanity checks.

@@ -69,6 +69,8 @@ for n,inname in enumerate(args):
         isE3D = False
     print "%s: %d spaxels, %d slices [%.0f-%.0f A]" % \
         (basename, fcube.nlens, fcube.nslice, fcube.lstart, fcube.lend)
+    if fcube.var is None:
+        print "WARNING: input cube has no variance"
 
     if fcube.nslice > 10*opts.nmeta:
         trim = min(10, int(0.05*fcube.nslice))
@@ -106,19 +108,25 @@ for n,inname in enumerate(args):
                  (basename, objname, efftime, airmass, fcube.lstep*istep),
                  fontsize='large', y=0.99)
 
-    ncol = int(P.floor(P.sqrt(cube.nslice)))
-    nrow = int(P.ceil(cube.nslice/float(ncol)))
+    ncol = int(N.floor(N.sqrt(cube.nslice)))
+    nrow = int(N.ceil(cube.nslice/float(ncol)))
     extent = (cube.x.min()-0.5,cube.x.max()+0.5,
               cube.y.min()-0.5,cube.y.max()+0.5)
 
     if not opts.rangePerSlice:
         if opts.variance:
-            data = cube.var
+            if cube.var is None:
+                parser.error("Cube %s has no variance" % basename)
+            else:
+                data = cube.var
         else:
             data = cube.data
-        vmin,vmax = P.prctile(data[P.isfinite(cube.var)], (fmin,fmax))
+        if cube.var is not None:
+            vmin,vmax = N.percentile(data[N.isfinite(cube.var)], (fmin,fmax))
+        else:
+            vmin,vmax = N.percentile(data, (fmin,fmax))
         print "%s range [%.0f-%.0f%%]: %g,%g" % \
-            (opts.variance and 'Variance' or 'Flux', fmin,fmax,vmin,vmax)
+              (opts.variance and 'Variance' or 'Flux', fmin,fmax,vmin,vmax)
         fig.subplots_adjust(right=0.90)
     else:
         fig.subplots_adjust(right=0.95)
@@ -138,8 +146,11 @@ for n,inname in enumerate(args):
                   m,s,s/m*100]]
 
         if opts.rangePerSlice:
-            var = cube.slice2d(i, coord='p', var=True)
-            vmin,vmax = P.prctile(data[P.isfinite(var)], (fmin,fmax))
+            if cube.var is not None:
+                var = cube.slice2d(i, coord='p', var=True)
+                vmin,vmax = N.percentile(data[N.isfinite(var)], (fmin,fmax))
+            else:
+                vmin,vmax = N.percentile(data, (fmin,fmax))
 
         im = ax.imshow(data,
                        origin='lower', extent=extent, interpolation='nearest',
@@ -174,7 +185,11 @@ for n,inname in enumerate(args):
     ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
 
     if opts.stack:                  # Stacked spectra
-        vmin,vmax = P.prctile(fcube.data[P.isfinite(fcube.var)], (fmin,fmax))
+        if fcube.var is not None:
+            vmin,vmax = N.percentile(fcube.data[N.isfinite(fcube.var)],
+                                     (fmin,fmax))
+        else:
+            vmin,vmax = N.percentile(fcube.data, (fmin,fmax))
         ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
                    extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
         ax2.set_aspect('auto', adjustable='box')
@@ -185,15 +200,17 @@ for n,inname in enumerate(args):
 
     else:                           # Mean spectrum
         spec = fcube.data.mean(axis=1)
-        dspec = P.sqrt(fcube.var.sum(axis=1)/fcube.nlens**2)
-
         ax2.plot(fcube.lbda, spec, 'b-')
-        xp,yp = M.mlab.poly_between(fcube.lbda, spec-dspec, spec+dspec)
-        ax2.fill(xp,yp, fc='b', ec='b', alpha=0.3)
 
-        ax2.errorbar(cube.lbda, cube.data.mean(axis=1),
-                     yerr=P.sqrt(cube.var.sum(axis=1))/cube.nlens,
-                     fmt='go')
+        if fcube.var is not None:
+            dspec = N.sqrt(fcube.var.sum(axis=1)/fcube.nlens**2)
+            xp,yp = M.mlab.poly_between(fcube.lbda, spec-dspec, spec+dspec)
+            ax2.fill(xp,yp, fc='b', ec='b', alpha=0.3)
+            ax2.errorbar(cube.lbda, cube.data.mean(axis=1),
+                         yerr=N.sqrt(cube.var.sum(axis=1))/cube.nlens,
+                         fmt='go')
+        else:
+            ax2.plot(cube.lbda, cube.data.mean(axis=1), 'go')
 
         ax2.set_xlim(fcube.lstart,fcube.lend)
         ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
@@ -223,4 +240,4 @@ for n,inname in enumerate(args):
 print rst_table(rows,fmt,hdr)
 
 if not backend:
-        P.show()
+    P.show()
