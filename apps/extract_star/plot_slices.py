@@ -35,6 +35,8 @@ parser.add_option("-V", "--variance", action='store_true',
 parser.add_option("-s", "--stack", action='store_true',
                   help="Plot stacked spectra.",
                   default=False)
+parser.add_option("-T", "--title", type="string",
+                  help="Plot title")
 
 opts,args = parser.parse_args()
 
@@ -104,9 +106,12 @@ for n,inname in enumerate(args):
     objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
     efftime = fcube.e3d_data_header.get("EFFTIME", N.NaN)
     airmass = fcube.e3d_data_header.get("AIRMASS", N.NaN)
-    fig.suptitle(u"%s [%s, %ds @%.2f], slices of %.0f Å" % \
-                 (basename, objname, efftime, airmass, fcube.lstep*istep),
-                 fontsize='large', y=0.99)
+    if opts.title:
+        title = opts.title
+    else:
+        title = u"%s [%s, %ds @%.2f], slices of %.0f Å" % \
+                (basename, objname, efftime, airmass, fcube.lstep*istep)
+    fig.suptitle(title, fontsize='large', y=0.99)
 
     ncol = int(N.floor(N.sqrt(cube.nslice)))
     nrow = int(N.ceil(cube.nslice/float(ncol)))
@@ -195,8 +200,7 @@ for n,inname in enumerate(args):
         ax2.set_aspect('auto', adjustable='box')
         ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
         ax2.set_ylabel("Spx #", fontsize='small')
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
-               fontsize='x-small')
+        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize='x-small')
 
     else:                           # Mean spectrum
         spec = fcube.data.mean(axis=1)
@@ -224,13 +228,12 @@ for n,inname in enumerate(args):
             if opts.variance:
                 fxlabel += u"²"
         ax2.set_ylabel(fxlabel, fontsize='small')
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
-               fontsize='x-small')
+        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize='x-small')
 
     # Metaslice boundaries
     for i in ibounds[:-1]:
-        ax2.axvline(fcube.lbda[i], c='0.8', zorder=0)
-    ax2.axvline(fcube.lbda[ibounds[-1]-1], c='0.8', zorder=0)
+        ax2.axvline(fcube.lbda[i], c='0.8', zorder=5)
+    ax2.axvline(fcube.lbda[ibounds[-1]-1], c='0.8', zorder=5)
 
     if backend:
         figname = ('slices_%s' % basename) + figext
