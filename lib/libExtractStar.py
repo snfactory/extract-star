@@ -111,7 +111,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     Returns spec,var where spec and var are (nslice,npar+1)."""
 
     assert method in ('psf','aperture','subaperture','optimal'), \
-           "Extraction method '%s' unrecognized" % method
+           "Unknown extraction method '%s'" % method
     assert skyDeg >= -1, \
            "skyDeg=%d is invalid (should be >=-1)" % skyDeg
 
@@ -126,7 +126,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     # of each slice to 1.
     param = N.concatenate((psf_param,N.ones(cube.nslice)))
 
-    # Linear least-squares fit: I*PSF + sky [ + a*x + b*y + ...]
+    # General linear least-squares fit: data = I*PSF + sky [ + a*x + b*y + ...]
+    # See Numerical Recipes (2nd ed.), sect.15.4
 
     spxSize = psf_ctes[0]               # Spaxel size [arcsec]
     cube.x  = cube.i - 7                # x in spaxel
@@ -135,77 +136,94 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
     psf   = model.comp(param, normed=True) # nslice,nlens
 
     npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb param. in polynomial bkgnd
-    Z = N.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
-    Z[:,:,0] = psf                      # Intensity
-    
+
+    # Basis function matrix: BF (nslice,nlens,npar+1) (so-called X in NR)
+    BF = N.zeros((cube.nslice,cube.nlens,npar_sky+1),'d')
+    BF[:,:,0] = psf                     # Intensity    
     if npar_sky:                        # =0 when no background (skyDeg<=-1)
-        Z[:,:,1] = 1                    # Constant background
+        BF[:,:,1] = 1                   # Constant background
         n = 2
         for d in xrange(1,skyDeg+1):
             for j in xrange(d+1):
                 # Background polynomials as function of spaxel (centered)
                 # position [spx]
-                Z[:,:,n] = cube.x**(d-j) * cube.y**j 
+                BF[:,:,n] = cube.x**(d-j) * cube.y**j 
                 n += 1                  # Finally: n = npar_sky + 1
 
-    # Chi2 (weight=1/var) vs. Least-square (weight=1) fit
+    # Chi2 (variance-weighted) vs. Least-square (unweighted) fit
+    # *Note* that weight is actually 1/sqrt(var) (see NR)
     if chi2fit:
         weight = N.where(cube.var>0, 1/N.sqrt(cube.var), 0) # nslice,nlens
     else:
         weight = N.where(cube.var>0, 1, 0) # nslice,nlens
-    X = (Z.T * weight.T).T              # nslice,nlens,npar+1
+
+    # Design matrix (basis functions normalized by std errors)
+    A = BF * weight[...,N.newaxis]      # nslice,nlens,npar+1
     b = weight*cube.data                # nslice,nlens
 
-    # The linear least-squares fit could be done directly using
-    # spec = N.array([ N.linalg.lstsq(xx,bb)[0] for xx,bb in zip(X,b) ])
-    # but A is needed anyway to compute covariance matrix C=1/A.
-    # Furthermore, linear resolution
-    # [ N.linalg.solve(aa,bb) for aa,bb in zip(A,B) ]
+    # The linear least-squares fit AX = b could be done directly using
+    #
+    #   spec = N.array([ N.linalg.lstsq(aa,bb)[0] for aa,bb in zip(A,b) ])
+    #
+    # but Alpha=dot(A.T,A) is needed anyway to compute covariance
+    # matrix Cov=1/Alpha. Furthermore, linear resolution
+    #
+    #   [ N.linalg.solve(aa,bb) for aa,bb in zip(Alpha,Beta) ]
+    #
     # can be replace by faster (~x10) matrix product
-    # [ N.dot(cc,bb) for cc,bb in zip(C,B) ]
-    # since C=1/A is readily available.
-    # See Numerical Recipes (2nd ed.), sect.15.4
-
+    #
+    #   [ N.dot(cc,bb) for cc,bb in zip(Cov,Beta) ]
+    #
+    # since Cov=1/Alpha is readily available.
+    #
     # OTOH, "Solving Ax = b: inverse vs cholesky factorization" thread
     # (http://thread.gmane.org/gmane.comp.python.numeric.general/41365)
-    # advocates to never invert a matrix directly.
+    # advocates to never invert a matrix directly....
 
-    A = N.array([ N.dot(xx.T, xx) for xx in X ]) # nslice,npar+1,npar+1
-    B = N.array([ N.dot(xx.T, bb) for xx,bb in zip(X,b) ]) # nslice,npar+1
+    #Alpha = N.einsum('...jk,...jl',A,A)              # ~x2 slower
+    Alpha = N.array([ N.dot(aa.T, aa) for aa in A ]) # nslice,npar+1,npar+1
+    #Beta = N.einsum('...jk,...j',A,b)
+    Beta = N.array([ N.dot(aa.T, bb) for aa,bb in zip(A,b) ]) # nslice,npar+1
     try:
-        C = N.array([ N.linalg.pinv(aa) for aa in A ]) # nslice,npar+1,npar+1
+        Cov = N.array([ N.linalg.pinv(aa) for aa in Alpha ])  # ns,np+1,np+1
     except N.linalg.LinAlgError:
         raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
-    # spec & var = nslice x Star,Sky,[slope_x...]
-    spec = N.array([ N.dot(cc,bb) for cc,bb in zip(C,B) ]) # nslice,npar+1
-    var  = N.array([ N.diag(cc) for cc in C ])             # nslice,npar+1
+    # spec & var = nslice x [Star,Sky,[slope_x...]]
+    spec = N.array([ N.dot(cc,bb) for cc,bb in zip(Cov,Beta) ]) # nslice,npar+1
+    var  = N.array([ N.diag(cc) for cc in Cov ])             # nslice,npar+1
 
     # Compute the least-square variance using the chi2-case method
+    # (errors are meaningless in pure least-square case)
     if not chi2fit:
-        A = N.array([ N.dot(xx.T, xx) for xx in
-                      (Z.T * N.where(cube.var>0, 1/N.sqrt(cube.var), 0).T).T ])
+        weight = N.where(cube.var>0, 1/N.sqrt(cube.var), 0)
+        A = BF * weight[...,N.newaxis]
+        Alpha = N.array([ N.dot(aa.T, aa) for aa in A ])
         try:
-            C = N.array([ N.linalg.pinv(aa) for aa in A ])
+            Cov = N.array([ N.linalg.pinv(aa) for aa in Alpha ])
         except N.linalg.LinAlgError:
             raise N.linalg.LinAlgError("Singular matrix "
                                        "during variance extraction")
-        var = N.array([ N.diag(cc) for cc in C ])
+        var = N.array([ N.diag(cc) for cc in Cov ])
 
     # Now, what about negative sky? The pb arises for short-exposures,
     # where there's probably no sky whatsoever (except if taken during
     # twilight), and where a (significantly) negative sky is actually
     # a shortcoming of the PSF. For long exposures, one expects "some"
     # negative sky values, where sky is compatible to 0.
-
-    # One could also use an NNLS fit to force parameter non-negativity:
-    # [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(A,B) ]
-    # *BUT* 1. it is incompatible w/ non-constant sky (since it will force all
-    # sky coeffs to >0). This can therefore be done only if skyDeg=0 (it would
-    # otherwise involve optimization with constraints on sky positivity).
+    #
+    # One could also use a NNLS fit to force parameter non-negativity:
+    #
+    #   [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(Alpha,Beta) ]
+    #
+    # *BUT*:
+    # 1. It is incompatible w/ non-constant sky (since it will force
+    #    all sky coeffs to >0). This can therefore be done only if
+    #    skyDeg=0 (it would otherwise involve optimization with
+    #    constraints on sky positivity).
     # 2. There is no easy way to estimate covariance matrix from NNLS
-    # fit. Since an NNLS fit on a negative sky slice would probably always
-    # lead to a null sky, an NNLS fit is then equivalent to a standard 'PSF'
-    # fit without sky.
+    #    fit. Since an NNLS fit on a negative sky slice would probably
+    #    always lead to a null sky, an NNLS fit is then equivalent to
+    #    a standard 'PSF' fit without sky.
 
     if skyDeg==0:
         negSky = spec[:,1]<0            # Test for presence of negative sky
@@ -215,25 +233,25 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
             print_msg(str(cube.lbda[negSky]), 2, verbosity)
         #if 'short' in psf_fn.name:
             # For slices w/ sky<0, fit only PSF without background
-            A = N.array([ N.dot(xx,xx) for xx in X[negSky,:,0] ])
-            B = N.array([ N.dot(xx,bb)
-                          for xx,bb in zip(X[negSky,:,0],b[negSky]) ])
-            C = 1/A
-            spec[negSky,0] = C*B        # Linear fit without sky
+            Alpha = N.array([ N.dot(aa,aa) for aa in A[negSky,:,0] ])
+            Beta = N.array([ N.dot(aa,bb)
+                             for aa,bb in zip(A[negSky,:,0],b[negSky]) ])
+            Cov = 1/Alpha
+            spec[negSky,0] = Cov*Beta   # Linear fit without sky
             spec[negSky,1] = 0          # Set sky to null
-            var[negSky,0] = C
+            var[negSky,0] = Cov
             var[negSky,1] = 0
 
-    if method == 'psf':                 # Nothing else to be done
-        return cube.lbda,spec,var
+    if method == 'psf':
+        return cube.lbda,spec,var       # PSF extraction
 
     # Reconstruct background and subtract it from cube
     bkgnd     = N.zeros_like(cube.data)
     var_bkgnd = N.zeros_like(cube.var)
     if npar_sky:
-        for d in xrange(1,npar_sky+1):      # Loop over sky components
-            bkgnd     += (Z[:,:,d].T * spec[:,d]).T
-            var_bkgnd += (Z[:,:,d].T**2 * var[:,d]).T
+        for d in xrange(1,npar_sky+1):  # Loop over sky components
+            bkgnd     += (BF[:,:,d].T    * spec[:,d]).T
+            var_bkgnd += (BF[:,:,d].T**2 *  var[:,d]).T
     subData = cube.data - bkgnd         # Bkgnd subtraction (nslice,nlens)
     subVar = cube.var.copy()
     good = cube.var>0
@@ -247,24 +265,23 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
 
     # Plain summation over aperture
 
-    # Aperture center [spx] (nslice)
-    xc = psf_param[2] + psf_param[0]*model.ADR_coeff[:,0]*N.cos(psf_param[1])
-    yc = psf_param[3] + psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
     # Aperture radius in spaxels
     aperRad = radius / spxSize
     print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad),
               1, verbosity)
-
-    # Radius [spx] (nslice,nlens)
+    # Aperture center after ADR offset [spx] (nslice)
+    xc = psf_param[2] + psf_param[0]*model.ADR_coeff[:,0]*N.cos(psf_param[1])
+    yc = psf_param[3] + psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
+    # Radial distance from center [spx] (nslice,nlens)
     r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
     # Circular aperture (nslice,nlens)
     # Use r<aperRad[:,N.newaxis] if radius is a (nslice,) vec.
     frac = (r < aperRad).astype('float')
 
     if method == 'subaperture':
-        # fractions accounting for subspaxels (a bit slow)
+        # Fractions accounting for subspaxels (a bit slow)
         newfrac = subaperture(xc, yc, aperRad, 4)
-        # remove bad spaxels since subaperture returns the full spaxel grid
+        # Remove bad spaxels since subaperture returns the full spaxel grid
         w = (~N.isnan(cube.slice2d(0).ravel())).nonzero()[0]
         frac = newfrac[:,w]
 
@@ -327,7 +344,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # Replace signal and variance estimates from plain summation
         spec[:,0] = (frac    * subData).sum(axis=1)
         var[:,0]  = (frac**2 * subVar).sum(axis=1)
-        return cube.lbda,spec,var
+
+        return cube.lbda,spec,var       # [Sub]Aperture extraction
 
     if method == 'optimal':
         # Model signal = Intensity*PSF + bkgnd
@@ -338,7 +356,7 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # (alpha = 1/flat-field coeff and N = photon counts) and variance ~ (N
         # + RoN**2) * alpha**2 = (signal/alpha + RoN**2) * alpha**2 =
         # alpha*signal + beta. This model disregards spatial component of
-        # flat-field, which is supposed to be constant of FoV.
+        # flat-field, which is supposed to be constant on FoV.
 
         # Model variance = alpha*Signal + beta
         coeffs = N.array([ polyfit_clip(modsig[s], cube.var[s], 1, clip=5)
@@ -357,7 +375,8 @@ def extract_spec(cube, psf_fn, psf_ctes, psf_param, skyDeg=0,
         # Replace signal and variance estimates from optimal summation
         spec[:,0] = (weight    * subData).sum(axis=1)
         var[:,0]  = (weight**2 * subVar).sum(axis=1)
-        return cube.lbda,spec,var
+        
+        return cube.lbda,spec,var       # Optimal extraction
 
 # Resampling ========================================================
 
@@ -374,45 +393,30 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
     """
 
     from ToolBox.Arrays import rebin
-    # resample spaxel center positions
-    # originally [-7:7]
+    
+    # Resample spaxel center positions, originally [-7:7]
     f = 2.**f
-    epsilon = 1. / f / 2.
+    epsilon = 0.5 / f
     border = nspaxel / 2.
     r = N.linspace(-border + epsilon, border - epsilon, nspaxel*f)
 
-    # (x,y) positions of resampled array
-    x,y = N.meshgrid(r, r)
-    # spaxel fraction
-    frac = N.ones(x.shape) / f**2
+    x,y = N.meshgrid(r, r)        # (x,y) positions of resampled array
+    frac = N.ones(x.shape) / f**2 # Spaxel fraction
 
-    try:
-        xc.shape[0]
-    except (AttributeError, IndexError):
-        xc = isinstance(xc, (tuple, list)) and N.array(xc) or N.array([xc])
-
-    try:
-        yc.shape[0]
-    except (AttributeError, IndexError):
-        yc = isinstance(yc, (tuple, list)) and N.array(yc) or N.array([yc])
-
-    try:
-        rc.shape[0]
-    except (AttributeError, IndexError):
-        rc = isinstance(rc, (tuple, list)) and N.array(rc) or N.array([rc])
-
+    xc = N.atleast_1d(xc)
+    yc = N.atleast_1d(yc)
     assert xc.shape == yc.shape
-    # one single radius?
-    if len(rc) == 1:
+
+    rc = N.atleast_1d(rc)
+    if len(rc) == 1:              # One single radius?
         rc = N.repeat(rc, xc.shape)
 
     out = []
-    # this loop could possibly be achieved with some higher order matrix
+    # This loop could possibly be achieved with some higher order matrix
     for i,j,k in zip(xc, yc, rc):
         fr = frac.copy()
-        # subspaxels outside circle
-        fr[N.hypot(x-i, y-j) > k] = 0.
-        # resample back to original size and sum
+        fr[N.hypot(x-i, y-j) > k] = 0.  # subspaxels outside circle
+        # Resample back to original size and sum
         out.append(rebin(fr, f).ravel())
 
     return N.array(out)
