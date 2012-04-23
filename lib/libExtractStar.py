@@ -91,7 +91,7 @@ def get_slices_lrange(cube, nmeta=12):
     from pySNIFS import SNIFS_cube
 
     # Should be the same definition as in extract_star
-    slices = libES.metaslice(cube.nslice, nmeta, trim=10)
+    slices = metaslice(cube.nslice, nmeta, trim=10)
     try:
         slice_cube = SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
     except (ValueError, AttributeError):

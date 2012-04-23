@@ -1,3 +1,7 @@
+2012-04-23  Rui Pereira  <rui.pereira@in2p3.fr>
+
+	* lib/libExtractStar.py (get_slices_lrange): remove libES reference.
+
 2012-03-12  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: support cubes without
