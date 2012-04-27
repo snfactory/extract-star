@@ -134,7 +134,8 @@ def write_fits(self, filename=None, header=None):
 
     # 2nd (compressed) extension 'COVAR': covariance (lower triangle)
     if hasattr(self, 'cov'):
-        hducov = F.CompImageHDU(N.tril(self.cov), name='COVAR')
+        #hducov = F.CompImageHDU(N.tril(self.cov), name='COVAR')
+        hducov = F.ImageHDU(N.tril(self.cov), name='COVAR')
         hducov.header.update('CRVAL1', self.start)
         hducov.header.update('CDELT1', self.step)
         hducov.header.update('CRVAL2', self.start)
@@ -142,7 +143,7 @@ def write_fits(self, filename=None, header=None):
 
         hduList.append(hducov)
 
-    if filename:
+    if filename:                        # Save hduList to disk
         hduList.writeto(filename, output_verify='fix', clobber=True)
 
     return hduList                      # For further handling if needed
@@ -774,6 +775,11 @@ if __name__ == "__main__":
                                   (psfFn, psfCtes, fitpar[:npar_psf]), skyDeg,
                                   covpar[:npar_psf,:npar_psf])
 
+        # Add diagonal contribution from signal noise
+        covspec += N.diag(varspecs[:,0])
+        # Extract diagonal term
+        varspecs[:,0] = covspec.diagonal()
+
     # Creating a standard SNIFS cube with the adjusted data
     # We cannot directly use data_model.evalfit() because 1. we want
     # to keep psf and bkg separated; 2. cube_fit will always have 225
@@ -885,9 +891,6 @@ if __name__ == "__main__":
                  transform=axS.transAxes)
 
         axN.plot(star_spec.x, star_spec.data/N.sqrt(varspecs[:,0]), blue)
-        if opts.covariance:
-            axN.plot(star_spec.x,
-                     star_spec.data/N.sqrt(covspec.diagonal()), orange)
 
         if skyDeg >= 0:
             axB.plot(sky_spec.x, sky_spec.data, green)
@@ -1013,37 +1016,22 @@ if __name__ == "__main__":
             parnames[npar_psf+1::2] = ['']*len(parnames[npar_psf+1::2])
 
             fig3 = pylab.figure(figsize=(6,6))
-            ## ax3a = fig3.add_subplot(1,2,1,
-            ax3a = fig3.add_subplot(1,1,1,
-                                    title="Parameter correlation matrix")
-            im3 = ax3a.imshow(N.absolute(corrpar),
-                              vmin=1e-3, vmax=1,
-                              norm=pylab.matplotlib.colors.LogNorm(),
-                              aspect='equal', origin='upper',
-                              interpolation='nearest')
-            ax3a.set_xticks(range(len(parnames)))
-            ax3a.set_xticklabels(parnames,
-                                 va='top', fontsize='x-small', rotation=90)
-            ax3a.set_yticks(range(len(parnames)))
-            ax3a.set_yticklabels(parnames,
-                                 ha='right', fontsize='x-small')
+            ax3 = fig3.add_subplot(1,1,1,
+                                   title="Parameter correlation matrix")
+            im3 = ax3.imshow(N.absolute(corrpar),
+                             vmin=1e-3, vmax=1,
+                             norm=pylab.matplotlib.colors.LogNorm(),
+                             aspect='equal', origin='upper',
+                             interpolation='nearest')
+            ax3.set_xticks(range(len(parnames)))
+            ax3.set_xticklabels(parnames,
+                                va='top', fontsize='x-small', rotation=90)
+            ax3.set_yticks(range(len(parnames)))
+            ax3.set_yticklabels(parnames,
+                                ha='right', fontsize='x-small')
 
-            cb3 = fig3.colorbar(im3, ax=ax3a, orientation='vertical')
+            cb3 = fig3.colorbar(im3, ax=ax3, orientation='vertical')
             cb3.set_label("|Correlation|")
-
-            ## # Point-source spectral correlation from *parameter* covariance
-            ## corrspec = cov2corr(covspec)
-
-            ## ax3b = fig3.add_subplot(1,2,2,
-            ##                         title="Spectral correlation matrix",
-            ##                         xlabel=u'Wavelength [Å]')
-            ## ax3b.imshow(N.absolute(corrspec),
-            ##             vmin=1e-3, vmax=1,
-            ##             norm=pylab.matplotlib.colors.LogNorm(),
-            ##             extent=[full_cube.lstart-full_cube.lstep/2,
-            ##                     full_cube.lend  +full_cube.lstep/2]*2,
-            ##             aspect='equal', origin='upper',
-            ##             interpolation='nearest')
 
         # Plot of the star center of gravity and adjusted center -------------
 
