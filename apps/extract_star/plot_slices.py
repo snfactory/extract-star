@@ -5,9 +5,9 @@ import os
 import optparse
 import numpy as N
 import pySNIFS
-from libExtractStar import metaslice
 from ToolBox.MPL import get_backend
 from ToolBox.ReST import rst_table
+from ToolBox.Arrays import metaslice
 
 __author__ = "Yannick Copin <y.copin@ipnl.in2p3.fr>"
 __version__ = '$Id$'

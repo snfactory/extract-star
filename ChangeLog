@@ -1,6 +1,7 @@
 2012-04-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
-	* apps/extract_star/extract_star.py: on the way to propagate
+	* apps/extract_star/extract_star.py: on the way to compute
+	point-source spectrum covariance matrix from PSF parameter
 	covariance.
 
 2012-04-23  Rui Pereira  <rui.pereira@in2p3.fr>

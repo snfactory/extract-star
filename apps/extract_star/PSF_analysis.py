@@ -25,78 +25,11 @@ import scipy as S
 from scipy import linalg as L
 from scipy.ndimage import filters as F
 
+import ToolBox.Atmospheric as TA
+
 SpaxelSize = 0.43                       # Spaxel size in arcsec
 MK_pressure = 616.                      # Default pressure [mbar]
 MK_temp = 2.                            # Default temperature [C]
-
-class ADR_model:
-
-    def __init__(self, pressure=616., temp=2., **kwargs):
-        """ADR_model(pressure, temp, [lref=, delta=, theta=])."""
-
-        if not 550<pressure<650 and not not -20<temp<20:
-            raise ValueError("ADR_model: Non-std pressure (%.0f mbar) or"
-                             "temperature (%.0f C)" % (pressure, temp))        
-        self.P = pressure
-        self.T = temp
-        if 'lref' in kwargs:
-            self.set_ref(lref=kwargs['lref'])
-        else:
-            self.set_ref()
-        if 'delta' in kwargs and 'theta' in kwargs:
-            self.set_param(delta=kwargs['delta'],theta=kwargs['theta'])
-
-    def __str__(self):
-
-        s = "ADR: P=%.0f mbar, T=%.0fC" % (self.P,self.T)
-        if hasattr(self, 'lref'):
-            s += ", ref.lambda=%.0fA" % self.lref
-        if hasattr(self, 'delta') and hasattr(self, 'theta'):
-            s += ", delta=%.2f, theta=%.1f deg" % \
-                 (self.delta,self.theta/S.pi*180)
-
-        return s
-
-    def set_ref(self, lref=5000.):
-
-        self.lref = lref
-        self.nref = atmosphericIndex(self.lref, P=self.P, T=self.T)
-
-    def set_param(self, delta, theta):
-
-        self.delta = delta
-        self.theta = theta
-
-    def refract(self, x, y, lbda, backward=False):
-
-        if not hasattr(self, 'delta'):
-            raise AttributeError("ADR parameters 'delta' and 'theta' are not set.")
-
-        x0 = S.atleast_1d(x)            # (npos,)
-        y0 = S.atleast_1d(y)
-        assert len(x)==len(y), "Incompatible x and y vectors."
-        lbda = S.atleast_1d(lbda)       # (nlbda,)
-        npos = len(x)
-        nlbda = len(lbda)
-
-        dz = (self.nref - atmosphericIndex(lbda, P=self.P, T=self.T)) * \
-             206265. / SpaxelSize       # (nlbda,)
-        dz *= self.delta
-
-        if backward:
-            assert npos==nlbda, "Incompatible x,y and lbda vectors."
-            x = x0 - dz*S.sin(self.theta)
-            y = y0 + dz*S.cos(self.theta) # (nlbda=npos,)
-            out = S.vstack((x,y))       # (2,npos)
-        else:
-            dz = dz[:,S.newaxis]        # (nlbda,1)
-            x = x0 + dz*S.sin(self.theta) # (nlbda,npos)
-            y = y0 - dz*S.cos(self.theta) # (nlbda,npos)
-            out = S.dstack((x.T,y.T)).T # (2,nlbda,npos)
-            assert out.shape == (2,nlbda,npos), "ARGH"
-
-        return S.squeeze(out)
-
 
 # Definitions ================================================================
 
@@ -1553,7 +1486,7 @@ if __name__ == "__main__":
     # 2) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position
-    adr = ADR_model(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
+    adr = TA.ADR(pressure, temp, lref=lbda_ref, delta=delta, theta=theta)
     print_msg(str(adr), 1)
     xref,yref = adr.refract(xc_vec,yc_vec, cube.lbda, backward=True)
     valid = khi2_vec > 0                # Discard unfitted slices
