@@ -1,3 +1,11 @@
+2012-04-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new option '-V/--covariance'
+	to compute and store spectral (lower-triangle) covariance matrix
+	as extension 'COVAR' in point-source spectrum. It overrides
+	deprecated option '-V/--variance' (which was on by default) to
+	store variance as extension of spectrum.
+
 2012-04-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: on the way to compute

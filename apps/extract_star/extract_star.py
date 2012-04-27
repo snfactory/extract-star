@@ -40,24 +40,22 @@ __author__ = "C. Buton, Y. Copin, E. Pecontal"
 __version__ = '$Id$'
 
 import os
-import optparse
 
-from pyfits import getheader
-
-import numpy as N # BEWARE: scipy.sqrt(-1) = 1j while numpy.sqrt(-1) = NaN
+import pyfits as F
+import numpy as N 
 
 import pySNIFS
 import pySNIFS_fit
 import libExtractStar as libES
 from ToolBox.Atmosphere import ADR
-from ToolBox.Optimizer import approx_deriv
+from ToolBox.Optimizer import approx_deriv, cov2corr
 from ToolBox.Arrays import metaslice
+from ToolBox.MPL import make_method
 
 # Numpy setup
 #N.seterr(divide='raise',invalid='ignore')
 N.set_printoptions(linewidth=150) # Wide lines
 
-SpxSize = 0.43      # Spaxel size in arcsec (check SNIFS_cube.spxSize)
 LbdaRef = 5000.     # Use constant ref. for easy comparison
 
 # Non-default colors
@@ -75,14 +73,15 @@ def print_msg(str, limit):
     libES.print_msg(str, limit, verb=opts.verbosity)
 
 
-def param_covariance(model, param=None, order=3):
+@make_method(pySNIFS_fit.model)
+def param_covariance(self, param=None, order=3):
     """Overrides pySNIFS_fit.model.param_error for covariance
     computation."""
 
     if param is None:
-        param = model.fitpar
+        param = self.fitpar
 
-    hes = approx_deriv(model.objgrad, param, order=order) # Chi2 hessian
+    hes = approx_deriv(self.objgrad, param, order=order) # Chi2 hessian
     try:
         cov = 2 * N.linalg.pinv(hes) # Covariance matrix
     except N.linalg.LinAlgError, error:
@@ -91,8 +90,6 @@ def param_covariance(model, param=None, order=3):
 
     return cov
 
-# Make it a method of pySNIFS_fit.model
-pySNIFS_fit.model.param_covariance = param_covariance
 
 def spec_covariance(cube, psf, skyDeg, covpar):
     """Compute point-source spectrum full covariance from
@@ -110,7 +107,49 @@ def spec_covariance(cube, psf, skyDeg, covpar):
     # Covariance propagation
     return N.dot(N.dot(jac.T, covpar), jac) # (nslice,nslice)
 
+
+@make_method(pySNIFS.spectrum)
+def write_fits(self, filename=None, header=None):
+    """Overrides pySNIFS_fit.spectrum.WR_fits_file. Allows full header
+    propagation (including comments) and covariance matrix storage."""
+
+    assert None not in (self.start, self.step, self.data)
+
+    # Primary HDU: signal
+    hdusig = F.PrimaryHDU(self.data, header=header)
+    for key in ['EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS']:
+        del(hdusig.header[key])  # Remove technical keys from E3D cube
+    hdusig.header.update('CRVAL1', self.start, after='NAXIS1')
+    hdusig.header.update('CDELT1', self.step,  after='CRVAL1')
+
+    hduList = F.HDUList([hdusig])
+
+    # 1st extension 'VARIANCE': variance
+    if self.has_var:
+        hduvar = F.ImageHDU(self.var, name='VARIANCE')
+        hduvar.header.update('CRVAL1', self.start)
+        hduvar.header.update('CDELT1', self.step)
+
+        hduList.append(hduvar)
+
+    # 2nd (compressed) extension 'COVAR': covariance (lower triangle)
+    if hasattr(self, 'cov'):
+        hducov = F.CompImageHDU(N.tril(self.cov), name='COVAR')
+        hducov.header.update('CRVAL1', self.start)
+        hducov.header.update('CDELT1', self.step)
+        hducov.header.update('CRVAL2', self.start)
+        hducov.header.update('CDELT2', self.step)
+
+        hduList.append(hducov)
+
+    if filename:
+        hduList.writeto(filename, output_verify='fix', clobber=True)
+
+    return hduList                      # For further handling if needed
+
+
 def create_2Dlog(opts, cube, params, dparams, chi2):
+    """Dump an informative text log about the PSF (metaslice) 2D-fit."""
 
     logfile = file(opts.log2D,'w')
 
@@ -158,6 +197,7 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
 
 
 def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
+    """Dump an informative text log about the PSF (full-cube) 3D-fit."""
 
     logfile = file(opts.log3D,'w')
 
@@ -224,12 +264,12 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     logfile.close()
 
 
-def fill_header(hdr, psfname, param, adr, lrange, opts, chi2, seeing, fluxes):
-    """Fill header hdr with fit-related keywords."""
+def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
+    """Fill header *hdr* with PSF fit-related keywords."""
 
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
-    lmin,lmax = lrange
-    x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=SpxSize)
+    lmin,lmax = cube.lstart,cube.lend
+    x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
     print_msg("Reference position [%.0fA]: %.2f x %.2f spx" % \
               (LbdaRef,x0,y0), 1)
 
@@ -316,6 +356,8 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
 
 if __name__ == "__main__":
 
+    import optparse
+
     # Options ================================================================
 
     methods = ('psf','aperture','subaperture','optimal')
@@ -331,13 +373,10 @@ if __name__ == "__main__":
     parser.add_option("-s", "--sky", type="string",
                       help="Output sky spectrum")
 
-    # Variance management
-    parser.add_option("-V", "--variance", action='store_true',
-                      help="Store variance spectrum in extension",
-                      default=True)
-    parser.add_option("--varianceAside", dest='variance',
-                      action='store_false',
-                      help="Store variance in individual spectrum")
+    # Covariance management
+    parser.add_option("-V", "--covariance", action='store_true',
+                      help="Compute and store covariance matrix in extension",
+                      default=False)
 
     # Parameters
     parser.add_option("-S", "--skyDeg", type="int",
@@ -429,11 +468,11 @@ if __name__ == "__main__":
     # updates in fill_hdr, which requires a *true* pyfits header.
 
     try:                                # Try to read a Euro3D cube
-        inhdr = getheader(opts.input, 1) # 1st extension
+        inhdr = F.getheader(opts.input, 1) # 1st extension
         full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
         isE3D = True
     except ValueError:                  # Try to read a 3D FITS cube
-        inhdr = getheader(opts.input, 0) # Primary extension
+        inhdr = F.getheader(opts.input, 0) # Primary extension
         full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
         isE3D = False
     step = full_cube.lstep
@@ -716,24 +755,24 @@ if __name__ == "__main__":
     if skyDeg < 0:
         print "WARNING: no background adjusted"
 
+    # Spectrum extraction (point-source, sky, etc.) 
     psfCtes = [spxSize,lref,alphaDeg,ellDeg]
-
     lbda,sigspecs,varspecs = libES.extract_specs(
         full_cube, (psfFn, psfCtes, fitpar[:npar_psf]),
         skyDeg=skyDeg, method=opts.method,
         radius=radius, chi2fit=opts.chi2fit,
         verbosity=opts.verbosity)
 
+    if skyDeg >= 0:          # Convert sky spectrum to "per arcsec**2"
+        sigspecs[:,1] /= spxSize**2
+        varspecs[:,1] /= spxSize**4
+
     # Full covariance matrix of point-source spectrum
-    if False:
+    if opts.covariance:
+        print "Computing point-source spectrum covariance..."
         covspec = spec_covariance(full_cube,
                                   (psfFn, psfCtes, fitpar[:npar_psf]), skyDeg,
                                   covpar[:npar_psf,:npar_psf])
-
-    if skyDeg >= 0:                     # Compute background
-        # Convert sky spectrum to "per arcsec**2"
-        sigspecs[:,1] /= spxSize**2
-        varspecs[:,1] /= spxSize**4
 
     # Creating a standard SNIFS cube with the adjusted data
     # We cannot directly use data_model.evalfit() because 1. we want
@@ -762,24 +801,19 @@ if __name__ == "__main__":
     else:
         sflux = 0                   # Not stored anyway
 
-    fill_header(inhdr, psfFn.name, fitpar[:npar_psf], adr,
-                (cube.lstart,cube.lend), opts, chi2, seeing, (tflux,sflux))
+    fill_header(inhdr, psfFn.name, fitpar[:npar_psf], adr, cube, opts,
+                chi2, seeing, (tflux,sflux))
 
     # Save star spectrum =====================================================
 
     print "Saving output point-source spectrum to '%s'" % opts.out
 
-    if not opts.variance:       # Separate files for signal and variance
-        star_spec = pySNIFS.spectrum(data=sigspecs[:,0],start=lbda[0],step=step)
-        star_spec.WR_fits_file(opts.out, header_list=inhdr.items())
-        star_var = pySNIFS.spectrum(data=varspecs[:,0],start=lbda[0],step=step)
-        path,name = os.path.split(opts.out)
-        outname = os.path.join(path,'var_'+name)
-        star_var.WR_fits_file(outname, header_list=inhdr.items())
-    else:                       # Store variance as extension to signal
-        star_spec = pySNIFS.spectrum(data=sigspecs[:,0], var=varspecs[:,0],
-                                     start=lbda[0], step=step)
-        star_spec.WR_fits_file(opts.out, header_list=inhdr.items())
+    # Store variance as extension to signal
+    star_spec = pySNIFS.spectrum(data=sigspecs[:,0], var=varspecs[:,0],
+                                 start=lbda[0], step=step)
+    if opts.covariance: # Append covariance directly to pySNIFS.spectrum
+        star_spec.cov = covspec
+    star_spec.write_fits(opts.out, inhdr)
 
     # Save sky spectrum/spectra ==============================================
 
@@ -788,19 +822,10 @@ if __name__ == "__main__":
             opts.sky = 'sky_%s.fits' % (channel)
         print "Saving output sky spectrum to '%s'" % opts.sky
 
-        if not opts.variance: # Separate files for signal and variance
-            sky_spec = pySNIFS.spectrum(data=sigspecs[:,1],
-                                        start=lbda[0], step=step)
-            sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
-            sky_var = pySNIFS.spectrum(data=varspecs[:,1],
-                                       start=lbda[0], step=step)
-            path,name = os.path.split(opts.sky)
-            outname = os.path.join(path,'var_'+name)
-            sky_var.WR_fits_file(outname,header_list=inhdr.items())
-        else:                 # Store variance as extension to signal
-            sky_spec = pySNIFS.spectrum(data=sigspecs[:,1], var=varspecs[:,1],
-                                        start=lbda[0], step=step)
-            sky_spec.WR_fits_file(opts.sky,header_list=inhdr.items())
+        # Store variance as extension to signal
+        sky_spec = pySNIFS.spectrum(data=sigspecs[:,1], var=varspecs[:,1],
+                                    start=lbda[0], step=step)
+        sky_spec.write_fits(opts.sky, inhdr)
 
     # Save 3D adjusted parameter file ========================================
 
@@ -860,6 +885,9 @@ if __name__ == "__main__":
                  transform=axS.transAxes)
 
         axN.plot(star_spec.x, star_spec.data/N.sqrt(varspecs[:,0]), blue)
+        if opts.covariance:
+            axN.plot(star_spec.x,
+                     star_spec.data/N.sqrt(covspec.diagonal()), orange)
 
         if skyDeg >= 0:
             axB.plot(sky_spec.x, sky_spec.data, green)
@@ -924,7 +952,7 @@ if __name__ == "__main__":
 
         print_msg("Producing profile plot %s..." % plot3, 1)
 
-        if not opts.verbosity:  # Plot fit on rows and columns sum
+        if not opts.covariance:     # Plot fit on rows and columns sum
 
             fig3 = pylab.figure()
             fig3.subplots_adjust(left=0.06, right=0.96, bottom=0.06, top=0.95)
@@ -968,9 +996,10 @@ if __name__ == "__main__":
                     ax.set_xlabel("I (blue) or J (red)", fontsize=8)
                     ax.set_ylabel("Flux", fontsize=8)
 
-        else:                           # Plot correlation matrix
+        else:                           # Plot correlation matrices
 
-            corrpar = covpar / N.outer(dfitpar,dfitpar) # Correlation matrix
+            # Parameter correlation matrix
+            corrpar = covpar / N.outer(dfitpar,dfitpar)
             parnames = data_model.func[0].parnames # PSF param names
             if skyDeg >= 0:                 # Add background param names
                 coeffnames = [ "00" ] + \
@@ -984,21 +1013,37 @@ if __name__ == "__main__":
             parnames[npar_psf+1::2] = ['']*len(parnames[npar_psf+1::2])
 
             fig3 = pylab.figure(figsize=(6,6))
-            ax3 = fig3.add_subplot(1,1,1, title="Correlation matrix for 3D-fit")
-            im3 = ax3.imshow(N.absolute(corrpar),
-                             vmin=max(1e-3,corrpar.min()), vmax=1,
-                             aspect='equal', origin='upper',
-                             norm=pylab.matplotlib.colors.LogNorm(),
-                             interpolation='nearest')
-            ax3.set_xticks(range(len(parnames)))
-            ax3.set_xticklabels(parnames,
-                                va='top', fontsize='x-small', rotation=90)
-            ax3.set_yticks(range(len(parnames)))
-            ax3.set_yticklabels(parnames,
-                                ha='right', fontsize='x-small')
+            ## ax3a = fig3.add_subplot(1,2,1,
+            ax3a = fig3.add_subplot(1,1,1,
+                                    title="Parameter correlation matrix")
+            im3 = ax3a.imshow(N.absolute(corrpar),
+                              vmin=1e-3, vmax=1,
+                              norm=pylab.matplotlib.colors.LogNorm(),
+                              aspect='equal', origin='upper',
+                              interpolation='nearest')
+            ax3a.set_xticks(range(len(parnames)))
+            ax3a.set_xticklabels(parnames,
+                                 va='top', fontsize='x-small', rotation=90)
+            ax3a.set_yticks(range(len(parnames)))
+            ax3a.set_yticklabels(parnames,
+                                 ha='right', fontsize='x-small')
 
-            cb3 = fig3.colorbar(im3, ax=ax3, orientation='vertical')
+            cb3 = fig3.colorbar(im3, ax=ax3a, orientation='vertical')
             cb3.set_label("|Correlation|")
+
+            ## # Point-source spectral correlation from *parameter* covariance
+            ## corrspec = cov2corr(covspec)
+
+            ## ax3b = fig3.add_subplot(1,2,2,
+            ##                         title="Spectral correlation matrix",
+            ##                         xlabel=u'Wavelength [Å]')
+            ## ax3b.imshow(N.absolute(corrspec),
+            ##             vmin=1e-3, vmax=1,
+            ##             norm=pylab.matplotlib.colors.LogNorm(),
+            ##             extent=[full_cube.lstart-full_cube.lstep/2,
+            ##                     full_cube.lend  +full_cube.lstep/2]*2,
+            ##             aspect='equal', origin='upper',
+            ##             interpolation='nearest')
 
         # Plot of the star center of gravity and adjusted center -------------
 

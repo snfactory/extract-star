@@ -32,11 +32,12 @@ def print_msg(str, limit, verb=0):
 
 def get_slices_lrange(cube, nmeta=12):
     """
-    Get wavelength range from meta-sliced cube
+    Get wavelength range from meta-sliced cube, because
+    pySNIFS.SNIFS_cube maners are just to obfuscated.
 
     :param cube: pySNIFS.SNIFS_cube instance
     :param nmeta: number of meta-slices
-    :return: (lstart, lend)
+    :return: (lstart, lend) of sliced cube.
     """
 
     # Should be the same definition as in extract_star
