@@ -40,30 +40,6 @@ def print_msg(str, limit):
         print str
 
 
-def atmosphericIndex(lbda, P=616., T=2.):
-    """Compute atmospheric refractive index: lbda in angstrom, P
-    in mbar, T in C. Relative humidity effect is neglected.
-
-    Cohen & Cromer 1988 (PASP, 100, 1582) give P = 456 mmHg = 608 mbar and T =
-    2C for Mauna Kea. However, SNIFS observations show an average recorded
-    pression of 616 mbar.
-
-    Further note that typical water abundances on Mauna Kea are close enough
-    to zero not to significantly impact these calculations.
-    """
-
-    # Sea-level (P=760 mmHg, T=15C)
-    iml2 = 1/(lbda*1e-4)**2             # lambda in microns
-    n = 1 + 1e-6*(64.328 + 29498.1/(146-iml2) + 255.4/(41-iml2))
-
-    # (P,T) correction
-    P *= 0.75006168                     # Convert P to mmHg: *= 760./1013.25
-    n = 1 + (n-1) * P * \
-        ( 1 + (1.049 - 0.0157*T)*1e-6*P ) / ( 720.883*(1 + 0.003661*T) )
-    
-    return n
-
-
 def read_PT(hdr, update=False):
     """Read pressure and temperature from hdr, and check value consistency."""
 
@@ -916,9 +892,9 @@ class ExposurePSF:
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
             pressure,temp = MK_pressure,MK_temp # Default values for P and T
-        self.n_ref = atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
+        self.n_ref = TA.refractiveIndex(self.lbda_ref, P=pressure, T=temp)
         self.ADR_coeff = ( self.n_ref - \
-                           atmosphericIndex(self.l, P=pressure, T=temp) ) * \
+                           TA.refractiveIndex(self.l, P=pressure, T=temp) ) * \
                            206265 / self.spxSize # l > l_ref <=> coeff > 0
 
     def index(self,n):

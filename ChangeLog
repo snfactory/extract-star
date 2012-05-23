@@ -6,8 +6,8 @@
 	deprecated option '-V/--variance' (which was on by default) to
 	store variance as extension of spectrum. WARNING: no support yet
 	for lossless compression of the covariance matrix; it is therefore
-	stored uncompressed (which makes a simple spectrum ~5/19MB for
-	B/R...)
+	stored uncompressed (which makes a simple spectrum from 5 to 19 MB
+	for B/R...)
 
 2012-04-26  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
