@@ -1,3 +1,8 @@
+2012-06-12  Yannick Copin  <ycopin@lyopc469>
+
+	* lib/libExtractStar_numexpr.py: experimental version of
+	libExtractStar. using numexpr. Do not use!
+
 2012-04-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new option '-V/--covariance'
