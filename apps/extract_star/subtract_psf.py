@@ -107,7 +107,7 @@ if __name__ == '__main__':
         if opts.sky:
             sky = Spectrum(opts.sky)
             if sky.readKey('ES_SDEG') >= 1:
-                raise NotImplememtedError('skyDeg>0 subtraction '
+                raise NotImplementedError('skyDeg>0 subtraction '
                                           'is not yet implemented')
             # from arcsec^-2 into spaxels^-1
             cube.data -= sky.y.reshape(-1,1) * SpxSize**2
