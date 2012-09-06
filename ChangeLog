@@ -1,3 +1,9 @@
+2012-09-07  Yannick Copin  <ycopin@lyopc469>
+
+	* apps/extract_star/plot_slices.py: new options '-s/--spec' (to
+	specify plotted spectra at bottom) and '-L/--label' (to label
+	spaxels).
+
 2012-06-12  Yannick Copin  <ycopin@lyopc469>
 
 	* lib/libExtractStar_numexpr.py: experimental version of

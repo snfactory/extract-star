@@ -5,7 +5,7 @@ import os
 import optparse
 import numpy as N
 import pySNIFS
-from ToolBox.MPL import get_backend
+from ToolBox.MPL import get_backend, errorband
 from ToolBox.ReST import rst_table
 from ToolBox.Arrays import metaslice
 
@@ -32,18 +32,22 @@ parser.add_option("-g", "--graph", type="string",
 parser.add_option("-V", "--variance", action='store_true',
                   help="Plot variance rather than signal.",
                   default=False)
-parser.add_option("-s", "--stack", action='store_true',
-                  help="Plot stacked spectra.",
-                  default=False)
+parser.add_option("-s", "--spec", type='choice',
+                  choices=['mean','stack','none'],
+                  help="Plotted spectra (mean|stack|none) [%default]",
+                  default='mean')
 parser.add_option("-T", "--title", type="string",
                   help="Plot title")
+parser.add_option("-L", "--label", action='store_true',
+                  help="Label spaxels.",
+                  default=False)
 
 opts,args = parser.parse_args()
 
 try:
     fmin,fmax = [ float(t) for t in opts.range.split(',') ]
     assert 0<=fmin<100 and 0<fmax<=100 and fmin<fmax
-except (ValueError,AssertionError):
+except (ValueError,AssertionError,):
     parser.error("invalid option '-r/--range %s'" % opts.range)
 
 # Matplolib backend
@@ -100,8 +104,11 @@ for n,inname in enumerate(args):
     cube.y = cube.j - 7
 
     fig = P.figure(figsize=(10,8))
-    fig.subplots_adjust(left=0.06, bottom=0.25, top=0.96,
-                        hspace=0.03, wspace=0.03)
+    fig.subplots_adjust(left=0.06, top=0.96, hspace=0.03, wspace=0.03)
+    if opts.spec != 'none':             # Leave room for spec plot
+        fig.subplots_adjust(bottom=0.25)
+    else:
+        fig.subplots_adjust(bottom=0.05)
 
     objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
     efftime = fcube.e3d_data_header.get("EFFTIME", N.NaN)
@@ -181,59 +188,68 @@ for n,inname in enumerate(args):
         if not ax.is_first_col():
             P.setp(ax.get_yticklabels(), visible=False)
 
+        if opts.label and (i==0):
+            for no,ii,jj in zip(cube.no,cube.i,cube.j):
+                ax.text(ii-7,jj-7,str(no),
+                        size='x-small', ha='center', va='center')
+
     # Colorbar
     if not opts.rangePerSlice:
         cax = fig.add_axes([0.92,0.25,0.02,0.7])
         cbar = fig.colorbar(im, cax, orientation='vertical')
         P.setp(cbar.ax.get_yticklabels(), fontsize='small')
 
-    ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
+    if opts.spec != 'none':             # Add a spectrum plot
 
-    if opts.stack:                  # Stacked spectra
-        if fcube.var is not None:
-            vmin,vmax = N.percentile(fcube.data[N.isfinite(fcube.var)],
-                                     (fmin,fmax))
-        else:
-            vmin,vmax = N.percentile(fcube.data, (fmin,fmax))
-        ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
-                   extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
-        ax2.set_aspect('auto', adjustable='box')
-        ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
-        ax2.set_ylabel("Spx #", fontsize='small')
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize='x-small')
+        ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
 
-    else:                           # Mean spectrum
-        spec = fcube.data.mean(axis=1)
-        ax2.plot(fcube.lbda, spec, 'b-')
+        if opts.spec == 'stack':        # Stacked spectra
+            if fcube.var is not None:
+                vmin,vmax = N.percentile(fcube.data[N.isfinite(fcube.var)],
+                                         (fmin,fmax))
+            else:
+                vmin,vmax = N.percentile(fcube.data, (fmin,fmax))
+            ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
+                       extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
+            ax2.set_aspect('auto', adjustable='box')
+            ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
+            ax2.set_ylabel("Spx #", fontsize='small')
+            P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
+                   fontsize='x-small')
 
-        if fcube.var is not None:
-            dspec = N.sqrt(fcube.var.sum(axis=1)/fcube.nlens**2)
-            xp,yp = M.mlab.poly_between(fcube.lbda, spec-dspec, spec+dspec)
-            ax2.fill(xp,yp, fc='b', ec='b', alpha=0.3)
-            ax2.errorbar(cube.lbda, cube.data.mean(axis=1),
-                         yerr=N.sqrt(cube.var.sum(axis=1))/cube.nlens,
-                         fmt='go')
-        else:
-            ax2.plot(cube.lbda, cube.data.mean(axis=1), 'go')
+        elif opts.spec == 'mean':       # Mean spectrum
+            spec = fcube.data.mean(axis=1)
+            ax2.plot(fcube.lbda, spec, 'b-')
 
-        ax2.set_xlim(fcube.lstart,fcube.lend)
-        ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
-        if opts.variance:
-            fxlabel = "Variance"
-        else:
-            fxlabel = "Flux"
-        fxunits = fcube.e3d_data_header.get("FLXUNITS", 'none given')
-        if fxunits.lower() != 'none given':
-            fxlabel += " [%s]" % fxunits
+            if fcube.var is not None:
+                dspec = N.sqrt(fcube.var.sum(axis=1)/fcube.nlens**2)
+                ax2.errorband(fcube.lbda, spec, dspec,
+                              fc='b', ec='b', alpha=0.3)
+                ax2.errorbar(cube.lbda, cube.data.mean(axis=1),
+                             yerr=N.sqrt(cube.var.sum(axis=1))/cube.nlens,
+                             fmt='go')
+            else:
+                ax2.plot(cube.lbda, cube.data.mean(axis=1), 'go')
+
+            ax2.set_xlim(fcube.lstart,fcube.lend)
+            ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
             if opts.variance:
-                fxlabel += u"²"
-        ax2.set_ylabel(fxlabel, fontsize='small')
-        P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(), fontsize='x-small')
+                fxlabel = "Mean variance"
+            else:
+                fxlabel = "Mean flux"
+            fxunits = fcube.e3d_data_header.get("FLXUNITS", 'none given')
+            if fxunits.lower() != 'none given':
+                fxlabel += " [%s]" % fxunits
+                if opts.variance:
+                    fxlabel += u"²"
+            ax2.set_ylabel(fxlabel, fontsize='small')
+            P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
+                   fontsize='x-small')
 
-    # Metaslice boundaries
-    for i in ibounds[:-1]:
-        ax2.axvline(fcube.lbda[i], c='0.8', zorder=5)
-    ax2.axvline(fcube.lbda[ibounds[-1]-1], c='0.8', zorder=5)
+        # Metaslice boundaries
+        for i in ibounds[:-1]:
+            ax2.axvline(fcube.lbda[i], c='0.8', zorder=5)
+        ax2.axvline(fcube.lbda[ibounds[-1]-1], c='0.8', zorder=5)
 
     if backend:
         figname = ('slices_%s' % basename) + figext
