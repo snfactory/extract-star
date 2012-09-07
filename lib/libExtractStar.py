@@ -14,14 +14,9 @@ __version__ = '$Id$'
 
 import re
 import numpy as N
-import scipy as S
-import scipy.special
-from scipy.ndimage import filters as F
-
+import scipy.linalg as SL               # More complete than numpy.linalg
 from pySNIFS import SNIFS_cube
-
 import ToolBox.Atmosphere as TA
-from ToolBox.Arrays import metaslice
 
 def print_msg(str, limit, verb=0):
     """Print message 'str' if verbosity level (typically
@@ -40,6 +35,8 @@ def get_slices_lrange(cube, nmeta=12):
     :return: (lstart, lend) of sliced cube.
     """
 
+    from ToolBox.Arrays import metaslice
+
     # Should be the same definition as in extract_star
     slices = metaslice(cube.nslice, nmeta, trim=10)
     try:
@@ -56,6 +53,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     *psf_fn* and a background of polynomial degree *skyDeg*."""
 
     from ToolBox.Optimizer import approx_deriv
+    from scipy.ndimage.filters import median_filter
     import pySNIFS_fit
 
     assert skyDeg >= -1, \
@@ -118,7 +116,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             skyLev = model_sky.evalfit().squeeze() # Structure bkgnd estimate
 
         # Guess parameters for the current slice
-        medstar = F.median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
+        medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
         cube_sky.data -= skyLev
         if chi2fit:
@@ -203,7 +201,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             # Cannot use model_star.param_error to compute cov, since
             # it does not handle fixed parameters (lb=ub).
             hess = approx_deriv(model_star.objgrad, model_star.fitpar)
-            cov = 2*N.linalg.pinv(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+            cov = 2*SL.pinv2(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
             diag = cov.diagonal()
             if (diag>0).all():
                 dpar = N.concatenate(([0.,0.], N.sqrt(diag)))
@@ -318,16 +316,16 @@ def extract_specs(cube, psf, skyDeg=0,
     # "Solving Ax = b: inverse vs cholesky factorization" thread
     # (http://thread.gmane.org/gmane.comp.python.numeric.general/41365)
     # advocates to never invert a matrix directly: that's why we use
-    # SVD-based inversion N.linalg.pinv.
+    # SVD-based inversion SL.pinv2.
 
     #Alpha = N.einsum('...jk,...jl',A,A)              # ~x2 slower
     Alpha = N.array([ N.dot(aa.T, aa) for aa in A ]) # nslice,npar+1,npar+1
     #Beta = N.einsum('...jk,...j',A,b)
     Beta = N.array([ N.dot(aa.T, bb) for aa,bb in zip(A,b) ]) # nslice,npar+1
     try:
-        Cov = N.array([ N.linalg.pinv(aa) for aa in Alpha ])  # ns,np+1,np+1
-    except N.linalg.LinAlgError:
-        raise N.linalg.LinAlgError("Singular matrix during spectrum extraction")
+        Cov = N.array([ SL.pinv2(aa) for aa in Alpha ])  # ns,np+1,np+1
+    except SL.LinAlgError:
+        raise SL.LinAlgError("Singular matrix during spectrum extraction")
     # sigspecs & varspecs = nslice x [Star,Sky,[slope_x...]]
     sigspecs = N.array([ N.dot(cc,bb)
                          for cc,bb in zip(Cov,Beta) ]) # nslice,npar+1
@@ -340,10 +338,10 @@ def extract_specs(cube, psf, skyDeg=0,
         A = BF * weight[...,N.newaxis]
         Alpha = N.array([ N.dot(aa.T, aa) for aa in A ])
         try:
-            Cov = N.array([ N.linalg.pinv(aa) for aa in Alpha ])
-        except N.linalg.LinAlgError:
-            raise N.linalg.LinAlgError("Singular matrix "
-                                       "during variance extraction")
+            Cov = N.array([ SL.pinv2(aa) for aa in Alpha ])
+        except SL.LinAlgError:
+            raise SL.LinAlgError("Singular matrix "
+                                 "during variance extraction")
         varspecs = N.array([ N.diag(cc) for cc in Cov ])
 
     # Now, what about negative sky? The pb arises for short-exposures,
@@ -489,6 +487,9 @@ def extract_specs(cube, psf, skyDeg=0,
         return cube.lbda,sigspecs,varspecs       # [Sub]Aperture extraction
 
     if method == 'optimal':
+
+        from scipy.ndimage.filters import median_filter
+        
         # Model signal = Intensity*PSF + bkgnd
         modsig = (sigspecs[:,0]*psf.T).T + bkgnd # nslice,nlens
 
@@ -502,7 +503,7 @@ def extract_specs(cube, psf, skyDeg=0,
         # Model variance = alpha*Signal + beta
         coeffs = N.array([ polyfit_clip(modsig[s], cube.var[s], 1, clip=5)
                            for s in xrange(cube.nslice) ])
-        coeffs = F.median_filter(coeffs, (5,1)) # A bit of smoothing...
+        coeffs = median_filter(coeffs, (5,1)) # A bit of smoothing...
         modvar = N.array([ N.polyval(coeffs[s], modsig[s])
                            for s in xrange(cube.nslice) ]) # nslice,nlens
 
@@ -782,9 +783,11 @@ def chebEval(pars, nx, chebpolys=[]):
     """Orthogonal Chebychev polynomial expansion, x should be already
     normalized in [-1,1]."""
 
+    from scipy.special import chebyu
+
     if len(chebpolys)<len(pars):
         print "Initializing Chebychev polynomials up to order %d" % len(pars)
-        chebpolys[:] = [ S.special.chebyu(i) for i in range(len(pars)) ]
+        chebpolys[:] = [ chebyu(i) for i in range(len(pars)) ]
 
     return N.sum( [ par*cheb(nx) for par,cheb in zip(pars,chebpolys) ], axis=0)
 
@@ -1089,10 +1092,11 @@ class ExposurePSF:
     def FWHM(self, param, lbda):
         """Estimate FWHM of PSF at wavelength lbda."""
 
+        from scipy.optimize import fsolve
+
         alphaCoeffs = param[6+self.ellDeg:self.npar_cor]
         # Compute FWHM from radial profile
-        fwhm = 2*S.optimize.fsolve(func=self._HWHM_fn, x0=1.,
-                                   args=(alphaCoeffs,lbda))
+        fwhm = 2*fsolve(func=self._HWHM_fn, x0=1., args=(alphaCoeffs,lbda))
 
         # Beware: scipy-0.8.0 fsolve returns a size 1 array
         return N.squeeze(fwhm)  # In spaxels

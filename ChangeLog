@@ -1,3 +1,10 @@
+2012-09-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py:
+	* apps/extract_star/extract_star.py (param_covariance): use
+	scipy.linalg.pinv2 in place of numpy.linalg.pinv (see
+	http://goo.gl/n0jFD).
+
 2012-09-07  Yannick Copin  <ycopin@lyopc469>
 
 	* apps/extract_star/plot_slices.py: new options '-s/--spec' (to

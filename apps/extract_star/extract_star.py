@@ -43,6 +43,7 @@ import os
 
 import pyfits as F
 import numpy as N 
+import scipy.linalg as SL
 
 import pySNIFS
 import pySNIFS_fit
@@ -83,8 +84,8 @@ def param_covariance(self, param=None, order=3):
 
     hes = approx_deriv(self.objgrad, param, order=order) # Chi2 hessian
     try:
-        cov = 2 * N.linalg.pinv(hes) # Covariance matrix
-    except N.linalg.LinAlgError, error:
+        cov = 2 * SL.pinv2(hes)         # Covariance matrix
+    except SL.LinAlgError, error:
         print "Error while inverting chi2 hessian:", error
         cov = N.zeros_like(hes)
 
