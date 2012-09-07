@@ -77,9 +77,9 @@ if __name__ == '__main__':
     else:
         radius = opts.radius < 0 and -opts.radius*spec.readKey('SEEING')/2.355 or opts.radius # [sigma] or [arcsec]
 
-    lbda,spec,var = libES.extract_spec(cube, psf_fn, psf_ctes, psf_param,
-                                       method=opts.method, skyDeg=opts.skyDeg,
-                                       radius=radius, verbosity=2)
+    lbda,spec,var = libES.extract_specs(cube, (psf_fn, psf_ctes, psf_param),
+                                        skyDeg=opts.skyDeg, method=opts.method,
+                                        radius=radius, verbosity=2)
 
     star_spec = pySNIFS.spectrum(data=spec[:,0], var=var[:,0],
                                  start=lbda[0],step=cube.lstep)
