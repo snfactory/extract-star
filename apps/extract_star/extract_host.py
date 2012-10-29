@@ -52,7 +52,7 @@ def dumpSpectrum(outname, y, hdr=None, **kwargs):
         phdu.header.update('CRVAL1', hdr['CRVALS'], after='NAXIS1')
         phdu.header.update('CDELT1', hdr['CDELTS'], after='CRVAL1')
         phdu.header.update('CRPIX1', hdr['CRPIXS'], after='CDELT1')
-    elif hdr.has_key('CRVAL3'):         # Fits 3D cube header
+    elif 'CRVAL3' in hdr:               # Fits 3D cube header
         phdu.header.update('CRVAL1', hdr['CRVAL3'], after='NAXIS1')
         phdu.header.update('CDELT1', hdr['CDELT3'], after='CRVAL1')
         phdu.header.update('CRPIX1', hdr['CRPIX3'], after='CDELT1')

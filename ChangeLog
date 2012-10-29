@@ -1,3 +1,9 @@
+2012-10-29  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/subtract_psf.py (and others): pyfits
+	header.has_key function is deprecated, use `key in header` syntax
+	instead.
+
 2012-09-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py:

@@ -160,8 +160,7 @@ if __name__ == '__main__':
 
     # Specific keywords (handled w/ pyfits)
     hdr = pyfits.getheader(psfName)
-    if not hdr.has_key('EFFTIME'):
-        # Copy it from EXPTIME
+    if 'EFFTIME' not in hdr:            # Copy it from EXPTIME
         print "Copying EFFTIME keyword from EXPTIME"
         IFU.WR_desc(cube, 'EFFTIME', IFU.FLOAT,1, hdr['EXPTIME'])
 

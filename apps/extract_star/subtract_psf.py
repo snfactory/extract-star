@@ -82,8 +82,11 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and reference cube"
 
-    lrange = not spec._hdr.has_key('ES_LMIN') \
-             and libES.get_slices_lrange(cube) or ()
+    if 'ES_LMIN' not in spec._hdr:
+        lrange = libES.get_slices_lrange(cube)
+    else:
+        lrange = ()
+
     # Read PSF function name and parameters from spectrum header
     psf_fn = libES.read_psf_name(spec._hdr)
     psf_ctes = [cube.spxSize] + \
