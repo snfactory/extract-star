@@ -1,3 +1,8 @@
+2012-10-30  Rui Pereira  <rui.pereira@in2p3.fr>
+
+	* lib/pySNIFS.py: a few python cosmetic fixes and updated
+	header.update() calls to work with new pyFITS.
+
 2012-10-29  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/subtract_psf.py (and others): pyfits

@@ -259,29 +259,27 @@ class spectrum:
         
         hdu = pyfits.PrimaryHDU()
         hdu.data = num.array(self.data)
-        hdu.header.update('NAXIS', 1)
-        hdu.header.update('NAXIS1', self.len,after='NAXIS')
-        hdu.header.update('CRVAL1', self.start)
-        hdu.header.update('CDELT1', self.step)
+        hdu.header['NAXIS'] = 1
+        hdu.header.set('NAXIS1', self.len, after='NAXIS')
+        hdu.header['CRVAL1'] = self.start
+        hdu.header['CDELT1'] = self.step
         if header_list is not None:
             for desc in header_list:
-                if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
-                       desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
-                       desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
-                       desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
-                       desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS' and desc[0][0:5] != 'CRVAL' and \
-                       desc[0][0:5] != 'CDELT' and desc[0][0:5] != 'CRPIX':
-                    hdu.header.update(desc[0],desc[1])
+                if desc[0][0:5] not in ['TUNIT', 'TTYPE', 'TFORM', 'TDISP', 'NAXIS',
+                                        'CRVAL', 'CDELT', 'CRPIX'] and \
+                   desc[0] not in ['EXTNAME', 'XTENSION', 'GCOUNT', 'PCOUNT', 'BITPIX',
+                                   'CTYPES', 'CRVALS', 'CDELTS', 'CRPIXS', 'TFIELDS']:
+                    hdu.header[desc[0]] = desc[1]
 
         hdulist = pyfits.HDUList()
         hdulist.append(hdu)
 
         if self.has_var:
             hdu_var = pyfits.ImageHDU(self.var, name='VARIANCE')
-            hdu_var.header.update('NAXIS', 1)
-            hdu_var.header.update('NAXIS1', self.len,after='NAXIS')
-            hdu_var.header.update('CRVAL1', self.start)
-            hdu_var.header.update('CDELT1', self.step)
+            hdu_var.header['NAXIS'] = 1
+            hdu_var.header.set('NAXIS1', self.len, after='NAXIS')
+            hdu_var.header['CRVAL1'] = self.start
+            hdu_var.header['CDELT1'] = self.step
             hdulist.append(hdu_var)
 
         hdulist.writeto(filename, clobber=True) # Overwrite
@@ -300,28 +298,26 @@ class spec_list:
         hdu = pyfits.PrimaryHDU()
         if header_list is not None:
             for desc in header_list:
-                if desc[0][0:5] != 'TUNIT' and desc[0][0:5] != 'TTYPE' and desc[0][0:5] != 'TFORM' and \
-                       desc[0][0:5] != 'TDISP' and desc[0] != 'EXTNAME' and desc[0] != 'XTENSION' and \
-                       desc[0] != 'GCOUNT' and desc[0] != 'PCOUNT' and desc[0][0:5] != 'NAXIS' and \
-                       desc[0] != 'BITPIX' and desc[0] != 'CTYPES' and desc[0] != 'CRVALS' and \
-                       desc[0] != 'CDELTS' and desc[0] != 'CRPIXS' and desc[0]!='TFIELDS':
-                    hdu.header.update(desc[0],desc[1])
+                if desc[0][0:5] not in ['TUNIT', 'TTYPE', 'TFORM', 'TDISP', 'NAXIS'] and \
+                   desc[0] not in ['EXTNAME', 'XTENSION', 'GCOUNT', 'PCOUNT', 'BITPIX',
+                                   'CTYPES', 'CRVALS', 'CDELTS', 'CRPIXS', 'TFIELDS']:
+                    hdu.header[desc[0]] = desc[1]
         hdulist.append(hdu)
         for s in self.list:
             hdu = pyfits.ImageHDU()
             hdu.data = num.array(s.data)
-            hdu.header.update('NAXIS', 1)
-            hdu.header.update('NAXIS1', s.len,after='NAXIS')
-            hdu.header.update('CRVAL1', s.start)
-            hdu.header.update('CDELT1', s.step)
+            hdu.header['NAXIS'] = 1
+            hdu.header.set('NAXIS1', s.len, after='NAXIS')
+            hdu.header['CRVAL1'] = s.start
+            hdu.header['CDELT1'] = s.step
             hdulist.append(hdu)
             if s.has_var:
                 hdu_var = pyfits.ImageHDU()
                 hdu_var.data = num.array(s.var)
-                hdu_var.header.update('NAXIS', 1)
-                hdu_var.header.update('NAXIS1', s.len,after='NAXIS')
-                hdu_var.header.update('CRVAL1', s.start)
-                hdu_var.header.update('CDELT1', s.step)
+                hdu_var.header['NAXIS'] = 1
+                hdu_var.header.set('NAXIS1', s.len, after='NAXIS')
+                hdu_var.header['CRVAL1'] = s.start
+                hdu_var.header['CDELT1'] = s.step
                 hdulist.append(hdu_var)
         hdulist.writeto(filename, clobber=True) # Overwrite
 
@@ -416,21 +412,21 @@ class image_array:
         """
         hdulist = pyfits.HDUList()
         hdu = pyfits.PrimaryHDU()
-        hdu.header.update('NAXIS', 2)
-        hdu.header.update('NAXIS1',self.nx,after='NAXIS')
-        hdu.header.update('NAXIS2',self.ny,after='NAXIS1')
-        hdu.header.update('CRPIX1', 1)
-        hdu.header.update('CRVAL1', self.startx)
-        hdu.header.update('CDELT1', self.stepx)
-        hdu.header.update('CRPIX2', 1)
-        hdu.header.update('CRVAL2', self.starty)
-        hdu.header.update('CDELT2', self.stepy)
+        hdu.header['NAXIS'] = 2
+        hdu.header.set('NAXIS1', self.nx, after='NAXIS')
+        hdu.header.set('NAXIS2', self.ny, after='NAXIS1')
+        hdu.header['CRPIX1'] = 1
+        hdu.header['CRVAL1'] = self.startx
+        hdu.header['CDELT1'] = self.stepx
+        hdu.header['CRPIX2'] = 1
+        hdu.header['CRVAL2'] = self.starty
+        hdu.header['CDELT2'] = self.stepy
         if self.header is not None:
             for desc in self.header:
-                if desc[0]!='SIMPLE' and desc[0]!='BITPIX' and desc[0]!='EXTEND' and desc[0]!='NAXIS' and desc[0]!='NAXIS1'\
-                       and desc[0]!='NAXIS2' and desc[0]!='CRPIX1' and desc[0]!='CRVAL1' and desc[0]!='CDELT1' and desc[0]!='CRPIX2'\
-                       and desc[0]!='CRVAL2' and desc[0]!='CDELT2':
-                    hdu.header.update(desc[0],desc[1])
+                if desc[0] not in ['SIMPLE', 'BITPIX', 'EXTEND', 'NAXIS', 'NAXIS1',
+                                   'NAXIS2', 'CRPIX1', 'CRVAL1', 'CDELT1', 'CRPIX2',
+                                   'CRVAL2', 'CDELT2']:
+                    hdu.header[desc[0]] = desc[1]
         hdu.data = num.array(self.data)
         hdulist.append(hdu)
         hdulist.writeto(file_name, clobber=(mode=='w+'))
@@ -574,7 +570,7 @@ class SNIFS_cube:
                                     lmax - common_lstart+lstep/2:lstep]/lstep
                 self.lbda = lbda[lmin - common_lstart+lstep/2: \
                                  lmax - common_lstart+lstep/2:lstep]
-            self.lstep = self.lstep * lstep
+            self.lstep *= lstep
             self.lstart = self.lbda[0]
             
             self.x = e3d_cube[1].data.field('XPOS')
@@ -643,7 +639,7 @@ class SNIFS_cube:
                 lstep = 1
 
             if lmax-lmin < lstep:
-                raise ValueError('Slice step incompatible with ' \
+                raise ValueError('Slice step incompatible with '
                                  'requested slices interval')
 
             if not s:
@@ -664,7 +660,7 @@ class SNIFS_cube:
                                                                lmax+lstep/2:
                                                                lstep] / lstep
                 self.lbda = lbda[lmin+lstep/2:lmax+lstep/2:lstep]
-            self.lstep = self.lstep * lstep
+            self.lstep *= lstep
             self.lstart = self.lbda[0]
             self.i = nx - 1-num.ravel(num.indices((nx,ny))[1]) 
             self.j = num.ravel(num.indices((nx,ny))[0])
@@ -749,7 +745,8 @@ class SNIFS_cube:
                     n2 = num.argmin((self.lbda-n[1])**2,axis=-1)
                 else:
                     raise ValueError("Coord. flag should be 'p' or 'w'")
-                if n1 == n2:n2=n2+1
+                if n1 == n2:
+                    n2 += 1
             else:
                 if coord == 'p':
                     if n%1 != 0:
@@ -780,7 +777,7 @@ class SNIFS_cube:
                     arr = self.data
                 slice_2D[j,i] = num.sum(arr[n1:n2],axis=0)
 
-                return(slice_2D)
+                return slice_2D
             else:
                 raise IndexError("No slice #%d" % n)
         else:
@@ -856,7 +853,7 @@ class SNIFS_cube:
                         raise IndexError("no index #%d" % ind)
                 else:
                     if 0 <= ind[0] and ind[1] < num.shape(data)[1]:
-                        ind[1] = ind[1]+1
+                        ind[1] += 1
                         return num.sum(data[:,ind[0]:ind[1]],1)
                     else:
                         raise IndexError("Index list out of range")
@@ -883,7 +880,7 @@ class SNIFS_cube:
         if i>max(self.i) or i<min(self.i) or j>max(self.j) or j<min(self.j):
             raise ValueError("Index out of range.")
         no = self.no[num.argmax((self.i == i)*(self.j == j),axis=-1)]
-        return(no)
+        return no
 
     def get_ij(self,no):
         """
@@ -893,7 +890,7 @@ class SNIFS_cube:
             raise ValueError("Lens number out of range.")
         i = self.i[num.argmax(self.no == no,axis=-1)]
         j = self.j[num.argmax(self.no == no,axis=-1)]
-        return((i,j))
+        return i,j
 
     def get_lindex(self,val):
         """
@@ -908,7 +905,7 @@ class SNIFS_cube:
         else:
             ind = num.argmax(self.no == val,axis=-1)
 
-        return(ind)
+        return ind
 
     def WR_e3d_file(self, filename):
         """
@@ -951,33 +948,33 @@ class SNIFS_cube:
         hdu_data.data = num.array([ self.slice2d(i,coord='p')
                                     for i in xrange(self.nslice) ])
         for h in header:
-            hdu_data.header.update(h,header[h])
+            hdu_data.header[h] = header[h]
         stepx  = stepy  = self.spxSize
         startx = starty = -7*self.spxSize
-        hdu_data.header.update('CRVAL1', startx)
-        hdu_data.header.update('CRVAL2', starty)
-        hdu_data.header.update('CRVAL3', self.lstart)
-        hdu_data.header.update('CDELT1', stepx)
-        hdu_data.header.update('CDELT2', stepy)
-        hdu_data.header.update('CDELT3', self.lstep)
-        hdu_data.header.update('CRPIX1', 1)
-        hdu_data.header.update('CRPIX2', 1)
-        hdu_data.header.update('CRPIX3', 1)
+        hdu_data.header['CRVAL1'] = startx
+        hdu_data.header['CRVAL2'] = starty
+        hdu_data.header['CRVAL3'] = self.lstart
+        hdu_data.header['CDELT1'] = stepx
+        hdu_data.header['CDELT2'] = stepy
+        hdu_data.header['CDELT3'] = self.lstep
+        hdu_data.header['CRPIX1'] = 1
+        hdu_data.header['CRPIX2'] = 1
+        hdu_data.header['CRPIX3'] = 1
         hdulist.append(hdu_data)
 
         if self.var is not None:
             hdu_var = pyfits.ImageHDU(name='VARIANCE')
             hdu_var.data = num.array([ self.slice2d(i,coord='p',var=True)
                                        for i in xrange(self.nslice) ])
-            hdu_var.header.update('CRVAL1', startx)
-            hdu_var.header.update('CRVAL2', starty)
-            hdu_var.header.update('CRVAL3', self.lstart)
-            hdu_var.header.update('CDELT1', stepx)
-            hdu_var.header.update('CDELT2', stepy)
-            hdu_var.header.update('CDELT3', self.lstep)
-            hdu_var.header.update('CRPIX1', 1)
-            hdu_var.header.update('CRPIX2', 1)
-            hdu_var.header.update('CRPIX3', 1)
+            hdu_var.header['CRVAL1'] = startx
+            hdu_var.header['CRVAL2'] = starty
+            hdu_var.header['CRVAL3'] = self.lstart
+            hdu_var.header['CDELT1'] = stepx
+            hdu_var.header['CDELT2'] = stepy
+            hdu_var.header['CDELT3'] = self.lstep
+            hdu_var.header['CRPIX1'] = 1
+            hdu_var.header['CRPIX2'] = 1
+            hdu_var.header['CRPIX3'] = 1
             hdulist.append(hdu_var)
             
         hdulist.writeto(filename,clobber=(mode=='w+'))
@@ -996,8 +993,6 @@ class SNIFS_mask:
         @param offx,offy: offset in x and y to be given to the mask.
         @param step: step in pixels along the dispersion direction at which the mask is computed. The other
             values will be interpolated
-        @param path_Snifs: Path of the Snifs software
-        @param path_mask: Path where to find the mask fits file
         @param order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
         
         """
@@ -1035,7 +1030,7 @@ class SNIFS_mask:
         i = 1
         while tmp_tbl[1].header.has_key('LBDA%d'%i):
             self.lbda_list.append(tmp_tbl[1].header.get('LBDA%d'%i))
-            i = i+1
+            i += 1
 
         self.x = {}
         self.y = {}
@@ -1093,8 +1088,8 @@ def convert_tab(table,colx,coly,ref_pos):
     @param coly: y column in the table
     @param ref_pos: array giving the x positions where to compute the interpolated values
     """
-    tck = I.splrep(table[1].data.field(colx),\
-                                   table[1].data.field(coly),s=0)
+    tck = I.splrep(table[1].data.field(colx),
+                   table[1].data.field(coly),s=0)
     tab = I.splev(ref_pos,tck)
     return tab
 
@@ -1247,17 +1242,16 @@ def WR_e3d_file(data_list, var_list, no_list,
     nspax =    [1]*len(data_list) 
     spax_id =  [' ']*len(data_list) 
     
-    col_list = []
-    col_list.append(pyfits.Column(name='SPEC_ID',format='J',array=no_list))
-    col_list.append(pyfits.Column(name='SELECTED',format='J',array=selected))
-    col_list.append(pyfits.Column(name='NSPAX',format='J',array=nspax))
-    col_list.append(pyfits.Column(name='SPEC_LEN',format='J',array=spec_len))
-    col_list.append(pyfits.Column(name='SPEC_STA',format='J',array=spec_sta))
-    col_list.append(pyfits.Column(name='XPOS',format='E',array=xpos_list))
-    col_list.append(pyfits.Column(name='YPOS',format='E',array=ypos_list))
-    col_list.append(pyfits.Column(name='GROUP_N',format='J',array=group_n))
-    col_list.append(pyfits.Column(name='SPAX_ID',format='1A1',array=spax_id))
-    if nslice==None:
+    col_list = [pyfits.Column(name='SPEC_ID', format='J', array=no_list),
+                pyfits.Column(name='SELECTED', format='J', array=selected),
+                pyfits.Column(name='NSPAX', format='J', array=nspax),
+                pyfits.Column(name='SPEC_LEN', format='J', array=spec_len),
+                pyfits.Column(name='SPEC_STA', format='J', array=spec_sta),
+                pyfits.Column(name='XPOS', format='E', array=xpos_list),
+                pyfits.Column(name='YPOS', format='E', array=ypos_list),
+                pyfits.Column(name='GROUP_N', format='J', array=group_n),
+                pyfits.Column(name='SPAX_ID', format='1A1', array=spax_id)]
+    if nslice is None:
         col_list.append(pyfits.Column(name='DATA_SPE',format='PD()',
                                       array=num.array(data_list, dtype='O')))
         qual = num.array([[0 for i in d] for d in data_list], dtype='O')
@@ -1276,23 +1270,23 @@ def WR_e3d_file(data_list, var_list, no_list,
                                           array=var_list))
 
     tb_hdu = pyfits.new_table(col_list)
-    tb_hdu.header.update('CTYPES',' ')
-    tb_hdu.header.update('CRVALS',start)
-    tb_hdu.header.update('CDELTS',step)
-    tb_hdu.header.update('CRPIXS',1)
-    tb_hdu.header.update('EXTNAME','E3D_DATA')
+    tb_hdu.header['CTYPES'] = ' '
+    tb_hdu.header['CRVALS'] = start
+    tb_hdu.header['CDELTS'] = step
+    tb_hdu.header['CRPIXS'] = 1
+    tb_hdu.header['EXTNAME'] = 'E3D_DATA'
     
     for desc in data_header:
         if desc not in ('XTENSION','BITPIX','GCOUNT','PCOUNT','TFIELDS',
                         'EXTNAME','TFORM','TUNIT','TDISP',
                         'CTYPES','CRVALS','CDELTS','CRPIXS') and \
                         desc[:5] not in ('NAXIS','TTYPE','TFORM'):
-            tb_hdu.header.update(desc,data_header[desc])
+            tb_hdu.header[desc] = data_header[desc]
 
     pri_hdu = pyfits.PrimaryHDU()
-    pri_hdu.header.update('EURO3D',pyfits.TRUE)
-    pri_hdu.header.update('E3D_ADC',pyfits.FALSE)
-    pri_hdu.header.update('E3D_VERS','1.0')
+    pri_hdu.header['EURO3D'] = pyfits.TRUE
+    pri_hdu.header['E3D_ADC'] = pyfits.FALSE
+    pri_hdu.header['E3D_VERS'] = '1.0'
     hdu_list = pyfits.HDUList([pri_hdu,tb_hdu,grp_hdu]+extra_hdu_list)
     hdu_list.writeto(filename, clobber=True) # Overwrite
 
