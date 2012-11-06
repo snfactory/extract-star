@@ -52,7 +52,7 @@ class spectrum:
         self.file = file
         if data_file is not None:
             data_fits = pyfits.open(data_file, ignore_missing_end=True)
-            if data_fits[0].header.has_key('EURO3D'):
+            if 'EURO3D' in data_fits[0].header:
                 # Case where the spectrum belongs to an e3d datacube
                 if no is None:
                     raise ValueError('The user must provide the spectrum '
@@ -491,7 +491,7 @@ class SNIFS_cube:
         if e3d_file is not None:
             e3d_cube = pyfits.open(e3d_file, ignore_missing_end=True)
             gen_header = dict(e3d_cube[0].header.items())
-            if not gen_header.has_key('EURO3D') or \
+            if 'EURO3D' not in gen_header or \
                    gen_header['EURO3D'] not in ('T', pyfits.TRUE):
                 raise ValueError("Invalid E3d file ('EURO3D' keyword)")
             
@@ -1028,7 +1028,7 @@ class SNIFS_mask:
         self.no = mask_tbl[1].data.field('no').tolist()
         self.lbda_list = []
         i = 1
-        while tmp_tbl[1].header.has_key('LBDA%d'%i):
+        while 'LBDA%d'%i in tmp_tbl[1].header:
             self.lbda_list.append(tmp_tbl[1].header.get('LBDA%d'%i))
             i += 1
 
