@@ -579,7 +579,7 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
             hdr['PRESSURE'] = MK_pressure
         else:                           # True pyfits header, add comment
-            hdr.update('PRESSURE',MK_pressure,"Default MK pressure [mbar]")
+            hdr['PRESSURE'] = (MK_pressure,"Default MK pressure [mbar]")
         pressure = MK_pressure
 
     temp = hdr.get('TEMP', N.nan)
@@ -589,7 +589,7 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
             hdr['TEMP'] = MK_temp
         else:                           # True pyfits header, add comment
-            hdr.update('TEMP', MK_temp, "Default MK temperature [C]")
+            hdr['TEMP'] = (MK_temp, "Default MK temperature [C]")
         temp = MK_temp
 
     return pressure,temp

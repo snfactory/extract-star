@@ -120,16 +120,16 @@ def write_fits(self, filename=None, header=None):
     hdusig = F.PrimaryHDU(self.data, header=header)
     for key in ['EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS']:
         del(hdusig.header[key])  # Remove technical keys from E3D cube
-    hdusig.header.update('CRVAL1', self.start, after='NAXIS1')
-    hdusig.header.update('CDELT1', self.step,  after='CRVAL1')
+    hdusig.header.set('CRVAL1', self.start, after='NAXIS1')
+    hdusig.header.set('CDELT1', self.step, after='CRVAL1')
 
     hduList = F.HDUList([hdusig])
 
     # 1st extension 'VARIANCE': variance
     if self.has_var:
         hduvar = F.ImageHDU(self.var, name='VARIANCE')
-        hduvar.header.update('CRVAL1', self.start)
-        hduvar.header.update('CDELT1', self.step)
+        hduvar.header['CRVAL1'] = self.start
+        hduvar.header['CDELT1'] = self.step
 
         hduList.append(hduvar)
 
@@ -137,10 +137,10 @@ def write_fits(self, filename=None, header=None):
     if hasattr(self, 'cov'):
         #hducov = F.CompImageHDU(N.tril(self.cov), name='COVAR')
         hducov = F.ImageHDU(N.tril(self.cov), name='COVAR')
-        hducov.header.update('CRVAL1', self.start)
-        hducov.header.update('CDELT1', self.step)
-        hducov.header.update('CRVAL2', self.start)
-        hducov.header.update('CDELT2', self.step)
+        hducov.header['CRVAL1'] = self.start
+        hducov.header['CDELT1'] = self.step
+        hducov.header['CRVAL2'] = self.start
+        hducov.header['CDELT2'] = self.step
 
         hduList.append(hducov)
 
@@ -284,42 +284,42 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
                                     7+opts.ellDeg+opts.alphaDeg],
                               trans=(a,b))
 
-    hdr.update('ES_VERS', __version__)
-    hdr.update('ES_CUBE', opts.input, 'Input cube')
-    hdr.update('ES_LREF', LbdaRef,    'Lambda ref. [A]')
-    hdr.update('ES_SDEG', opts.skyDeg,'Polynomial bkgnd degree')
-    hdr.update('ES_CHI2', chi2,       'Chi2 of 3D fit')
-    hdr.update('ES_AIRM', adr.get_airmass(), 'Effective airmass')
-    hdr.update('ES_PARAN',adr.get_parangle(), 'Effective parangle [deg]')
-    hdr.update('ES_XC',   x0,         'xc @lbdaRef [spx]')
-    hdr.update('ES_YC',   y0,         'yc @lbdaRef [spx]')
-    hdr.update('ES_XY',   param[4],   'XY coeff.')
-    hdr.update('ES_LMIN', lmin, 'Meta-slices minimum lambda')
-    hdr.update('ES_LMAX', lmax, 'Meta-slices maximum lambda')
+    hdr['ES_VERS'] = __version__
+    hdr['ES_CUBE'] = (opts.input, 'Input cube')
+    hdr['ES_LREF'] = (LbdaRef, 'Lambda ref. [A]')
+    hdr['ES_SDEG'] = (opts.skyDeg,'Polynomial bkgnd degree')
+    hdr['ES_CHI2'] = (chi2, 'Chi2 of 3D fit')
+    hdr['ES_AIRM'] = (adr.get_airmass(), 'Effective airmass')
+    hdr['ES_PARAN'] = (adr.get_parangle(), 'Effective parangle [deg]')
+    hdr['ES_XC'] = (x0, 'xc @lbdaRef [spx]')
+    hdr['ES_YC'] = (y0, 'yc @lbdaRef [spx]')
+    hdr['ES_XY'] = (param[4], 'XY coeff.')
+    hdr['ES_LMIN'] = (lmin, 'Meta-slices minimum lambda')
+    hdr['ES_LMAX'] = (lmax, 'Meta-slices maximum lambda')
 
     for i in xrange(opts.ellDeg + 1):
-        hdr.update('ES_E%i' % i, c_ell[i], 'Y2 coeff. e%d' % i)
+        hdr['ES_E%i' % i] = (c_ell[i], 'Y2 coeff. e%d' % i)
     for i in xrange(opts.alphaDeg + 1):
-        hdr.update('ES_A%i' % i, c_alp[i], 'Alpha coeff. a%d' % i)
+        hdr['ES_A%i' % i] = (c_alp[i], 'Alpha coeff. a%d' % i)
 
-    hdr.update('ES_METH', opts.method, 'Extraction method')
+    hdr['ES_METH'] = (opts.method, 'Extraction method')
     if opts.method == 'psf':
-        hdr.update('ES_PSF', psfname, 'PSF name')
+        hdr['ES_PSF'] = (psfname, 'PSF name')
     else:
-        hdr.update('ES_APRAD', opts.radius, 'Aperture radius [arcsec or sigma]')
+        hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [arcsec or sigma]')
 
     tflux, sflux = fluxes
-    hdr.update('ES_TFLUX',tflux, 'Sum of the spectrum flux')
+    hdr['ES_TFLUX'] = (tflux, 'Sum of the spectrum flux')
     if opts.skyDeg >= 0:
-        hdr.update('ES_SFLUX',sflux, 'Sum of the sky flux')
+        hdr['ES_SFLUX'] = (sflux, 'Sum of the sky flux')
 
-    hdr.update('SEEING', seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
+    hdr['SEEING'] = (seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
 
     if opts.supernova:
-        hdr.update('ES_SNMOD', opts.supernova, 'Supernova mode')
+        hdr['ES_SNMOD'] = (opts.supernova, 'Supernova mode')
     if opts.psf3Dconstraints:
         for i,constraint in enumerate(opts.psf3Dconstraints):
-            hdr.update('ES_BND%d' % (i+1), constraint, "Constraint on 3D-PSF")
+            hdr['ES_BND%d' % (i+1)] = (constraint, "Constraint on 3D-PSF")
 
 
 def setPSF3Dconstraints(psfConstraints, params, bounds):
