@@ -101,6 +101,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
 
         # Sky estimate (from FoV edge spx)
         skyLev = N.median(cube_sky.data.T[skySpx].squeeze())
+
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
             # given cube slice.
@@ -118,6 +119,9 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         # Guess parameters for the current slice
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()            # Intensity
+        xc = N.average(cube.x, weights=medstar)
+        yc = N.average(cube.y, weights=medstar)
+
         cube_sky.data -= skyLev
         if chi2fit:
             cube_sky.var = cube.var[i, N.newaxis] # Reset to cube.var for chi2
@@ -125,7 +129,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             cube_sky.var = None                   # Least-square
         model = pySNIFS_fit.model(data=cube_sky,
                                   func=['gaus2D','poly2D;0'],
-                                  param=[[0,0,1,1,imax],[0]],
+                                  param=[[xc,yc,1,1,imax],[0]],
                                   bounds=[ [[-7.5,7.5]]*2 + # x0,y0
                                            [[0.1,5]]*2 +    # sx,sy
                                            [[0,None]],
