@@ -1,3 +1,8 @@
+2013-06-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: figure updates, estimate
+	parallactic angle on the fly if needed.
+
 2012-11-16  Clément BUTON  <cbuton@ipnl.in2p3.fr>
 
 	* lib/libExtractStar.py (fit_metaslices): Change initial guess

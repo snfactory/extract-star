@@ -283,7 +283,7 @@ def plot_correlation_matrix(ax, corr, parnames=None):
         ax.set_xticks(range(npar)) # Set the nb of ticks
         ax.set_xticklabels(parnames, rotation=45, size='smaller')
         ax.set_yticks(range(npar))
-        ax.set_yticklabels(parnames, rotation=45, size='smaller')
+        ax.set_yticklabels(parnames[::-1], rotation=45, size='smaller')
     fig = ax.get_figure()
     cb = fig.colorbar(im, ax=ax, orientation='horizontal')
     cb.set_label("|Correlation matrix|")
