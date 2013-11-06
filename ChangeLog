@@ -1,3 +1,10 @@
+2013-11-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: option '-c/--correlation'
+	replaced by '--psf' (and different PSF model names). Implement new
+	PSF model 'classic-powerlaw' with a curved power-law chromatic
+	behavior (rather than a polynomial one). WORK STILL IN PROGRESS!
+
 2013-06-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: figure updates, estimate

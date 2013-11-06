@@ -173,6 +173,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             cube_star.var = None # Will be handled by pySNIFS_fit.model
 
         # Instantiate the model class and fit current slice
+        print " DEBUG "*3, func, psf_fn.model
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
                                        myfunc={psf_fn.name:psf_fn})
@@ -225,12 +226,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         chi2s[i]   = model_star.khi2
         if chi2fit:
             print_msg("  Chi2 result [%d chi2/dof=%.2f/%d]: %s" % \
-                          (model_star.status,model_star.khi2,model_star.dof,
-                           model_star.fitpar), 1)
+                      (model_star.status,model_star.khi2,model_star.dof,
+                       model_star.fitpar), 1)
         else:
             print_msg("  Least-sq. result [%d RSS/dof=%.2f/%d]: %s" % \
-                          (model_star.status,model_star.khi2,model_star.dof,
-                           model_star.fitpar), 1)
+                      (model_star.status,model_star.khi2,model_star.dof,
+                       model_star.fitpar), 1)
 
     return params,chi2s,dparams
 
@@ -610,7 +611,7 @@ def read_psf_name(hdr):
         efftime = hdr['EFFTIME']
         print "WARNING: cannot read 'ES_PSF' keyword, " \
             "guessing from EFFTIME=%.0fs" % efftime
-        # Assert it's an old correlation PSF (i.e. 'long' or 'short')
+        # Assert it's an 'old' PSF model (i.e. 'long' or 'short')
         psfname = (efftime > 12.) and 'long' or 'short'
 
     # Convert PSF name (e.g. 'short red') to PSF function name
@@ -795,6 +796,13 @@ def chebEval(pars, nx, chebpolys=[]):
 
     return N.sum( [ par*cheb(nx) for par,cheb in zip(pars,chebpolys) ], axis=0)
 
+def powerLawEval(coeffs, x):
+    """Evaluate (curved) power-law:
+    coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*x + ...)
+    """
+
+    return coeffs[-1] * x**N.polyval(coeffs[:-1], x)
+
 # Ellipse utilities ==============================
 
 def quadEllipse(a,b,c,d,f,g):
@@ -860,7 +868,7 @@ class ExposurePSF:
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
         @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
-                       reference wavelength and polynomial degrees).
+                         reference wavelength and polynomial degrees).
         @param cube: Input cube. This is a L{SNIFS_cube} object.
         @param coords: if not None, should be (x,y).
         """
@@ -915,18 +923,18 @@ class ExposurePSF:
         """
         Compute the function.
         @param param: Input parameters of the polynomial. A list of numbers:
-                - C{param[0:7+n+m]}: The n parameters of the PSF shape
-                     - C{param[0]}: Atmospheric dispersion power
-                     - C{param[1]}: Atmospheric dispersion position angle
-                     - C{param[2]}: X center at the reference wavelength
-                     - C{param[3]}: Y center at the reference wavelength
-                     - C{param[4]}: Position angle
-                     - C{param[5:6+n]}: Ellipticity
-                                        (n:polynomial degree of ellipticity)
-                     - C{param[6+n:7+n+m]}: Moffat scale
-                                            (m:polynomial degree of alpha)
-                - C{param[7+m+n:]}: Intensity parameters
-                                    (one for each slice in the cube).
+        - C{param[0:7+n+m]}: The n parameters of the PSF shape
+          - C{param[0]}: Atmospheric dispersion power
+          - C{param[1]}: Atmospheric dispersion position angle
+          - C{param[2]}: X center at the reference wavelength
+          - C{param[3]}: Y center at the reference wavelength
+          - C{param[4]}: Position angle
+          - C{param[5:6+n]}: Ellipticity
+                             (n:polynomial degree of ellipticity)
+          - C{param[6+n:7+n+m]}: Moffat scale
+                                 (m:polynomial degree of alpha)
+        - C{param[7+m+n:]}: Intensity parameters
+                            (one for each slice in the cube).
         @param normed: Should the function be normalized (integral)
         """
 
@@ -946,10 +954,13 @@ class ExposurePSF:
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel) # nslice,nlens
-        alpha = polyEval(alphaCoeffs, self.lrel)
+        if self.model.endswith('powerlaw'):
+            alpha = powerLawEval(alphaCoeffs, self.l/self.lbda_ref)
+        else:
+            alpha = polyEval(alphaCoeffs, self.lrel)
 
-        # Correlated params
-        if self.correlations=='new':
+        # PSF model
+        if self.model=='chromatic':  # Includes chromatic correlations
             lcheb = chebNorm(self.l, *self.chebRange)
             b0 = chebEval(self.beta0,  lcheb)
             b1 = chebEval(self.beta1,  lcheb)
@@ -957,7 +968,7 @@ class ExposurePSF:
             s1 = chebEval(self.sigma1, lcheb)
             e0 = chebEval(self.eta0,   lcheb)
             e1 = chebEval(self.eta1,   lcheb)
-        else:
+        else:                        # Achromatic correlations
             b0 = self.beta0
             b1 = self.beta1
             s0 = self.sigma0
@@ -973,7 +984,7 @@ class ExposurePSF:
         dy = self.y - y0
         # CAUTION: ell & PA are not the true ellipticity and position angle!
         r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
-        gaussian = N.exp(-r2/2/sigma**2)
+        gaussian = N.exp(-0.5*r2/sigma**2)
         moffat = (1 + r2/alpha**2)**(-beta)
 
         # Function
@@ -1012,10 +1023,13 @@ class ExposurePSF:
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel)
-        alpha = polyEval(alphaCoeffs, self.lrel)
-
-        # Correlated params
-        if self.correlations=='new':
+        if self.model.endswith('powerlaw'):
+            alpha = powerLawEval(alphaCoeffs, self.l/self.lbda_ref)
+        else:
+            alpha = polyEval(alphaCoeffs, self.lrel)
+        
+        # PSF model
+        if self.model=='chromatic':  # Includes chromatic correlations
             lcheb = chebNorm(self.l, *self.chebRange)
             b0 = chebEval(self.beta0,  lcheb)
             b1 = chebEval(self.beta1,  lcheb)
@@ -1023,7 +1037,7 @@ class ExposurePSF:
             s1 = chebEval(self.sigma1, lcheb)
             e0 = chebEval(self.eta0,   lcheb)
             e1 = chebEval(self.eta1,   lcheb)
-        else:
+        else:                        # Achromatic correlations
             b0 = self.beta0
             b1 = self.beta1
             s0 = self.sigma0
@@ -1039,26 +1053,36 @@ class ExposurePSF:
         dy = self.y - y0
         dy2 = dy**2
         r2 = dx**2 + ell*dy2 + 2*PA*dx*dy
-        gaussian = N.exp(-r2/2/sigma**2)
-        ea = 1 + r2/alpha**2
+        sigma2 = sigma**2
+        gaussian = N.exp(-0.5*r2/sigma2)
+        alpha2 = alpha**2
+        ea = 1 + r2/alpha2
         moffat = ea**(-beta)
-        j1 = eta/sigma**2
-        j2 = 2*beta/ea/alpha**2
-        da0 = gaussian * ( e1 + s1*r2*j1/sigma ) + \
-              moffat * ( -b1*N.log(ea) + r2*j2/alpha )
 
         # Derivatives
         grad = N.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
+        j1 = eta/sigma2
+        j2 = 2*beta/ea/alpha2
         tmp = gaussian*j1 + moffat*j2
         grad[2] = tmp*(    dx + PA*dy)  # dPSF/dx0
         grad[3] = tmp*(ell*dy + PA*dx)  # dPSF/dy0
         grad[0] =       self.ADR_coeff*(sintheta*grad[2] - costheta*grad[3])
         grad[1] = delta*self.ADR_coeff*(sintheta*grad[3] + costheta*grad[2])
         grad[4] = -tmp   * dx*dy        # dPSF/dPA
-        for i in xrange(self.ellDeg + 1):
+        for i in xrange(self.ellDeg + 1): # dPSF/dei
             grad[5+i] = -tmp/2 * dy2 * self.lrel**i
-        for i in xrange(self.alphaDeg + 1):
-            grad[6+self.ellDeg+i] = da0 * self.lrel**i
+        dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
+                 moffat * ( -b1*N.log(ea) + r2*j2/alpha ) # dPSF/dalpha
+        if self.model.endswith('powerlaw'):
+            lrel = self.l/self.lbda_ref
+            imax = 6+self.ellDeg+self.alphaDeg+1
+            grad[imax-1] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel)
+            grad[imax-2] = grad[imax-1] * alphaCoeffs[-1] * N.log(lrel)
+            for i in range(imax-3, imax-self.alphaDeg-2,-1):
+                grad[i] = grad[i+1] * lrel      # dPSF/dai, i=<0,alphaDeg>
+        else:
+            for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
+                grad[6+self.ellDeg+i] = dalpha * self.lrel**i
         grad[:self.npar_cor] *= self.param[N.newaxis,self.npar_cor:,N.newaxis]
         grad[self.npar_cor] = moffat + eta*gaussian # dPSF/dI
 
@@ -1067,9 +1091,14 @@ class ExposurePSF:
     def _HWHM_fn(self, r, alphaCoeffs, lbda):
         """Half-width at half maximum function (=0 at HWHM)."""
 
-        lrel = chebNorm(lbda, self.lmin, self.lmax) # Norm to [-1,1]
-        alpha = polyEval(alphaCoeffs, lrel)
-        if self.correlations=='new':
+        if self.model.endswith('powerlaw'):
+            lrel = lbda/self.lbda_ref
+            alpha = powerLawEval(alphaCoeffs, lrel)
+        else:
+            lrel = chebNorm(lbda, self.lmin, self.lmax) # Norm to [-1,1]
+            alpha = polyEval(alphaCoeffs, lrel)
+
+        if self.model=='chromatic':
             lcheb = chebNorm(lbda, *self.chebRange)
             b0 = chebEval(self.beta0,  lcheb)
             b1 = chebEval(self.beta1,  lcheb)
@@ -1087,7 +1116,7 @@ class ExposurePSF:
         sigma = s0 + s1*alpha
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
-        gaussian = N.exp(-r**2/2/sigma**2)
+        gaussian = N.exp(-0.5*r**2/sigma**2)
         moffat = (1 + r**2/alpha**2)**(-beta)
 
         # PSF=moffat + eta*gaussian, maximum is 1+eta
@@ -1105,13 +1134,12 @@ class ExposurePSF:
         # Beware: scipy-0.8.0 fsolve returns a size 1 array
         return N.squeeze(fwhm)  # In spaxels
 
-# Old PSF parameters description without chromaticity for long and
-# short exposures.
 
 class Long_ExposurePSF(ExposurePSF):
+    """Classic PSF model (achromatic correlations) for long exposures."""
 
     name = 'long'
-    correlations = 'old'
+    model = 'classic'
 
     beta0  = 1.685
     beta1  = 0.345
@@ -1121,9 +1149,11 @@ class Long_ExposurePSF(ExposurePSF):
     eta1   = 0.00
 
 class Short_ExposurePSF(ExposurePSF):
+    """Classic PSF model (achromatic correlations) for short
+    exposures."""
 
     name = 'short'
-    correlations = 'old'
+    model = 'classic'
 
     beta0  = 1.395
     beta1  = 0.415
@@ -1132,13 +1162,13 @@ class Short_ExposurePSF(ExposurePSF):
     eta0   = 0.6
     eta1   = 0.16
 
-# New PSF parameters description using 2nd order chebychev polynomial
-# for long and short exposures and blue and red channels.
 
 class LongBlue_ExposurePSF(ExposurePSF):
+    """PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for long, blue exposures."""
 
     name = 'long blue'
-    correlations = 'new'
+    model = 'chromatic'
     chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
 
     beta0  = [ 1.220, 0.016,-0.056] # b00,b01,b02
@@ -1149,9 +1179,11 @@ class LongBlue_ExposurePSF(ExposurePSF):
     eta1   = [ 0.223, 0.060,-0.020] # e10,e11,e12
 
 class LongRed_ExposurePSF(ExposurePSF):
+    """PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for long, red exposures."""
 
     name = 'long red'
-    correlations = 'new'
+    model = 'chromatic'
     chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
 
     beta0  = [ 1.205,-0.100,-0.031] # b00,b01,b02
@@ -1162,9 +1194,11 @@ class LongRed_ExposurePSF(ExposurePSF):
     eta1   = [-0.134, 0.121, 0.054] # e10,e11,e12
 
 class ShortBlue_ExposurePSF(ExposurePSF):
+    """PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for short, blue exposures."""
 
     name = 'short blue'
-    correlations = 'new'
+    model = 'chromatic'
     chebRange = (3399.,5100.)      # Domain of validity of Chebychev expansion
 
     beta0  = [ 1.355, 0.023,-0.042] # b00,b01,b02
@@ -1175,9 +1209,11 @@ class ShortBlue_ExposurePSF(ExposurePSF):
     eta1   = [ 0.316,-0.015,-0.050] # e10,e11,e12
 
 class ShortRed_ExposurePSF(ExposurePSF):
+    """PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for short, red exposures."""
 
     name = 'short red'
-    correlations = 'new'
+    model = 'chromatic'
     chebRange = (5318.,9508.)      # Domain of validity of Chebychev expansion
 
     beta0  = [ 1.350,-0.030,-0.012] # b00,b01,b02

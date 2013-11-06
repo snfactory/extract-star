@@ -283,6 +283,8 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     c_alp = libES.polyConvert(param[6+opts.ellDeg : \
                                     7+opts.ellDeg+opts.alphaDeg],
                               trans=(a,b))
+    if 'powerlaw' in psfname:
+        print "WARNING: ES_Axx keywords are just *WRONG* for powerlaw PSF"
 
     hdr['ES_VERS'] = __version__
     hdr['ES_CUBE'] = (opts.input, 'Input cube')
@@ -395,15 +397,18 @@ if __name__ == "__main__":
                       help="Number of meta-slices [%default].",
                       default=12)
 
-    # PSF correlations
-    parser.add_option("-c", "--correlations", type="string",
-                      help="PSF correlation (new|old) [%default]",
-                      default='old')
+    # PSF model
+    parser.add_option("--psf",
+                      choices=('classic','classic-powerlaw','chromatic'),
+                      help="PSF model " \
+                      "(classic[-powerlaw]|chromatic) [%default]",
+                      default='classic')
 
     # Extraction method and parameters
-    parser.add_option("-m", "--method", type="string",
-                      help="Extraction method (psf|optimal|aperture|subaperture) "
-                      "['%default']",
+    parser.add_option("-m", "--method",
+                      choices=('psf','optimal','aperture','subaperture'),
+                      help="Extraction method " \
+                      "(psf|optimal|[sub]aperture) [%default]",
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
@@ -449,18 +454,10 @@ if __name__ == "__main__":
     elif opts.plot:
         opts.graph = 'pylab'
 
-    opts.method = opts.method.lower()
-    if opts.method not in methods:
-        parser.error("Unrecognized extraction method '%s' %s " % \
-                     (opts.method, methods))
-
     if opts.skyDeg < 0:
         opts.skyDeg = -1
         if opts.sky:
             print "WARNING: cannot extract sky spectrum in no-sky mode."
-
-    if opts.correlations not in ['new','old']:
-        parser.error("'correlations' option must be 'new' or 'old' !")
 
     # Input datacube ===========================================================
 
@@ -508,26 +505,27 @@ if __name__ == "__main__":
     npar_sky = (skyDeg+1)*(skyDeg+2)/2
 
     # Select the PSF
-    if opts.correlations == 'new':
-
-        # New parameters description (short or long, red or blue)
+    if opts.psf == 'chromatic':         # Includes chromatic correlations
+        # Chromatic parameter description (short or long, red or blue)
         if (efftime > 12.) and (channel=='B'):
             psfFn = libES.LongBlue_ExposurePSF
         elif (efftime > 12.) and (channel=='R'):
             psfFn = libES.LongRed_ExposurePSF
-        elif (efftime < 12.) and (channel=='B'):
+        elif (efftime <= 12.) and (channel=='B'):
             psfFn = libES.ShortBlue_ExposurePSF
-        elif (efftime < 12.) and (channel=='R'):
+        elif (efftime <= 12.) and (channel=='R'):
             psfFn = libES.ShortRed_ExposurePSF
+    elif opts.psf.startswith('classic'): # Achromatic correlations
+        # Classical parameter description (short or long)
+        psfFn = libES.Long_ExposurePSF if (efftime > 12.) \
+                else libES.Short_ExposurePSF
+        if opts.psf.endswith('powerlaw'):
+            psfFn.model += '-powerlaw'
     else:
+        parser.error("Invalid PSF model '%s'" % opts.psf)
 
-        # Old parameters description (short or long)
-        psfFn = (efftime > 12.) and \
-                libES.Long_ExposurePSF or \
-                libES.Short_ExposurePSF
-
-    print "  Object: %s, Airmass: %.2f, Efftime: %.1fs [%s]" % \
-          (objname, airmass, efftime, psfFn.name)
+    print "  Object: %s, Airmass: %.2f, Efftime: %.1fs, PSF: %s" % \
+          (objname, airmass, efftime, ', '.join((psfFn.model,psfFn.name)))
 
     # Test channel and set default output name
     if channel not in ('B','R'):
@@ -638,21 +636,26 @@ if __name__ == "__main__":
               (delta0, theta0/N.pi*180), 1) # N.degrees() from python-2.5 only
 
     # 2) Other parameters
-    PA       = N.median(PA_vec[good])
-    polEll   = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
-    polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
+    PA     = N.median(PA_vec[good])
+    polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
+    if opts.psf.endswith('powerlaw'):
+        print "WARNING: no clever initial guess in powerlaw PSF"
+        guessAlphaCoeffs = [0.]*(opts.alphaDeg-1) + [-1.,3.]
+    else:
+        polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
+        guessAlphaCoeffs = polAlpha.coeffs[::-1]
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1     = [None]*(npar_psf+nslice)
     p1[:5] = [delta0, theta0, xc, yc, PA]
     p1[5:6+ellDeg]        = polEll.coeffs[::-1]
-    p1[6+ellDeg:npar_psf] = polAlpha.coeffs[::-1]
+    p1[6+ellDeg:npar_psf] = guessAlphaCoeffs
     p1[npar_psf:npar_psf+nslice] = int_vec.tolist()
 
     if opts.supernova:                  # Fix all parameters but intensities
         print "WARNING: supernova-mode, no 3D PSF-fit"
-        # This mode  completely discards 3D fit. In  pratice, a 3D-fit
-        # is still  performed on intensities,  just to be  coherent w/
+        # This mode completely discards 3D fit. In pratice, a 3D-fit
+        # is still performed on intensities, just to be coherent w/
         # the remaining of the code.
         b1 = [[delta0, delta0],         # delta
               [theta0, theta0],         # theta
@@ -668,7 +671,10 @@ if __name__ == "__main__":
               [None, None],             # y0
               [None, None]]             # PA
         b1 += [[0, None]] + [[None, None]]*ellDeg   # ell0 > 0
-        b1 += [[0, None]] + [[None, None]]*alphaDeg # a0 > 0
+        if opts.psf.endswith('powerlaw'):
+            b1 += [[None, None]]*alphaDeg + [[0, None]] # a[-1] > 0
+        else:
+            b1 += [[0, None]] + [[None, None]]*alphaDeg # a0 > 0
     b1 += [[0, None]]*nslice            # Intensities
 
     if opts.psf3Dconstraints:   # Read and set constraints from option
@@ -739,7 +745,11 @@ if __name__ == "__main__":
 
     # Test positivity of alpha and ellipticity. At some point, maybe it would
     # be necessary to force positivity in the fit (e.g. fmin_cobyla).
-    fit_alpha = libES.polyEval(fitpar[6+ellDeg:npar_psf], lbda_rel)
+    if opts.psf.endswith('powerlaw'):
+        fit_alpha = libES.powerLawEval(fitpar[6+ellDeg:npar_psf],
+                                       cube.lbda/lref)
+    else:
+        fit_alpha = libES.polyEval(fitpar[6+ellDeg:npar_psf], lbda_rel)
     if fit_alpha.min() < 0:
         raise ValueError("Alpha is negative (%.2f) at %.0fA" % \
                          (fit_alpha.min(), cube.lbda[fit_alpha.argmin()]))
@@ -817,7 +827,8 @@ if __name__ == "__main__":
     else:
         sflux = 0                   # Not stored anyway
 
-    fill_header(inhdr, psfFn.name, fitpar[:npar_psf], adr, cube, opts,
+    fill_header(inhdr, ', '.join((psfFn.model, psfFn.name)),
+                fitpar[:npar_psf], adr, cube, opts,
                 chi2, seeing, (tflux,sflux))
 
     # Save star spectrum =====================================================
@@ -915,7 +926,6 @@ if __name__ == "__main__":
                 xlim=(star_spec.x[0],star_spec.x[-1]),
                 yscale='log')
 
-        #fig1.subplots_adjust(left=0.06, right=0.96, bottom=0.08, top=0.95)
         fig1.tight_layout()
         if plot1:
             fig1.savefig(plot1)
@@ -1128,7 +1138,6 @@ if __name__ == "__main__":
                   (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle()),
                   transform=ax4c.transAxes, fontsize='small')
 
-        #fig4.subplots_adjust(left=0.08, right=0.96, bottom=0.08, top=0.95)
         fig4.tight_layout()
         if plot4:
             fig4.savefig(plot4)
@@ -1138,7 +1147,10 @@ if __name__ == "__main__":
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
         guess_ell   = N.polyval(polEll.coeffs,   lbda_rel)
-        guess_alpha = N.polyval(polAlpha.coeffs, lbda_rel)
+        if opts.psf.endswith('powerlaw'):
+            guess_alpha = libES.powerLawEval(guessAlphaCoeffs, cube.lbda/lref)
+        else:
+            guess_alpha = libES.polyEval(guessAlphaCoeffs, lbda_rel)
 
         # err_ell and err_alpha are definitely wrong, and not only
         # because they do not include correlations between parameters!
@@ -1199,7 +1211,7 @@ if __name__ == "__main__":
         ax6a.text(0.03, 0.15,
                   'Guess: %s' % \
                   (', '.join([ 'a%d=%.2f' % (i,a) for i,a in
-                              enumerate(polAlpha.coeffs[::-1]) ]) ),
+                              enumerate(guessAlphaCoeffs) ]) ),
                   transform=ax6a.transAxes, fontsize='small')
         ax6a.text(0.03, 0.05,
                   'Fit: %s' % \
