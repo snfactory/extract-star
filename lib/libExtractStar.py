@@ -88,11 +88,15 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
 
-    print_msg("  Set initial guess from simple Gaussian+constant fit", 2)
+    print_msg("  Set initial guess from simple Gaussian+constant fit",
+              2, verbosity)
     print_msg("  Adjusted parameters: [delta=0,theta=0],xc,yc,PA,ell,alpha,I,"
-              "%d bkgndCoeffs" % (skyDeg>=0 and npar_sky or 0), 2)
+              "%d bkgndCoeffs" % (npar_sky if skyDeg>=0 else 0),
+              2, verbosity)
 
     for i in xrange(cube.nslice):       # Loop over cube slices
+        print_msg("Meta-slice #%d/%d, %.0fA:" % (i+1,cube.nslice,cube.lbda[i]),
+                  2, verbosity)
         cube_star.lbda = N.array([cube.lbda[i]])
         cube_star.data = cube.data[i, N.newaxis]
         cube_star.var  = cube.var[i,  N.newaxis]
@@ -149,7 +153,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
               [0, None]]                # Intensity > 0
 
         # alphaDeg & ellDeg set to 0 for meta-slice fits
-        func = ['%s;%f,%f,%f,%f' % \
+        func = ['%s;%f,%f,%f,%f' % 
                 (psf_fn.name, cube_star.spxSize, cube_star.lbda[0], 0, 0)]
         param = [p1]
         bounds = [b1]
@@ -165,19 +169,17 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             bounds += [b2]
         else:                           # No background
             p2 = []
-        print_msg("  Initial guess [#%d/%d, %.0fA]: %s" % \
-                  (i+1,cube.nslice,cube.lbda[i],p1+p2), 2)
+        print_msg("  Initial guess: %s" % (p1+p2), 2, verbosity)
 
         # Chi2 vs. Least-square fit
         if not chi2fit:
             cube_star.var = None # Will be handled by pySNIFS_fit.model
 
         # Instantiate the model class and fit current slice
-        print " DEBUG "*3, func, psf_fn.model
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
                                        myfunc={psf_fn.name:psf_fn})
-        model_star.fit(maxfun=400, msge=int(verbosity >= 3))
+        model_star.fit(maxfun=400, msge=int(verbosity >= 4))
 
         # Restore true chi2 (not reduced one), ie.
         # chi2 = ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
@@ -225,13 +227,17 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         dparams[i] = dpar
         chi2s[i]   = model_star.khi2
         if chi2fit:
-            print_msg("  Chi2 result [%d chi2/dof=%.2f/%d]: %s" % \
+            print_msg("  Chi2 fit [%d, chi2/dof=%.2f/%d]: %s" % 
                       (model_star.status,model_star.khi2,model_star.dof,
-                       model_star.fitpar), 1)
+                       model_star.fitpar), 1, verbosity)
         else:
-            print_msg("  Least-sq. result [%d RSS/dof=%.2f/%d]: %s" % \
+            print_msg("  Lsq fit [%d, RSS/dof=%.2f/%d]: %s" % 
                       (model_star.status,model_star.khi2,model_star.dof,
-                       model_star.fitpar), 1)
+                       model_star.fitpar), 1, verbosity)
+
+        if verbosity >= 3:
+            print "Gradient checks:"
+            model_star.check_grad()
 
     return params,chi2s,dparams
 
@@ -403,7 +409,7 @@ def extract_specs(cube, psf, skyDeg=0,
 
     # Replace invalid data (var=0) by model PSF = Intensity*PSF
     if not good.all():
-        print_msg("Replacing %d vx with modeled signal" % \
+        print_msg("Replacing %d vx with modeled signal" % 
                   len((~good).nonzero()[0]), 1, verbosity)
         subData[~good] = (sigspecs[:,0]*psf.T).T[~good]
 
@@ -414,8 +420,8 @@ def extract_specs(cube, psf, skyDeg=0,
     print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad),
               1, verbosity)
     # Aperture center after ADR offset [spx] (nslice)
-    xc = psf_param[2] + psf_param[0]*model.ADR_coeff[:,0]*N.cos(psf_param[1])
-    yc = psf_param[3] + psf_param[0]*model.ADR_coeff[:,0]*N.sin(psf_param[1])
+    xc = psf_param[2] + psf_param[0]*model.ADRcoeffs[:,0]*N.cos(psf_param[1])
+    yc = psf_param[3] + psf_param[0]*model.ADRcoeffs[:,0]*N.sin(psf_param[1])
     # Radial distance from center [spx] (nslice,nlens)
     r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
     # Circular aperture (nslice,nlens)
@@ -461,7 +467,7 @@ def extract_specs(cube, psf, skyDeg=0,
         extRange = N.arange(nw) - mid
         extx,exty = N.meshgrid(extRange[::-1],extRange) # nw,nw
         extnlens = extx.size                 # = nlens' = nw**2
-        print_msg("  Extend FoV by %d spx: nlens=%d -> %d" % \
+        print_msg("  Extend FoV by %d spx: nlens=%d -> %d" % 
                   (ns, model.nlens, extnlens), 1, verbosity)
 
         # Compute PSF on extended range (nslice,extnlens)
@@ -476,7 +482,7 @@ def extract_specs(cube, psf, skyDeg=0,
         for i in xrange(model.nlens):
             # Embeb original spx i in extended model array by finding
             # corresponding index j in new array
-            j, = ((extModel.x[0]==model.x[0,i]) & \
+            j, = ((extModel.x[0]==model.x[0,i]) & 
                   (extModel.y[0]==model.y[0,i])).nonzero()
             subData[:,j[0]] = origData[:,i]
             subVar[:,j[0]]  = origVar[:,i]
@@ -603,16 +609,16 @@ def read_psf_name(hdr):
     """Return PSF function name read (or guessed) from header."""
 
     assert hdr['ES_METH']=='psf', \
-        "PSF reconstruction only works for PSF spectro-photometry"
+           "PSF reconstruction only works for PSF spectro-photometry"
 
     try:
         psfname = hdr['ES_PSF']
     except KeyError:
         efftime = hdr['EFFTIME']
         print "WARNING: cannot read 'ES_PSF' keyword, " \
-            "guessing from EFFTIME=%.0fs" % efftime
+              "guessing from EFFTIME=%.0fs" % efftime
         # Assert it's an 'old' PSF model (i.e. 'long' or 'short')
-        psfname = (efftime > 12.) and 'long' or 'short'
+        psfname = 'long' if efftime > 12. else 'short'
 
     # Convert PSF name (e.g. 'short red') to PSF function name
     # ('ShortRed_ExposurePSF')
@@ -623,10 +629,10 @@ def read_psf_name(hdr):
 
 
 def read_psf_ctes(hdr, lrange=()):
-    """Read PSF constants [lbda_ref,alphaDeg,ellDeg] from header."""
+    """Read PSF constants [lRef,alphaDeg,ellDeg] from header."""
 
-    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange,\
-       'ES_LMIN/ES_LMAX not found and lrange not set'
+    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
+           'ES_LMIN/ES_LMAX not found and lrange not set'
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
@@ -635,7 +641,7 @@ def read_psf_ctes(hdr, lrange=()):
     else:
         lmin = hdr['ES_LMIN']
         lmax = hdr['ES_LMAX']
-    lref = (lmin+lmax)/2
+    lref = (lmin+lmax)/2.
 
     # this can be put back as soon as we are sure that
     # everything is understood in what concerns the PSF
@@ -648,7 +654,7 @@ def read_psf_ctes(hdr, lrange=()):
                  if re.match('ES_A\d+$',k) is not None ]) - 1
     edeg = len([ k for k in hdr.keys()
                  if re.match('ES_E\d+$',k) is not None ]) - 1
-    print "PSF constants: lref=%.2fA, alphaDeg=%d, ellDeg=%d" % (lref,adeg,edeg)
+    print "PSF constants: lRef=%.2fA, alphaDeg=%d, ellDeg=%d" % (lref,adeg,edeg)
 
     return [lref,adeg,edeg]
 
@@ -666,8 +672,8 @@ def read_psf_param(hdr, lrange=()):
     c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) is not None ]
     c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) is not None ]
 
-    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange,\
-       'ES_LMIN/ES_LMAX not found and lrange not set'
+    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
+           'ES_LMIN/ES_LMAX not found and lrange not set'
 
     # this can be put back as soon as we are sure that
     # everything is understood in what concerns the PSF
@@ -704,7 +710,7 @@ def read_psf_param(hdr, lrange=()):
     x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True)
 
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
-        "refpos=%.2fx%.2f spx @%.2fA" % (airmass,parang,x0,y0,(lmin+lmax)/2)
+          "refpos=%.2fx%.2f spx @%.2fA" % (airmass,parang,x0,y0,(lmin+lmax)/2)
 
     return [delta,theta,x0,y0,pa] + ecoeffs + acoeffs
 
@@ -771,11 +777,11 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
         if (good==old).all(): break     # No more changes, stop there
         if niter > nitermax:            # Max. # of iter, stop there
             print "polyfit_clip reached max. # of iterations: " \
-                      "deg=%d, clip=%.2f x %f, %d px removed" % \
-                      (deg, clip, N.std(dy), len((~old).nonzero()[0]))
+                  "deg=%d, clip=%.2f x %f, %d px removed" % \
+                  (deg, clip, N.std(dy), len((~old).nonzero()[0]))
             break
         if y[good].size <= deg+1:
-            raise ValueError("polyfit_clip: Not enough points left (%d) " \
+            raise ValueError("polyfit_clip: Not enough points left (%d) " 
                              "for degree %d" % (y[good].size,deg))
     return coeffs
 
@@ -873,7 +879,7 @@ class ExposurePSF:
         @param coords: if not None, should be (x,y).
         """
         self.spxSize  = psf_ctes[0]     # Spaxel size [arcsec]
-        self.lbda_ref = psf_ctes[1]     # Reference wavelength [AA]
+        self.lref = psf_ctes[1]         # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
 
@@ -901,6 +907,7 @@ class ExposurePSF:
             self.x = N.resize(x, (self.nslice,self.nlens)) # nslice,nlens
             self.y = N.resize(y, (self.nslice,self.nlens))
         self.l = N.resize(cube.lbda, (self.nlens,self.nslice)).T # nslice,nlens
+
         if self.nslice > 1:
             self.lmin = cube.lstart
             self.lmax = cube.lend
@@ -914,8 +921,8 @@ class ExposurePSF:
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
             pressure,temp = read_PT(None)   # Get default values for P and T
-        self.n_ref = TA.atmosphericIndex(self.lbda_ref, P=pressure, T=temp)
-        self.ADR_coeff = ( self.n_ref - 
+        self.nRef = TA.atmosphericIndex(self.lref, P=pressure, T=temp)
+        self.ADRcoeffs = ( self.nRef - 
                            TA.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
                            TA.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
 
@@ -945,8 +952,8 @@ class ExposurePSF:
         theta = self.param[1]
         xc    = self.param[2]
         yc    = self.param[3]
-        x0 = xc + delta*self.ADR_coeff*N.sin(theta) # nslice,nlens
-        y0 = yc - delta*self.ADR_coeff*N.cos(theta)
+        x0 = xc + delta*self.ADRcoeffs*N.sin(theta) # nslice,nlens
+        y0 = yc - delta*self.ADRcoeffs*N.cos(theta)
 
         # Other params
         PA          = self.param[4]
@@ -955,7 +962,7 @@ class ExposurePSF:
 
         ell = polyEval(ellCoeffs, self.lrel) # nslice,nlens
         if self.model.endswith('powerlaw'):
-            alpha = powerLawEval(alphaCoeffs, self.l/self.lbda_ref)
+            alpha = powerLawEval(alphaCoeffs, self.l/self.lref)
         else:
             alpha = polyEval(alphaCoeffs, self.lrel)
 
@@ -1014,8 +1021,8 @@ class ExposurePSF:
         yc    = self.param[3]
         costheta = N.cos(theta)
         sintheta = N.sin(theta)
-        x0 = xc + delta*self.ADR_coeff*sintheta
-        y0 = yc - delta*self.ADR_coeff*costheta
+        x0 = xc + delta*self.ADRcoeffs*sintheta
+        y0 = yc - delta*self.ADRcoeffs*costheta
 
         # Other params
         PA  = self.param[4]
@@ -1024,7 +1031,7 @@ class ExposurePSF:
 
         ell = polyEval(ellCoeffs, self.lrel)
         if self.model.endswith('powerlaw'):
-            alpha = powerLawEval(alphaCoeffs, self.l/self.lbda_ref)
+            alpha = powerLawEval(alphaCoeffs, self.l/self.lref)
         else:
             alpha = polyEval(alphaCoeffs, self.lrel)
         
@@ -1066,20 +1073,21 @@ class ExposurePSF:
         tmp = gaussian*j1 + moffat*j2
         grad[2] = tmp*(    dx + PA*dy)  # dPSF/dx0
         grad[3] = tmp*(ell*dy + PA*dx)  # dPSF/dy0
-        grad[0] =       self.ADR_coeff*(sintheta*grad[2] - costheta*grad[3])
-        grad[1] = delta*self.ADR_coeff*(sintheta*grad[3] + costheta*grad[2])
+        grad[0] =       self.ADRcoeffs*(sintheta*grad[2] - costheta*grad[3])
+        grad[1] = delta*self.ADRcoeffs*(sintheta*grad[3] + costheta*grad[2])
         grad[4] = -tmp   * dx*dy        # dPSF/dPA
         for i in xrange(self.ellDeg + 1): # dPSF/dei
             grad[5+i] = -tmp/2 * dy2 * self.lrel**i
         dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
                  moffat * ( -b1*N.log(ea) + r2*j2/alpha ) # dPSF/dalpha
         if self.model.endswith('powerlaw'):
-            lrel = self.l/self.lbda_ref
-            imax = 6+self.ellDeg+self.alphaDeg+1
-            grad[imax-1] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel)
-            grad[imax-2] = grad[imax-1] * alphaCoeffs[-1] * N.log(lrel)
-            for i in range(imax-3, imax-self.alphaDeg-2,-1):
-                grad[i] = grad[i+1] * lrel      # dPSF/dai, i=<0,alphaDeg>
+            lrel = self.l/self.lref
+            imax = 6+self.ellDeg+self.alphaDeg
+            grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel)
+            if self.alphaDeg:
+                grad[imax-1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
+                for i in range(imax-2, imax-self.alphaDeg-1, -1):
+                    grad[i] = grad[i+1] * lrel  # dPSF/dai, i=<0,alphaDeg>
         else:
             for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
                 grad[6+self.ellDeg+i] = dalpha * self.lrel**i
@@ -1092,11 +1100,9 @@ class ExposurePSF:
         """Half-width at half maximum function (=0 at HWHM)."""
 
         if self.model.endswith('powerlaw'):
-            lrel = lbda/self.lbda_ref
-            alpha = powerLawEval(alphaCoeffs, lrel)
+            alpha = powerLawEval(alphaCoeffs, lbda/self.lref)
         else:
-            lrel = chebNorm(lbda, self.lmin, self.lmax) # Norm to [-1,1]
-            alpha = polyEval(alphaCoeffs, lrel)
+            alpha = polyEval(alphaCoeffs, chebNorm(lbda, self.lmin, self.lmax))
 
         if self.model=='chromatic':
             lcheb = chebNorm(lbda, *self.chebRange)

@@ -1,3 +1,8 @@
+2013-11-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (ExposurePSF.deriv): fix error in jacobian
+	of classic-powerlaw PSF. WORK STILL IN PROGRESS!
+
 2013-11-06  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: option '-c/--correlation'
