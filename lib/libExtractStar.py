@@ -809,6 +809,26 @@ def powerLawEval(coeffs, x):
 
     return coeffs[-1] * x**N.polyval(coeffs[:-1], x)
 
+def powerLawFit(x, y, deg=2, guess=None):
+
+    import ToolBox.Optimizer as TO
+    import scipy.optimize as O
+
+    if guess is None:
+        guess = [0.]*(deg-1) + [-1.,2.]
+    else:
+        assert len(guess)==(deg+1)
+
+    model = TO.Model(powerLawEval)
+    data = TO.DataSet(y, x=x)
+    fit = TO.Fitter(model, data)
+    lsqPars,msg = O.leastsq(fit.residuals, guess, args=(x,))
+
+    if msg <= 4:
+        return lsqPars
+    else:
+        raise ValueError("powerLawFit did not converge")
+
 # Ellipse utilities ==============================
 
 def quadEllipse(a,b,c,d,f,g):

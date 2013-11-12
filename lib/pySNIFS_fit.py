@@ -1,7 +1,7 @@
 ######################################################################
 ## Filename:      pySNIFS_fit.py
 ## Version:       $Revision$
-## Description:   
+## Description:
 ## Author:        Emmanuel Pecontal
 ## Author:        $Author$
 ## $Id$
@@ -11,7 +11,7 @@ from pySNIFS import *
 import scipy as S
 from scipy import optimize
 import numpy
-import numpy.linalg.linalg as la 
+import numpy.linalg.linalg as la
 from copy import deepcopy
 
 __author__ = '$Author$'
@@ -43,7 +43,7 @@ class gaus1D:
         self.name = 'gaus1D'
         #self.l[:][:] = cube.lbda
         self.l = S.reshape(cube.lbda,S.shape(cube.data))
-            
+
     def comp(self,param):
         """
         Compute the gaussian function.
@@ -69,7 +69,7 @@ class gaus1D:
         grad[1] = val
         grad[2] = expo
         return grad
-    
+
 class poly1D:
     """
     1D polynomial used by the L{model} class
@@ -88,7 +88,7 @@ class poly1D:
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'poly1D'
         self.l = S.reshape(cube.lbda,S.shape(cube.data))
-        
+
     def comp(self,param):
         """
         Compute the polynomial.
@@ -97,7 +97,7 @@ class poly1D:
         """
         val = S.poly1d(param[::-1])(self.l)
         return val
-    
+
     def deriv(self,param):
         """
         Compute the derivative of the polynomial with respect to its parameters.
@@ -125,7 +125,7 @@ class gaus2D:
         @param cube: Input cube. This is a L{SNIFS_cube} object with only one
                      wavelength. It is built from a spectrum object by the
                      L{model} class.
-        """ 
+        """
         self.nslice = cube.nslice
         self.npar_ind = 5
         self.npar_cor = 0
@@ -146,7 +146,7 @@ class gaus2D:
         tab_param_ind = S.transpose(S.reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
         val = tab_param_ind[:,4:5] * S.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
         return val
-    
+
     def deriv(self,param):
         """
         Compute the derivative of the gaussian function with respect to the
@@ -182,7 +182,7 @@ class gaus2D_integ:
         @param cube: Input cube. This is a L{SNIFS_cube} object with only one
                      wavelength. It is built from an L{image_array} object by
                      the class model.
-        """ 
+        """
         self.nslice = cube.nslice
         self.pix = pix
         self.npar_ind = 5
@@ -193,7 +193,7 @@ class gaus2D_integ:
         self.y = S.zeros(S.shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
-        
+
     def comp(self,param):
         """
         Compute the gaussian function.
@@ -209,7 +209,7 @@ class gaus2D_integ:
         ymcn = (self.y - self.pix/2 - tab_param_ind[:,1:2])/(sq2*tab_param_ind[:,3:4])
         val = pi*tab_param_ind[:,2:3]*tab_param_ind[:,3:4]*tab_param_ind[:,4:5]*(erf(xpcn)-erf(xmcn))*(erf(ypcn)-erf(ymcn))/2
         return val
-    
+
     def deriv(self,param):
         """
         Compute the derivative of the gaussian function with respect to the parameters.
@@ -262,7 +262,7 @@ class poly2D:
         self.y = S.zeros(S.shape(cube.data),'d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
-        
+
     def comp(self,param):
         """
         Compute the polynomial.
@@ -280,7 +280,7 @@ class poly2D:
                 val = val + tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
                 n=n+1
         return val
-    
+
     def deriv(self,param):
         """
         Compute the derivative of the polynomial with respect to its parameters.
@@ -299,7 +299,7 @@ class poly2D:
                 grad[n+1] = self.x**(d-j) * self.y**(j)
                 n=n+1
         return grad
-    
+
 #######################################################
 #                   3D Functions                      #
 #######################################################
@@ -336,7 +336,7 @@ class SNIFS_psf_3D:
                                       29498.1/(146.-1./(self.l*1e-4)**2) + \
                                       255.4/(41.-1./(self.l*1e-4)**2)) + 1. - \
                                 self.n_ref)
-        
+
     def comp(self,param):
         """
         Compute the function.
@@ -389,15 +389,15 @@ class SNIFS_psf_3D:
         Iwy = (erf(yrwp)-erf(yrwm))/2.
         #return sigma_c
         return S.reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
-    
+
     def deriv(self,param):
         """
         Compute the derivative of the function with respect to its parameters.
         @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
         """
-        self.param = param    
+        self.param = param
         grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
-        
+
         costp = cos(self.param[1])
         sintp = sin(self.param[1])
         lbda_rel = self.l / self.lbda_ref
@@ -433,7 +433,7 @@ class SNIFS_psf_3D:
         yrwp = (yr + self.pix/2)/(sq2*sig_wy)
         yrwm = (yr - self.pix/2)/(sq2*sig_wy)
 
-    
+
         gxrcp = S.exp(-xrcp**2)
         gxrcm = S.exp(-xrcm**2)
         gyrcp = S.exp(-yrcp**2)
@@ -446,7 +446,7 @@ class SNIFS_psf_3D:
         Icy = (erf(yrcp)-erf(yrcm))/2.
         Iwx = (erf(xrwp)-erf(xrwm))/2.
         Iwy = (erf(yrwp)-erf(yrwm))/2.
-        
+
         grad[2] = Icy*cost*(gxrcm-gxrcp)/sqrt(2*pi)/sig_cx + \
                   Icx*sint*(gyrcm-gyrcp)/sqrt(2*pi)/sig_cy + \
                   eps*(Iwy*cost*(gxrwm-gxrwp)/sqrt(2*pi)/sig_wx + \
@@ -474,24 +474,24 @@ class SNIFS_psf_3D:
                         (Iwx*xr/sqrt(2*pi)/sig_wy)*(gyrwp-gyrwm))
         grad[11] = Icx*Icy + eps*Iwx*Iwy
         grad[0:11] = grad[0:11] * S.reshape(param[11:],(1,len(param[11:]),1))
-        
+
         return grad
 
-  
+
 #######################################################
 #                  Model fitting                      #
-#######################################################	 
- 
+#######################################################
+
 class model:
     """
     Model fiting class
     """
     def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None,myfunc=None):
         self.fitpar = None
-        
+
         if param is None:
             raise ValueError("A set of model parameters values must be provided.")
-            
+
         if isinstance(data,SNIFS_cube):
             self.model_1D = False
             self.model_2D = False
@@ -507,8 +507,8 @@ class model:
             self.data.lbda = S.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
-            self.data.i = S.ravel(numpy.indices((data.nx,data.ny))[0]) 
-            self.data.j = S.ravel(numpy.indices((data.nx,data.ny))[1]) 
+            self.data.i = S.ravel(numpy.indices((data.nx,data.ny))[0])
+            self.data.j = S.ravel(numpy.indices((data.nx,data.ny))[1])
             self.data.x = self.data.i*data.stepx+data.startx
             self.data.y = self.data.j*data.stepy+data.starty
         elif isinstance(data,spectrum):
@@ -528,8 +528,8 @@ class model:
             self.data.no = None
         else:
             raise TypeError("data array must be a SNIFS_cube, image_array or spectrum object.")
-            
-        
+
+
         func_dict = {}
         func_dict['gaus1D']=gaus1D
         func_dict['poly1D']=poly1D
@@ -537,7 +537,7 @@ class model:
         func_dict['poly2D']=poly2D
         func_dict['gaus2D_integ']=gaus2D_integ
         func_dict['SNIFS_psf_3D']=SNIFS_psf_3D
-        
+
         # We add in the available function dictionary the user's ones
         if myfunc is not None:
             try:
@@ -549,12 +549,12 @@ class model:
             avail_func = ['gaus1D','poly1D']
             if myfunc is not None:
                 avail_func = avail_func+myfunc.keys()
-                
+
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
             if myfunc is not None:
                 avail_func = avail_func+myfunc.keys()
-                
+
         if data.var is None:
             #self.weight = SNIFS_cube()
             self.weight = S.ones(S.shape(self.data.data),'d')
@@ -582,7 +582,7 @@ class model:
                 #self.weight.i = None
                 #self.weight.j = None
                 #self.weight.no = None
-                
+
         self.khi2 = None
 
         ######### Function list analysis #########
@@ -631,7 +631,7 @@ class model:
                 for j in range(len(param[i])):
                     self.bounds.append(bounds[i][j])
                 n += nparam[i]
- 
+
     def new_param(self,param=None):
         """ Store new parameters for the model evaluation. """
         nparam = [ len(p) for p in param ]
@@ -640,7 +640,7 @@ class model:
             raise ValueError, "param has not the correct size."
         self.param = param
         self.flatparam = S.concatenate(param).astype('d')
-   
+
     def eval(self, param=None):
         """Evaluate model with current parameters stored in flatparam."""
         if param is None:
@@ -671,7 +671,7 @@ class model:
         """ Compute the objective function to be minimized:
         Sum(weight*(data-model)^2) at the given parameters values."""
         return (self.res_eval(param=param)**2 * self.weight).sum()
-        
+
     def objgrad(self, param=None):
         """ Compute the gradient of the objective function at the given
         parameters value."""
@@ -717,22 +717,24 @@ class model:
     def check_grad(self, param=None, eps=1e-6):
         """ Check the gradient of the objective function at the current
         parameters stored in the field flatparam."""
+
         if param is None:
             param = self.flatparam
-        print "%20s %20s %20s" % ("Finite difference","Objgrad","Rel. diff.")
-        approx_grad = S.optimize.approx_fprime(param, self.objfun, eps)
+        print "%2s  %15s  %15s  %15s" % \
+              ("#", "Finite diff.","Objgrad","Rel. diff.")
+        approx_grad = approx_deriv(self.objfun, param, order=3, eps=eps)
         comp_grad = self.objgrad(param)
         for n in range(S.size(param)):
-            print "%20.6f %20.6f %20.6f" % (approx_grad[n],comp_grad[n],
-                                            abs(approx_grad[n]-comp_grad[n]) / \
-                                            max([abs(comp_grad[n]),1e-10]))
-    
+            print "%02d  %15.6f  %15.6f  %15.6f" % (
+                n, approx_grad[n],comp_grad[n],
+                abs(approx_grad[n]-comp_grad[n])/max(abs(comp_grad[n]),1e-10))
+
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters
         (flatparam and param)."""
         self.flatparam = self.fitpar.copy()
         self.param = self.unflat_param(self.fitpar)
-    
+
     def fit(self, disp=False, save=False, deriv=True,
             maxfun=1000, msge=0, scale=None):
         """ Perform the model fitting by minimizing the objective function
@@ -761,7 +763,7 @@ class model:
             return self.fitpar
         if save:
             self.flatparam = self.fitpar.copy()
-        
+
     def fit_bfgs(self, disp=False, save=False, deriv=True,
                  maxfun=1000, msge=0, scale=None):
         """Same as fit, but using S.optimize.fmin_l_bfgs_b instead of
@@ -788,26 +790,26 @@ class model:
 
     def param_error(self,param=None):
         """Actually returns covariance matrix computed from hessian."""
-        
+
         if param is None:
             param = self.fitpar
         try:
             # Hessian is 2nd-order derivative matrix, numerically estimated
             # from 1st-order derivative vector. Non-fitted elements (lb=ub)
             # should be removed prior to inversion.
-            hess = approx_deriv(self.objgrad,param)
+            hess = approx_deriv(self.objgrad, param)
             cov = 2 * S.linalg.inv(hess)
             return cov
         except:
             return numpy.zeros((len(param),len(param)),'d')
- 
+
     def unflat_param(self,param):
-        
+
         if S.size(param) != S.size(self.flatparam):
             raise ValueError, "Parameter list does not have the right size."
         newparam = []
         i = 0
-        for f in self.func:    
+        for f in self.func:
             newparam.append(param[i:i+f.npar])
             i += f.npar
         return newparam
@@ -821,7 +823,7 @@ class model:
         guess_cube = deepcopy(self.data)
         guess_cube.data = self.eval()
         return guess_cube
-        
+
 #######################################################
 #                   Fit auxilliary functions          #
 #######################################################
@@ -829,7 +831,8 @@ class model:
 def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
     """Let's assume len(pars)=N and func returns a array of shape S.
 
-    S.optimize.approx_fprime corresponds to approx_deriv(order=2).
+    S.optimize.approx_fprime corresponds to approx_deriv(order=2),
+    with very poor accuracy around extrema.
 
     S.derivative only works with univariate function. One could use
     S.optimize.approx_fprime (and associated check_grad) instead, but it
@@ -837,9 +840,9 @@ def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
     used to check model derivatives or hessian.
     """
 
-    if order == 2:                      # Simplest crudest differentiation
-        weights = S.array([-1,1])
-    elif order == 3:                    # Simplest symmetric diff.
+    if order == 2:                    # Simplest symmetric differentiation
+        weights = S.array([-1.,1.])   # Similar to S.optimize.approx_fprime
+    elif order == 3:
         weights = S.array([-1,0,1])/2.
     elif order == 5:
         weights = S.array([1,-8,0,8,-1])/12.
@@ -883,127 +886,127 @@ def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
     return mod_spec.fitpar
 
 
-def fnnls(XtX, Xty, tol = 0) : 
-    #FNNLS Non-negative least-squares. 
-    # 
-    # Adapted from NNLS of Mathworks, Inc. 
-    #          [x,w] = nnls(X, y) 
-    # 
-    # x, w = fnnls(XtX,Xty) returns the vector X that solves x = pinv(XtX)*Xty 
-    # in a least squares sense, subject to x >= 0. 
-    # Differently stated it solves the problem min ||y - Xx|| if 
-    # XtX = X'*X and Xty = X'*y. 
-    # 
-    # A default tolerance of TOL = MAX(SIZE(XtX)) * NORM(XtX,1) * EPS 
-    # is used for deciding when elements of x are less than zero. 
-    # This can be overridden with x = fnnls(XtX,Xty,TOL). 
-    # 
-    # [x,w] = fnnls(XtX,Xty) also returns dual vector w where 
-    # w(i) < 0 where x(i) = 0 and w(i) = 0 where x(i) > 0. 
-    # 
-    # See also NNLS and FNNLSb 
-     
-    # L. Shure 5-8-87 
-    # Revised, 12-15-88,8-31-89 LS. 
-    # (Partly) Copyright (c) 1984-94 by The MathWorks, Inc. 
-     
-    # Modified by R. Bro 5-7-96 according to 
-    #       Bro R., de Jong S., Journal of Chemometrics, 1997, 11, 393-401 
-    # Corresponds to the FNNLSa algorithm in the paper 
-    # 
-    # Rasmus bro 
-    # Chemometrics Group, Food Technology 
-    # Dept. Dairy and Food Science 
-    # Royal Vet. & Agricultural 
-    # DK-1958 Frederiksberg C 
-    # Denmark 
-    # rb@... 
-    # http://newton.foodsci.kvl.dk/users/rasmus.html 
-    #  Reference: 
-    #  Lawson and Hanson, "Solving Least Squares Problems", Prentice-Hall, 1974. 
-    # 
-     
+def fnnls(XtX, Xty, tol = 0) :
+    #FNNLS Non-negative least-squares.
+    #
+    # Adapted from NNLS of Mathworks, Inc.
+    #          [x,w] = nnls(X, y)
+    #
+    # x, w = fnnls(XtX,Xty) returns the vector X that solves x = pinv(XtX)*Xty
+    # in a least squares sense, subject to x >= 0.
+    # Differently stated it solves the problem min ||y - Xx|| if
+    # XtX = X'*X and Xty = X'*y.
+    #
+    # A default tolerance of TOL = MAX(SIZE(XtX)) * NORM(XtX,1) * EPS
+    # is used for deciding when elements of x are less than zero.
+    # This can be overridden with x = fnnls(XtX,Xty,TOL).
+    #
+    # [x,w] = fnnls(XtX,Xty) also returns dual vector w where
+    # w(i) < 0 where x(i) = 0 and w(i) = 0 where x(i) > 0.
+    #
+    # See also NNLS and FNNLSb
+
+    # L. Shure 5-8-87
+    # Revised, 12-15-88,8-31-89 LS.
+    # (Partly) Copyright (c) 1984-94 by The MathWorks, Inc.
+
+    # Modified by R. Bro 5-7-96 according to
+    #       Bro R., de Jong S., Journal of Chemometrics, 1997, 11, 393-401
+    # Corresponds to the FNNLSa algorithm in the paper
+    #
+    # Rasmus bro
+    # Chemometrics Group, Food Technology
+    # Dept. Dairy and Food Science
+    # Royal Vet. & Agricultural
+    # DK-1958 Frederiksberg C
+    # Denmark
+    # rb@...
+    # http://newton.foodsci.kvl.dk/users/rasmus.html
+    #  Reference:
+    #  Lawson and Hanson, "Solving Least Squares Problems", Prentice-Hall, 1974.
+    #
+
     # initialize variables
     m,n = XtX.shape
- 
-    if tol == 0 : 
-        eps = 2.2204e-16 
+
+    if tol == 0 :
+        eps = 2.2204e-16
         tol = 10 * eps * la.norm(XtX,1)*max(m, n)
-    #end 
- 
-    P = numpy.zeros(n, 'i') 
+    #end
+
+    P = numpy.zeros(n, 'i')
     P -= 1
-    Z = numpy.arange(0,n) 
- 
-    z = numpy.zeros(m, 'd') 
+    Z = numpy.arange(0,n)
+
+    z = numpy.zeros(m, 'd')
     x = P.copy()
     ZZ = Z.copy()
- 
-    w = Xty - numpy.dot(XtX, x) 
- 
-    # set up iteration criterion 
-    iter = 0 
-    itmax = 30 * n 
 
-    # outer loop to put variables into set to hold positive coefficients 
+    w = Xty - numpy.dot(XtX, x)
+
+    # set up iteration criterion
+    iter = 0
+    itmax = 30 * n
+
+    # outer loop to put variables into set to hold positive coefficients
 
     def find(X): return numpy.where(X)[0]
 
-    while Z.any() and (w[ZZ] > tol).any() : 
-        wt = w[ZZ].max() 
-        t = find(w[ZZ] == wt) 
-        t = t[-1:][0] 
-        t = ZZ[t] 
-        P[t] = t 
-        Z[t] = -1 
-        PP = find(P != -1) 
-        
-        ZZ = find(Z != -1) 
-        if len(PP) == 1 : 
-            XtyPP = Xty[PP] 
-            XtXPP = XtX[PP, PP] 
-            z[PP] = XtyPP / XtXPP 
-        else : 
-            XtyPP = numpy.array(Xty[PP]) 
-            XtXPP = numpy.array(XtX[PP, numpy.array(PP)[:, numpy.newaxis]]) 
-            z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP)) 
-        #end 
-        z[ZZ] = 0 
+    while Z.any() and (w[ZZ] > tol).any() :
+        wt = w[ZZ].max()
+        t = find(w[ZZ] == wt)
+        t = t[-1:][0]
+        t = ZZ[t]
+        P[t] = t
+        Z[t] = -1
+        PP = find(P != -1)
 
-        # inner loop to remove elements from the positive set which no longer belong 
-        while (z[PP] <= tol).any() and (iter < itmax) : 
+        ZZ = find(Z != -1)
+        if len(PP) == 1 :
+            XtyPP = Xty[PP]
+            XtXPP = XtX[PP, PP]
+            z[PP] = XtyPP / XtXPP
+        else :
+            XtyPP = numpy.array(Xty[PP])
+            XtXPP = numpy.array(XtX[PP, numpy.array(PP)[:, numpy.newaxis]])
+            z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP))
+        #end
+        z[ZZ] = 0
+
+        # inner loop to remove elements from the positive set which no longer belong
+        while (z[PP] <= tol).any() and (iter < itmax) :
             iter += 1
             iztol = find(z <= tol)
             ip = find(P[iztol] != -1)
             QQ = iztol[ip]
 
             if len(QQ) == 1 :
-                alpha = x[QQ] / (x[QQ] - z[QQ]) 
-            else : 
+                alpha = x[QQ] / (x[QQ] - z[QQ])
+            else :
                 x_xz = x[QQ] / (x[QQ] - z[QQ])
                 alpha = x_xz.min()
 
-            x += alpha * (z - x) 
-            iabs = find(abs(x) < tol) 
-            ip = find(P[iabs] != -1) 
-            ij = iabs[ip] 
+            x += alpha * (z - x)
+            iabs = find(abs(x) < tol)
+            ip = find(P[iabs] != -1)
+            ij = iabs[ip]
 
-            Z[ij] = numpy.array(ij) 
-            P[ij] = -1 
-            PP = find(P != -1) 
-            ZZ = find(Z != -1) 
+            Z[ij] = numpy.array(ij)
+            P[ij] = -1
+            PP = find(P != -1)
+            ZZ = find(Z != -1)
 
-            if len(PP) == 1 : 
-                XtyPP = Xty[PP] 
-                XtXPP = XtX[PP, PP] 
-                z[PP] = XtyPP / XtXPP 
-            else : 
-                XtyPP = numpy.array(Xty[PP]) 
+            if len(PP) == 1 :
+                XtyPP = Xty[PP]
+                XtXPP = XtX[PP, PP]
+                z[PP] = XtyPP / XtXPP
+            else :
+                XtyPP = numpy.array(Xty[PP])
                 XtXPP = numpy.array(XtX[PP, numpy.array(PP)[:, numpy.newaxis]])
-                z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP)) 
-            #endif 
-            z[ZZ] = 0 
-        x = numpy.array(z) 
-        w = Xty - numpy.dot(XtX, x) 
- 
-    return x, w 
+                z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP))
+            #endif
+            z[ZZ] = 0
+        x = numpy.array(z)
+        w = Xty - numpy.dot(XtX, x)
+
+    return x, w

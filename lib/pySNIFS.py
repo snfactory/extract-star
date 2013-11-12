@@ -1178,7 +1178,7 @@ def fit_poly(y,n,deg,x=None):
     """
     Fit a polynomial whith median sigma clipping on an array y
     @param y: Input array giving the ordinates of the points to be fitted
-    @param n: rejection threshold
+    @param n: rejection threshold (MAD)
     @param deg: Degree of the polynomial
     @param x: Optional input array giving the abscissae of the points to be fitted. If not given
        the abscissae are taken as an array [1:len(y)]
@@ -1190,23 +1190,17 @@ def fit_poly(y,n,deg,x=None):
     y = num.asarray(y)
     old_l = 0
     l = len(y)
-    while l != old_l:
-        
+    while l != old_l:        
         old_l = len(y)
         poly = num.poly1d(num.polyfit(x,y,deg))
-        sigma = num.sqrt(num.median((poly(x) - y)**2))
-        ind = num.abs(y-poly(x)) < n*sigma
+        delta = num.abs(poly(x) - y)
+        ind = delta < n*num.median(delta)
         x = x[ind]
         y = y[ind]
         l = len(x)
         if l<deg+1:
             print "WARNING(pySNIFS.fit_poly): not enough points to make a fit!"
             break
-        #y1 = compress(y<p(x)+n*sigma,y)
-        #x1 = compress(y<p(x)+n*sigma,x)
-        #y = compress(y1>p(x1)-n*sigma,y1)
-        #x = compress(y1>p(x1)-n*sigma,x1)
-        #l = len(y)      
     return poly
 
 def WR_e3d_file(data_list, var_list, no_list,

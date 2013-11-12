@@ -354,6 +354,7 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
                 print "WARNING: Constraining PSF param[%d] in %f,%f" % \
                       (n,vmin,vmax)
 
+
 # ########## MAIN ##############################
 
 if __name__ == "__main__":
@@ -640,11 +641,13 @@ if __name__ == "__main__":
 
     # 2) Other parameters
     PA     = N.median(PA_vec[good])
+    # Polynomial-fit with 3-MAD clipping
     polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
     if opts.psf.endswith('powerlaw'):
-        print "WARNING: no clever initial guess in powerlaw PSF"
-        guessAlphaCoeffs = [0.]*(opts.alphaDeg-1) + [-1.,3.]
+        guessAlphaCoeffs = libES.powerLawFit(
+            meta_cube.lbda[good]/lmid, alpha_vec[good], alphaDeg)
     else:
+        # Polynomial-fit with 3-MAD clipping
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
 

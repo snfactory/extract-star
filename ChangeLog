@@ -1,3 +1,10 @@
+2013-11-12  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (guessAlphaCoeffs): initial
+	guess from power-law fit to meta-slice alpha's. This should
+	complete the implementation of 'power-law' chromatic seeing
+	dependency.
+
 2013-11-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (ExposurePSF.deriv): fix error in jacobian
