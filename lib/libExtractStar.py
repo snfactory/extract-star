@@ -88,13 +88,20 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
 
-    print_msg("  Set initial guess from simple Gaussian+constant fit",
+    print_msg("  Set initial guess from 2D-Gaussian + Cte fit",
               2, verbosity)
     print_msg("  Adjusted parameters: [delta=0,theta=0],xc,yc,PA,ell,alpha,I,"
               "%d bkgndCoeffs" % (npar_sky if skyDeg>=0 else 0),
               2, verbosity)
 
-    for i in xrange(cube.nslice):       # Loop over cube slices
+    xc,yc = None,None                   # Position guess
+    alpha = None                        # Alpha guess
+    if cube.lstart < 5000.:             # Blue cube
+        loop = range(cube.nslice)[::-1] # Blueward loop
+    else:                               # Red cube
+        loop = range(cube.nslice)       # Redward loop
+    
+    for i in loop:                      # Loop over cube slices
         print_msg("Meta-slice #%d/%d, %.0fA:" % (i+1,cube.nslice,cube.lbda[i]),
                   2, verbosity)
         cube_star.lbda = N.array([cube.lbda[i]])
@@ -103,7 +110,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         cube_sky.data  = cube.data[i, N.newaxis].copy() # To be modified
         cube_sky.var   = cube.var[i,  N.newaxis].copy()
 
-        # Sky estimate (from FoV edge spx)
+        # Sky median estimate (from FoV edge spx)
         skyLev = N.median(cube_sky.data.T[skySpx].squeeze())
 
         if skyDeg > 0:
@@ -118,19 +125,21 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
                                           bounds=[[[0,None]] +
                                                   [[None,None]]*(npar_sky-1)])
             model_sky.fit()
-            skyLev = model_sky.evalfit().squeeze() # Structure bkgnd estimate
+            skyLev = model_sky.evalfit().squeeze() # Structured bkgnd estimate
 
         # Guess parameters for the current slice
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
-        imax = medstar.max()            # Intensity
-        xc = N.average(cube.x, weights=medstar)
-        yc = N.average(cube.y, weights=medstar)
+        imax = medstar.max()                    # Intensity
+        if (xc,yc)==(None,None):                # No previous estimate
+            xc = N.average(cube.x, weights=medstar) # Flux-weighted centroid
+            yc = N.average(cube.y, weights=medstar)
 
         cube_sky.data -= skyLev
         if chi2fit:
             cube_sky.var = cube.var[i, N.newaxis] # Reset to cube.var for chi2
         else:
             cube_sky.var = None                   # Least-square
+
         model = pySNIFS_fit.model(data=cube_sky,
                                   func=['gaus2D','poly2D;0'],
                                   param=[[xc,yc,1,1,imax],[0]],
@@ -138,18 +147,26 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
                                            [[0.1,5]]*2 +    # sx,sy
                                            [[0,None]],
                                            [[None,None]] ])
-        model.fit(msge=(verbosity>3))
-        xc,yc = model.fitpar[:2]        # Centroid
+        model.fit(msge=(verbosity >= 4))
+
+        if model.status:
+            print_msg("WARNING: gaussian fit on meta-slice did not converge",
+                      2, verbosity)
+            if alpha is None:
+                alpha = 2.4
+        else:
+            xc,yc = model.fitpar[:2]    # Update centroid
+            alpha = max(N.hypot(*model.fitpar[2:4]), 1.)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
-        p1 = [0., 0., xc, yc, 0., 1., 2.4, imax] # psf parameters
+        p1 = [0., 0., xc, yc, 0., 1., alpha, imax] # psf parameters
         b1 = [[0, 0],                   # delta (unfitted)
               [0, 0],                   # theta (unfitted)
               [-10, 10],                # xc
               [-10, 10],                # yc
               [None, None],             # PA
               [0, None],                # ellipticity > 0
-              [0.1, None],              # alpha > 0
+              [0.1, 10],                # alpha > 0
               [0, None]]                # Intensity > 0
 
         # alphaDeg & ellDeg set to 0 for meta-slice fits
@@ -179,7 +196,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
                                        myfunc={psf_fn.name:psf_fn})
-        model_star.fit(maxfun=400, msge=int(verbosity >= 4))
+        model_star.fit(maxfun=400, msge=(verbosity >= 4))
 
         # Restore true chi2 (not reduced one), ie.
         # chi2 = ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
@@ -188,23 +205,22 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         model_star.khi2 *= model_star.dof
 
         # Check fit results
-        hasFailed = False
         if model_star.status>0:
-            print "WARNING: fit of metaslice %d failed (status=%d) " % \
-                (i+1,model_star.status)
-            hasFailed = True
-        elif model_star.fitpar[5]<=0:
+            print "WARNING: fit of metaslice %d failed (status=%d=%s) " % \
+                (i+1, model_star.status,
+                 pySNIFS_fit.S.optimize.tnc.RCSTRINGS[model_star.status])
+        elif not model_star.fitpar[5]>0:
             print "WARNING: ellipticity of metaslice %d is null" % (i+1)
-            hasFailed = True
-        elif model_star.fitpar[6]<=0:
+            model_star.status = -1
+        elif not 0<model_star.fitpar[6]<10:
             print "WARNING: alpha of metaslice %d is null" % (i+1)
-            hasFailed = True
-        elif model_star.fitpar[7]<=0:
+            model_star.status = -1
+        elif not model_star.fitpar[7]>0:
             print "WARNING: intensity of metaslice %d is null" % (i+1)
-            hasFailed = True
+            model_star.status = -1
 
         # Error computation
-        if not hasFailed:
+        if not model_star.status:
             # Cannot use model_star.param_error to compute cov, since
             # it does not handle fixed parameters (lb=ub).
             hess = approx_deriv(model_star.objgrad, model_star.fitpar)
@@ -217,8 +233,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
                     "in metaslice %d" % (i+1)
                 model_star.khi2 *= -1   # To be discarded
                 dpar = N.zeros(len(dparams.T))
-        else:
-            # Set error to 0 if hasFailed
+        else:                           # Set error to 0 if status
             model_star.khi2 *= -1       # To be discarded
             dpar = N.zeros(len(dparams.T))
 

@@ -1,3 +1,8 @@
+2013-11-14  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py: try to make the meta-slice 2D-fit more
+	robust.
+
 2013-11-12  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (guessAlphaCoeffs): initial

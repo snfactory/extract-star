@@ -634,6 +634,7 @@ if __name__ == "__main__":
               (len(xc_vec[~good]),nmeta)
         if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
             raise ValueError('Not enough points for initial guesses')
+
     print_msg("  Reference position guess [%.0fA]: %.2f x %.2f spx" % 
               (lmid,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % 
@@ -677,11 +678,11 @@ if __name__ == "__main__":
               [None, None],             # x0
               [None, None],             # y0
               [None, None]]             # PA
-        b1 += [[0, None]] + [[None, None]]*ellDeg   # ell0 > 0
+        b1 += [[0, None]] + [[None, None]]*ellDeg # ell0 > 0
         if opts.psf.endswith('powerlaw'):
             b1 += [[None, None]]*alphaDeg + [[0, None]] # a[-1] > 0
         else:
-            b1 += [[0, None]] + [[None, None]]*alphaDeg # a0 > 0
+            b1 += [[0, None]] + [[None, None]]*alphaDeg # a[0] > 0
     b1 += [[0, None]]*nmeta            # Intensities
 
     if opts.psf3Dconstraints:           # Read and set constraints from option
@@ -719,6 +720,12 @@ if __name__ == "__main__":
                                    myfunc={psfFn.name:psfFn})
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
 
+    if data_model.status > 0:
+        raise ValueError(
+            '3D-PSF fit did not converge (status=%d=%s)' % 
+            (data_model.status,
+             pySNIFS_fit.S.optimize.tnc.RCSTRINGS[data_model.status]))
+
     # Store guess and fit parameters
     fitpar = data_model.fitpar          # Adjusted parameters
     data_model.khi2 *= data_model.dof   # Restore real chi2 (or RSS)
@@ -754,8 +761,9 @@ if __name__ == "__main__":
         raise ValueError('Unphysical seeing (%.2f") or airmass (%.3f)' % 
                          (seeing, adr.get_airmass()))
 
-    # Test positivity of alpha and ellipticity. At some point, maybe it would
-    # be necessary to force positivity in the fit (e.g. fmin_cobyla).
+    # Test positivity of alpha and ellipticity. At some point, maybe
+    # it would be necessary to force positivity in the fit
+    # (e.g. fmin_cobyla).
     if opts.psf.endswith('powerlaw'):
         fit_alpha = libES.powerLawEval(
             fitpar[6+ellDeg:npar_psf], meta_cube.lbda/lmid)
@@ -921,14 +929,18 @@ if __name__ == "__main__":
                  transform=axS.transAxes)
 
         axS.plot(star_spec.x, star_spec.data, blue)
-        axN.plot(star_spec.x, star_spec.data/N.sqrt(varspecs[:,0]), blue)
+        axS.errorband(star_spec.x, star_spec.data, N.sqrt(star_spec.var),
+                      color=blue)
+        axN.plot(star_spec.x, star_spec.data/N.sqrt(star_spec.var), blue)
 
         if skyDeg >= 0 and sky_spec.data.any():
             axB.plot(sky_spec.x, sky_spec.data, green)
+            axB.errorband(sky_spec.x, sky_spec.data, N.sqrt(sky_spec.var),
+                          color=green)
             axB.set(title=u"Background spectrum (per arcsec²)",
                     xlim=(sky_spec.x[0],sky_spec.x[-1]),
                     xticklabels=[])
-            axN.plot(sky_spec.x, sky_spec.data/N.sqrt(varspecs[:,1]), green)
+            axN.plot(sky_spec.x, sky_spec.data/N.sqrt(sky_spec.var), green)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (objname,method),
                 xlim=(star_spec.x[0],star_spec.x[-1]), xticklabels=[])
@@ -953,7 +965,6 @@ if __name__ == "__main__":
                       fontsize='large')
 
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
-        fmin = 0
 
         # Compute PSF & bkgnd models on incomplete cube
         sno = N.sort(meta_cube.no)
@@ -962,6 +973,7 @@ if __name__ == "__main__":
             bkg2 = pySNIFS_fit.poly2D(skyDeg, meta_cube).comp(
                 fitpar[psf_model.npar:psf_model.npar+bkg_model.npar])
 
+        fmin = 0
         for i in xrange(nmeta):        # Loop over meta-slices
             data = meta_cube.data[i,:]
             fit = mod[i,:]
@@ -1323,7 +1335,7 @@ if __name__ == "__main__":
                     marker=',', mfc=blue, mec=blue, ls='None') # Data
             ax.plot(rfit, cube_fit.data[i] - fmin,
                     marker='.', mfc=red, mec=red, ms=1, ls='None') # Model
-            ax.set_autoscale_on(False)
+            #ax.set_autoscale_on(False)
             if skyDeg >= 0 and sky_spec.data.any():
                 ax.plot(rfit, psf[i] - fmin, marker='.', mfc=green, mec=green,
                         ms=1, ls='None') # PSF alone
@@ -1338,8 +1350,10 @@ if __name__ == "__main__":
                 ax.set_xlabel("Elliptical radius [spx]", fontsize='small')
                 ax.set_ylabel("Flux + cte", fontsize='small')
             # ax.axis([0, rfit.max()*1.1,
-            #          meta_cube.data[i][meta_cube.data[i]>0].min()/1.2,
-            #          meta_cube.data[i].max()*1.2])
+            #          meta_cube.data[i][meta_cube.data[i]>0].min()/2,
+            #          meta_cube.data[i].max()*2])
+            ax.axis([0, rfit.max()*1.1,
+                     cube_fit.data[i].min()/2, cube_fit.data[i].max()*2])
 
             # Binned values
             rb,db = radialbin(r, meta_cube.data[i])
@@ -1352,7 +1366,7 @@ if __name__ == "__main__":
             fig7.savefig(plot7)
 
         # Missing energy (not activated by default)
-        if opts.verbosity>=1:
+        if opts.verbosity>=3:
             print_msg("Producing missing energy plot...", 1)
             
             figB = pylab.figure()
@@ -1393,7 +1407,7 @@ if __name__ == "__main__":
                 figB.savefig(os.path.extsep.join((basename+"_nrj", opts.graph)))
 
         # Radial Chi2 plot (not activated by default)
-        if opts.verbosity>=1:
+        if opts.verbosity>=3:
             print_msg("Producing radial chi2 plot...", 1)
             
             figA = pylab.figure()
