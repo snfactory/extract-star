@@ -28,7 +28,7 @@ def print_msg(str, limit, verb=0):
 def get_slices_lrange(cube, nmeta=12):
     """
     Get wavelength range from meta-sliced cube, because
-    pySNIFS.SNIFS_cube maners are just to obfuscated.
+    pySNIFS.SNIFS_cube manners are just too obfuscated.
 
     :param cube: pySNIFS.SNIFS_cube instance
     :param nmeta: number of meta-slices
@@ -41,7 +41,7 @@ def get_slices_lrange(cube, nmeta=12):
     slices = metaslice(cube.nslice, nmeta, trim=10)
     try:
         slice_cube = SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
-    except (ValueError, AttributeError):
+    except (ValueError, AttributeError,):
         slice_cube = SNIFS_cube(fits3d_file=cube.fits3d_file, slices=slices)
         
     return slice_cube.lstart, slice_cube.lend
@@ -150,8 +150,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         model.fit(msge=(verbosity >= 4))
 
         if model.status:
-            print_msg("WARNING: gaussian fit on meta-slice did not converge",
-                      2, verbosity)
+            print "WARNING: gaussian fit on meta-slice " \
+                      "did not converge [%d]" % model.status
             if alpha is None:
                 alpha = 2.4
         else:
@@ -619,6 +619,7 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
         temp = MK_temp
 
     return pressure,temp
+
 
 def read_psf_name(hdr):
     """Return PSF function name read (or guessed) from header."""

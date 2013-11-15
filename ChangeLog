@@ -1,3 +1,8 @@
+2013-11-15  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: figure tweaks, add some
+	documentation about ES-keywords in fill_header (WORK IN PROGRESS).
+
 2013-11-14  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py: try to make the meta-slice 2D-fit more
