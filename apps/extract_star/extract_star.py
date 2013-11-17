@@ -26,14 +26,59 @@ Todo:
 Polynomial approximation
 ========================
 
-The polynomial approximations for alpha and ellipticity are expressed
-internally as function of lr := (2*lambda - (lmin+lmax))/(lmax-lmin), to
-minimize correlations. But the coeffs stored in header keywords are for
-polynoms of lr := lambda/lref - 1.
+To minimize parameter correlations, the polynomial approximations for
+alpha and ellipticity are adjusted internally as function of lr :=
+(2*lambda - (lmin+lmax))/(lmax-lmin) where lmin and lmax being the
+wavelength of first and last meta-slices. The polynomial
+approximations for alpha and ellipticity stored in the log files
+(options '-F' and '-f') are expressed in this internal coordinate.
 
-Note: the The polynomial approximations for alpha and ellipticity
-stored in the log files (options '-F' and '-f') are expressed as it is
-done internally.
+However, in order to have channel-independent expressions, the coeffs
+stored in header keywords are for polynoms of lr := lambda/lref - 1
+(see below).
+
+PSF parameter keywords
+======================
+
+- ES_VERS: code version
+- ES_CUBE: input cube
+- ES_LREF: reference wavenlength (arbitrary set to 5000 A)
+- ES_SDEG: polynomial background degree (-1: no background, 0: constant, etc.)
+- ES_CHI2: total chi2 of 3D-fit (or Residual Sum of Squares for lsq-fit)
+- ES_AIRM: Effective airmass, from ADR fit
+- ES_PARAN: Effective parallactic angle [deg], from ADR fit
+- ES_[X|Y]C: Point-source position [spx] at reference wavelength
+- ES_XY: XY coefficient (related to position angle)
+- ES_LMIN: wavelength of first meta-slice
+- ES_LMAX: wavelength of last meta-slice
+- ES_Exx: Y2 coefficients (related to flattening)
+- ES_Axx: alpha coefficient
+- ES_METH: extraction method (psf|optimal|[sub]aperture)
+- ES_PSF: PSF name and model ('[short|long], classic[-powerlaw]' or
+  '[long|short] [blue|red],chromatic')
+- ES_APRAD: aperture radius (>0: arcsec, <0: seeing sigma)
+- ES_TFLUX: integrated flux of extracted point-source spectrum
+- ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
+- SEEING: estimated seeing FWHM [arcsec] at reference wavelength
+- ES_SNMOD: supernova mode (no final 3D-fit)
+- ES_BNDx: constraints on 3D-PSF parameters
+
+The chromatic evolution of Y2-coefficient can be computed from ES_Exx
+coefficients of polynom function of relative wavelength
+lr:=lbda/lref-1:
+
+Y2-coeff(lbda) = e0 + e1*lr + e2*lr**2 + ... 
+
+With a polynomial (i.e. non-'powerlaw') PSF, the chromatic evolution
+of alpha is computed similarly from ES_Axx coefficients:
+
+alpha(lbda) = a0 + a1*lr + a2*lr**2 + ...
+
+For a 'powerlaw' PSF, the appropriate expression is:
+
+alpha(lbda) = a[-1] * (lbda/lmid)**( a[-2] + a[-3]*(lbda/lmid) + ...)
+
+with lmid:=(lmin+lmax)/2.
 """
 
 __author__ = "C. Buton, Y. Copin, E. Pecontal"
@@ -273,47 +318,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
 
 
 def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
-    """Fill header *hdr* with PSF fit-related keywords:
-
-    ES_VERS: code version
-    ES_CUBE: input cube
-    ES_LREF: reference wavenlength (arbitrary set to 5000 A)
-    ES_SDEG: polynomial background degree (-1: no background, 0: constant, etc.)
-    ES_CHI2: total chi2 of 3D-fit (or Residual Sum of Squares for lsq-fit)
-    ES_AIRM: Effective airmass, from ADR fit
-    ES_PARAN: Effective parallactic angle [deg], from ADR fit
-    ES_[X|Y]C: Point-source position [spx] at reference wavelength
-    ES_XY: XY coefficient (related to position angle)
-    ES_LMIN: wavelength of first meta-slice
-    ES_LMAX: wavelength of last meta-slice
-    ES_Exx: Y2 coefficients (related to flattening)
-    ES_Axx: alpha coefficient
-    ES_METH: extraction method (psf|optimal|[sub]aperture)
-    ES_PSF: PSF model name (classic[-powerlaw]|chromatic)
-    ES_APRAD: aperture radius (>0: arcsec, <0: seeing sigma)
-    ES_TFLUX: integrated flux of extracted point-source spectrum
-    ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
-    SEEING: estimated seeing FWHM [arcsec] at reference wavelength
-    ES_SNMOD: supernova mode (no final 3D-fit)
-    ES_BNDx: constraints on 3D-PSF parameters
-
-    The chromatic evolution of Y2-coefficient can be computed from
-    ES_Exx coefficients of polynom function of relative wavelength
-    lr:=lbda/lref - 1:
-
-    Y2-coeff(lbda) = e0 + e1*lr + e2*lr**2 + ... 
-
-    With a non-'powerlaw' PSF, the chromatic evolution of alpha is
-    computed similarly from ES_Axx coefficients:
-
-    alpha(lbda) = a0 + a1*lr + a2*lr**2 + ...
-
-    For a 'powerlaw' PSF, the expression if different:
-
-    alpha(lbda) = a[-1] * (lbda/lmid)**( a[-2] + a[-3]*(lbda/lmid) + ...)
-
-    with lmid:=(lmin+lmax)/2.
-    """
+    """Fill header *hdr* with PSF fit-related keywords."""
 
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
@@ -326,10 +331,11 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     a = (lmin+lmax) / (2*LbdaRef) - 1
     b = (lmax-lmin) / (2*LbdaRef)
     c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
-    c_alp = libES.polyConvert(param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg],
-                              trans=(a,b))
-    if 'powerlaw' in psfname:
-        print "WARNING: ES_Axx keywords are just *WRONG* for powerlaw PSF"
+    if 'powerlaw' not in psfname:
+        c_alp = libES.polyConvert(
+            param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg], trans=(a,b))
+    else:
+        c_alp = param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg]
 
     hdr['ES_VERS'] = __version__
     hdr['ES_CUBE'] = (opts.input, 'Input cube')
@@ -355,9 +361,9 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
         hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [arcsec or sigma]')
 
     tflux, sflux = fluxes
-    hdr['ES_TFLUX'] = (tflux, 'Sum of the spectrum flux')
+    hdr['ES_TFLUX'] = (tflux, 'Total spectrum flux')
     if opts.skyDeg >= 0:
-        hdr['ES_SFLUX'] = (sflux, 'Sum of the sky flux')
+        hdr['ES_SFLUX'] = (sflux, 'Total sky flux')
 
     hdr['SEEING'] = (seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
 
@@ -512,7 +518,7 @@ if __name__ == "__main__":
     print "Opening datacube %s" % opts.input
 
     # The pySNIFS e3d_data_header dictionary is not enough for later
-    # updates in fill_hdr, which requires a *true* pyfits header.
+    # updates in fill_header, which requires a *true* pyfits header.
 
     try:                                # Try to read a Euro3D cube
         inhdr = F.getheader(opts.input, 1) # 1st extension
@@ -892,7 +898,7 @@ if __name__ == "__main__":
     else:
         sflux = 0                   # Not stored anyway
 
-    fill_header(inhdr, ', '.join((psfFn.model, psfFn.name)),
+    fill_header(inhdr, ', '.join((psfFn.name, psfFn.model)),
                 fitpar[:npar_psf], adr, meta_cube, opts,
                 chi2, seeing, (tflux,sflux))
 

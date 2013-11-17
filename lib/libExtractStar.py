@@ -622,7 +622,7 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
 
 
 def read_psf_name(hdr):
-    """Return PSF function name read (or guessed) from header."""
+    """Return PSF class as read (or guessed) from header."""
 
     assert hdr['ES_METH']=='psf', \
            "PSF reconstruction only works for PSF spectro-photometry"
@@ -633,15 +633,27 @@ def read_psf_name(hdr):
         efftime = hdr['EFFTIME']
         print "WARNING: cannot read 'ES_PSF' keyword, " \
               "guessing from EFFTIME=%.0fs" % efftime
-        # Assert it's an 'old' PSF model (i.e. 'long' or 'short')
+        # Assert it's an 'classic' PSF model (i.e. 'long' or 'short')
         psfname = 'long' if efftime > 12. else 'short'
 
-    # Convert PSF name (e.g. 'short red') to PSF function name
+    try:
+        psfname, psfmodel = psfname.split(', ')
+    except ValueError:
+        if len(psfname.split())==2:     # Chromatic PSF: 'short|long blue|red'
+            psfmodel = 'chromatic'
+        else:                           # Classic PSF: 'short|long'
+            psfmodel = 'classic'
+
+    # Convert PSF name (e.g. 'short red') to PSF class name
     # ('ShortRed_ExposurePSF')
     fnname = ''.join(map(str.capitalize,psfname.split())) + '_ExposurePSF'
-    print "PSF name: %s [%s]" % (psfname, fnname)
+    print "PSF name/model: %s/%s [%s]" % (psfname, psfmodel, fnname)
 
-    return eval(fnname)
+    psffn = eval(fnname)
+    if psfmodel.endswith('powerlaw'):
+        psffn.model += '-powerlaw'
+
+    return psffn
 
 
 def read_psf_ctes(hdr, lrange=()):
@@ -659,17 +671,15 @@ def read_psf_ctes(hdr, lrange=()):
         lmax = hdr['ES_LMAX']
     lref = (lmin+lmax)/2.
 
-    # this can be put back as soon as we are sure that
-    # everything is understood in what concerns the PSF
-    # reconstruction from the spectra  headers
-#    lref = hdr['ES_LREF']       # Reference wavelength [A]
-
     # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
     # polynomial degrees
-    adeg = len([ k for k in hdr.keys()
-                 if re.match('ES_A\d+$',k) is not None ]) - 1
-    edeg = len([ k for k in hdr.keys()
-                 if re.match('ES_E\d+$',k) is not None ]) - 1
+
+    def countKeys(regexp):
+
+        return len([ k for k in hdr.keys() if re.match(regexp,k) ])
+
+    adeg = countKeys('ES_A\d+$') - 1
+    edeg = countKeys('ES_E\d+$') - 1
     print "PSF constants: lRef=%.2fA, alphaDeg=%d, ellDeg=%d" % (lref,adeg,edeg)
 
     return [lref,adeg,edeg]
@@ -679,24 +689,12 @@ def read_psf_param(hdr, lrange=()):
     """Read (7+ellDeg+alphaDeg) PSF parameters from header:
     delta,theta,x0,y0,PA,e0,...en,a0,...an."""
 
-    airmass = hdr['ES_AIRM']    # Effective airmass
-    parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
-    delta = N.tan(N.arccos(1/airmass)) # ADR intensity
-    theta = parang/57.295779513082323  # Parallactic angle [rad]
-
     # Polynomial coeffs in lr~ = lambda/LbdaRef - 1
-    c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) is not None ]
-    c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) is not None ]
+    c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) ]
+    c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) ]
 
     assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
            'ES_LMIN/ES_LMAX not found and lrange not set'
-
-    # this can be put back as soon as we are sure that
-    # everything is understood in what concerns the PSF
-    # reconstruction from the spectra  headers
-#    lstp = hdr['CDELT1']                                # Step
-#    lmin = hdr['CRVAL1'] - (hdr.get('CRPIX1',1)-1)*lstp # Start
-#    lmax = lmin + (hdr['NAXIS1']-1)*lstp                # End
 
     if lrange:
         lmin, lmax = lrange
@@ -705,12 +703,17 @@ def read_psf_param(hdr, lrange=()):
         lmax = hdr['ES_LMAX']
     lref = hdr['ES_LREF']       # Reference wavelength [A]
 
+    psfname = hdr['ES_PSF']
+
     # Convert polynomial coeffs from lr~ = lambda/LbdaRef - 1 = a+b*lr
     # back to lr = (2*lambda - (lmin+lmax))/(lmax-lmin)
     a = (lmin+lmax) / (2*lref) - 1
     b = (lmax-lmin) / (2*lref)
     ecoeffs = polyConvert(c_ell, trans=(a,b), backward=True).tolist()
-    acoeffs = polyConvert(c_alp, trans=(a,b), backward=True).tolist()
+    if 'powerlaw' not in psfname:
+        acoeffs = polyConvert(c_alp, trans=(a,b), backward=True).tolist()
+    else:
+        acoeffs = c_alp
 
     x0 = hdr['ES_XC']           # Reference position [spx]
     y0 = hdr['ES_YC']
@@ -718,9 +721,9 @@ def read_psf_param(hdr, lrange=()):
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
-    # We should NOT need this if everything was properly computed at
-    # 5000.A by ES which seems not to be the case for <pa>
     pressure,temp = read_PT(hdr)
+    airmass = hdr['ES_AIRM']    # Effective airmass
+    parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
     adr = TA.ADR(pressure, temp, lref=(lmin+lmax)/2,
                  airmass=airmass, parangle=parang)
     x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True)
@@ -728,7 +731,7 @@ def read_psf_param(hdr, lrange=()):
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
           "refpos=%.2fx%.2f spx @%.2fA" % (airmass,parang,x0,y0,(lmin+lmax)/2)
 
-    return [delta,theta,x0,y0,pa] + ecoeffs + acoeffs
+    return [adr.delta,adr.theta,x0,y0,pa] + ecoeffs + acoeffs
 
 # Polynomial utilities ======================================================
 
@@ -1264,5 +1267,3 @@ class ShortRed_ExposurePSF(ExposurePSF):
     sigma1 = [ 0.212,-0.017, 0.000] # s10,s11,s12
     eta0   = [ 0.704,-0.060, 0.044] # e00,e01,e02
     eta1   = [ 0.343, 0.113,-0.045] # e10,e11,e12
-
-

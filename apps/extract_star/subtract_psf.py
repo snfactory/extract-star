@@ -79,19 +79,13 @@ if __name__ == '__main__':
 
     # Check spectral samplings are coherent
     assert (spec.npts,spec.start,spec.step) == \
-        (cube.nslice,cube.lstart,cube.lstep), \
-        "Incompatible spectrum and reference cube"
-
-    if 'ES_LMIN' not in spec._hdr:
-        lrange = libES.get_slices_lrange(cube)
-    else:
-        lrange = ()
+           (cube.nslice,cube.lstart,cube.lstep), \
+           "Incompatible spectrum and reference cube"
 
     # Read PSF function name and parameters from spectrum header
     psf_fn = libES.read_psf_name(spec._hdr)
-    psf_ctes = [cube.spxSize] + \
-               libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
-    psf_param = libES.read_psf_param(spec._hdr, lrange)
+    psf_ctes = [cube.spxSize]+libES.read_psf_ctes(spec._hdr) # [lref,aDeg,eDeg]
+    psf_param = libES.read_psf_param(spec._hdr)
 
     cube.x = cube.i - 7         # x in spaxel
     cube.y = cube.j - 7         # y in spaxel
@@ -110,8 +104,8 @@ if __name__ == '__main__':
         if opts.sky:
             sky = Spectrum(opts.sky)
             if sky.readKey('ES_SDEG') >= 1:
-                raise NotImplementedError('skyDeg>0 subtraction '
-                                          'is not yet implemented')
+                raise NotImplementedError(
+                    'skyDeg>0 subtraction is not implemented')
             # from arcsec^-2 into spaxels^-1
             cube.data -= sky.y.reshape(-1,1) * SpxSize**2
             cube.var  += sky.v.reshape(-1,1) * SpxSize**4
