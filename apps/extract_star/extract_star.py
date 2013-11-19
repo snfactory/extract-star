@@ -1067,7 +1067,7 @@ if __name__ == "__main__":
                 prof_I = sigSlice.sum(axis=0) # Sum along rows
                 prof_J = sigSlice.sum(axis=1) # Sum along columns
                 # Errors
-                if opts.chi2fit: # Chi2 fit: plot errorbars
+                if opts.chi2fit:              # Chi2 fit: plot errorbars
                     varSlice = meta_cube.slice2d(
                         i, coord='p', var=True, NAN=False)
                     err_I = N.sqrt(varSlice.sum(axis=0))
@@ -1163,8 +1163,10 @@ if __name__ == "__main__":
                                 ylabel="Y center [spx]")
 
         ax4a.errorbar(meta_cube.lbda[good], xc_vec[good], yerr=dparams[good,2],
-                      marker='.', mfc=blue, mec=blue, capsize=0, ecolor=blue,
-                      ls='None', label="Fit 2D")
+                      fmt=None, ecolor=green)
+        ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
+                     c=meta_cube.lbda[good],
+                     cmap=M.cm.jet, zorder=3, label="Fit 2D")
         if bad.any():
             ax4a.plot(meta_cube.lbda[bad], xc_vec[bad],
                       mfc=red, mec=red, marker='.', ls='None', label='_')
@@ -1176,10 +1178,11 @@ if __name__ == "__main__":
         P.setp(leg.get_texts(), fontsize='small')
 
         ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
-                      marker='.', mfc=blue, mec=blue, ecolor=blue,
-                      capsize=0, ls='None')
+                      fmt=None, ecolor=green)
+        ax4b.scatter(meta_cube.lbda[good], yc_vec[good], edgecolors='none',
+                     c=meta_cube.lbda[good], cmap=M.cm.jet, zorder=3)
         if bad.any():
-            ax4b.plot(meta_cube.lbda[bad],yc_vec[bad],
+            ax4b.plot(meta_cube.lbda[bad], yc_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
         ax4b.plot(meta_cube.lbda, yfit, green)
         ax4b.plot(meta_cube.lbda, yguess, 'k--')
@@ -1191,7 +1194,7 @@ if __name__ == "__main__":
                       fmt=None, ecolor=green)
         ax4c.scatter(xc_vec[good],yc_vec[good], edgecolors='none',
                      c=meta_cube.lbda[good],
-                     cmap=M.cm.Spectral_r, zorder=3)
+                     cmap=M.cm.jet, zorder=3)
         # Plot position selection process
         ax4c.plot(xref[good],yref[good], marker='.',
                   mfc=blue, mec=blue, ls='None') # Selected ref. positions
@@ -1500,11 +1503,13 @@ if __name__ == "__main__":
             ax = fig8.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = meta_cube.slice2d(i, coord='p')
             fit  = cube_fit.slice2d(i, coord='p')
-            vmin,vmax = N.percentile(fit, (3.,97.)) # Percentiles
+            #vmin,vmax = N.percentile(fit, (3.,97.)) # Percentiles
+            vmin,vmax = N.percentile(data, (5.,95.)) # Percentiles
             lev = N.logspace(N.log10(vmin),N.log10(vmax),5)
-            ax.contour(data, lev, origin='lower', extent=extent) # Data
+            ax.contour(data, lev, origin='lower', extent=extent,
+                       cmap=M.cm.jet)                      # Data
             ax.contour(fit, lev, origin='lower', extent=extent,
-                       linestyles='dashed')                      # Fit
+                       linestyles='dashed', cmap=M.cm.jet) # Fit
             ax.errorbar((xc_vec[i],), (yc_vec[i],),
                         xerr=(dparams[i,2],), yerr=(dparams[i,3],),
                         fmt=None, ecolor=blue if good[i] else red)

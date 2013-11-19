@@ -637,7 +637,7 @@ def read_psf_name(hdr):
         psfname = 'long' if efftime > 12. else 'short'
 
     try:
-        psfname, psfmodel = psfname.split(', ')
+        psfname, psfmodel = psfname.split(', ') # "name, model"
     except ValueError:
         if len(psfname.split())==2:     # Chromatic PSF: 'short|long blue|red'
             psfmodel = 'chromatic'
@@ -673,10 +673,8 @@ def read_psf_ctes(hdr, lrange=()):
 
     # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
     # polynomial degrees
-
-    def countKeys(regexp):
-
-        return len([ k for k in hdr.keys() if re.match(regexp,k) ])
+    countKeys = lambda regexp: \
+                len([ k for k in hdr.keys() if re.match(regexp,k) ])
 
     adeg = countKeys('ES_A\d+$') - 1
     edeg = countKeys('ES_E\d+$') - 1
@@ -689,12 +687,12 @@ def read_psf_param(hdr, lrange=()):
     """Read (7+ellDeg+alphaDeg) PSF parameters from header:
     delta,theta,x0,y0,PA,e0,...en,a0,...an."""
 
+    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
+           'ES_LMIN/ES_LMAX not found and lrange not set'
+
     # Polynomial coeffs in lr~ = lambda/LbdaRef - 1
     c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) ]
     c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) ]
-
-    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
-           'ES_LMIN/ES_LMAX not found and lrange not set'
 
     if lrange:
         lmin, lmax = lrange

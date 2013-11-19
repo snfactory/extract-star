@@ -1,7 +1,12 @@
+2013-11-19  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: ready for production.
+
 2013-11-15  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: figure tweaks, add some
-	documentation about ES-keywords in fill_header (WORK IN PROGRESS).
+	documentation about ES-keywords in 'fill_header' (still in
+	progress).
 
 2013-11-14  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
