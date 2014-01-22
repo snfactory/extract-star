@@ -99,6 +99,7 @@ from ToolBox import MPL
 
 import warnings
 warnings.showwarning = warning2stdout   # Redirect warnings to stdout
+warnings.filterwarnings("ignore", "Overwriting existing file")
 
 # Numpy setup
 N.set_printoptions(linewidth=999)       # X-wide lines
