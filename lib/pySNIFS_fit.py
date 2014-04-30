@@ -740,13 +740,16 @@ class model:
         """ Perform the model fitting by minimizing the objective function
         objfun."""
 
-        # From scipy 0.6.0, fmin_tnc's output was inverted, and auto-offset is buggy
+        # Help convergence by setting realistic objective: fmin=dof
+        self.dof = self.data.nlens*self.data.nslice - self.nparam
+
+        # Use auto-offset and auto-scale
         x,nfeval,rc = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
                                           fprime=deriv and self.objgrad or None,
                                           approx_grad=not deriv,
-                                          bounds=self.bounds, offset=[0]*self.nparam,
-                                          messages=msge,maxfun=maxfun,
-                                          scale=deriv and scale or None)
+                                          bounds=self.bounds,
+                                          messages=msge, maxfun=maxfun,
+                                          fmin=self.dof)
 
         # See S.optimize.tnc.RCSTRINGS for status message
         self.status = rc>2 and rc or 0 # 0,1,2 means "fit has converged"
@@ -756,7 +759,6 @@ class model:
         self.fitpar = S.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
-        self.dof = self.data.nlens*self.data.nslice - self.nparam
         self.khi2 = self.objfun(param=self.fitpar) / self.dof
 
         if disp:
