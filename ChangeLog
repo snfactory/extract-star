@@ -1,3 +1,9 @@
+2014-04-08  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: the power-law chromatic
+	parametrization is now "a(l) = p[-1] * (l/l0)**(p[-2] +
+	p[-3]*(l/l0 - 1) + ...)", so that a(l0) = p[-1].
+
 2014-01-22  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: ignore "Overwriting existing

@@ -76,7 +76,7 @@ alpha(lbda) = a0 + a1*lr + a2*lr**2 + ...
 
 For a 'powerlaw' PSF, the appropriate expression is:
 
-alpha(lbda) = a[-1] * (lbda/lmid)**( a[-2] + a[-3]*(lbda/lmid) + ...)
+alpha(lbda) = a[-1] * (lbda/lmid)**( a[-2] + a[-3]*(lbda/lmid - 1) + ...)
 
 with lmid:=(lmin+lmax)/2.
 """
@@ -674,7 +674,7 @@ if __name__ == "__main__":
     if bad.any():
         print "WARNING: %d metaslices discarded after ADR selection" % \
               (len(N.nonzero(bad)))
-    print_msg("%d/%d centroids found withing %.2f spx of (%.2f,%.2f)" % 
+    print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" % 
               (len(xref[good]),len(xref),rmax,xref0,yref0), 1)
     xc,yc = xref[good].mean(), yref[good].mean()
     # We could use a weighted average, but does not make much of a difference
@@ -1012,8 +1012,7 @@ if __name__ == "__main__":
         nrow = int(N.ceil(nmeta/float(ncol)))
 
         fig2 = P.figure()
-        fig2.suptitle("Slices plot [%s, airmass=%.2f]" % (objname,airmass),
-                      fontsize='large')
+        fig2.suptitle("Slices plot [%s, airmass=%.2f]" % (objname,airmass))
 
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
 
@@ -1058,7 +1057,7 @@ if __name__ == "__main__":
 
             fig3 = P.figure()
             fig3.suptitle("Rows and columns plot [%s, airmass=%.2f]" % 
-                          (objname,airmass), fontsize='large')
+                          (objname,airmass))
 
             for i in xrange(nmeta):        # Loop over slices
                 ax = fig3.add_subplot(nrow, ncol, i+1)
@@ -1241,8 +1240,7 @@ if __name__ == "__main__":
         def plot_conf_interval(ax, x, y, dy):
             ax.plot(x, y, green, label="Fit 3D")
             if dy is not None:
-                ax.plot(x, y+dy, ls=':', color=green, label='_')
-                ax.plot(x, y-dy, ls=':', color=green, label='_')
+                ax.errorband(x, y, dy, color=green)
 
         fig6 = P.figure()
 
@@ -1350,7 +1348,7 @@ if __name__ == "__main__":
 
         fig7 = P.figure()
         fig7.suptitle("Radial profile plot [%s, airmass=%.2f]" %
-                      (objname,airmass), fontsize='large')
+                      (objname,airmass))
 
         def ellRadius(x,y, x0,y0, ell, q):
             dx = x - x0
@@ -1495,8 +1493,7 @@ if __name__ == "__main__":
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
         fig8 = P.figure()
-        fig8.suptitle("Contour plot [%s, airmass=%.2f]" % (objname,airmass),
-                      fontsize='large')
+        fig8.suptitle("Contour plot [%s, airmass=%.2f]" % (objname,airmass))
 
         extent = (meta_cube.x.min()-0.5, meta_cube.x.max()+0.5,
                   meta_cube.y.min()-0.5, meta_cube.y.max()+0.5)
@@ -1504,9 +1501,8 @@ if __name__ == "__main__":
             ax = fig8.add_subplot(ncol, nrow, i+1, aspect='equal')
             data = meta_cube.slice2d(i, coord='p')
             fit  = cube_fit.slice2d(i, coord='p')
-            #vmin,vmax = N.percentile(fit, (3.,97.)) # Percentiles
-            vmin,vmax = N.percentile(data, (5.,95.)) # Percentiles
-            lev = N.logspace(N.log10(vmin),N.log10(vmax),5)
+            vmin,vmax = N.percentile(data[data>0], (5.,95.)) # Percentiles
+            lev = N.logspace(N.log10(vmin), N.log10(vmax), 5)
             ax.contour(data, lev, origin='lower', extent=extent,
                        cmap=M.cm.jet)                      # Data
             ax.contour(fit, lev, origin='lower', extent=extent,
@@ -1514,7 +1510,7 @@ if __name__ == "__main__":
             ax.errorbar((xc_vec[i],), (yc_vec[i],),
                         xerr=(dparams[i,2],), yerr=(dparams[i,3],),
                         fmt=None, ecolor=blue if good[i] else red)
-            ax.plot((xfit[i],),(yfit[i],), marker='*', color='k')
+            ax.plot((xfit[i],),(yfit[i],), marker='*', color=green)
             if opts.method != 'psf':
                 ax.add_patch(M.patches.Circle((xfit[i],yfit[i]),
                                               radius/spxSize,
@@ -1543,8 +1539,7 @@ if __name__ == "__main__":
         print_msg("Producing residual plot %s..." % plot5, 1)
 
         fig5 = P.figure()
-        fig5.suptitle("Residual plot [%s, airmass=%.2f]" % (objname,airmass),
-                      fontsize='large')
+        fig5.suptitle("Residual plot [%s, airmass=%.2f]" % (objname,airmass))
 
         images = []
         for i in xrange(nmeta):        # Loop over meta-slices
@@ -1561,10 +1556,10 @@ if __name__ == "__main__":
             images.append(ax.imshow(res, origin='lower', extent=extent,
                                     cmap=M.cm.RdBu_r, interpolation='nearest'))
 
-            ax.plot((xfit[i],),(yfit[i],), marker='*', color='k')
+            ax.plot((xfit[i],),(yfit[i],), marker='*', color=green)
             P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1,0.1, u"%.0f Å" % meta_cube.lbda[i],
+            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
                     fontsize='x-small', horizontalalignment='left',
                     transform=ax.transAxes)
             ax.axis(extent)

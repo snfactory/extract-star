@@ -821,10 +821,10 @@ def chebEval(pars, nx, chebpolys=[]):
 
 def powerLawEval(coeffs, x):
     """Evaluate (curved) power-law:
-    coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*x + ...)
+    coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*(x-1) + ...)
     """
 
-    return coeffs[-1] * x**N.polyval(coeffs[:-1], x)
+    return coeffs[-1] * x**N.polyval(coeffs[:-1], x-1)
 
 def powerLawFit(x, y, deg=2, guess=None):
 
@@ -1120,11 +1120,11 @@ class ExposurePSF:
         if self.model.endswith('powerlaw'):
             lrel = self.l/self.lref
             imax = 6+self.ellDeg+self.alphaDeg
-            grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel)
+            grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel-1)
             if self.alphaDeg:
                 grad[imax-1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
                 for i in range(imax-2, imax-self.alphaDeg-1, -1):
-                    grad[i] = grad[i+1] * lrel  # dPSF/dai, i=<0,alphaDeg>
+                    grad[i] = grad[i+1] * (lrel-1)  # dPSF/dai, i=<0,alphaDeg>
         else:
             for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
                 grad[6+self.ellDeg+i] = dalpha * self.lrel**i
