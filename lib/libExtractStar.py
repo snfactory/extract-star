@@ -18,6 +18,8 @@ import scipy.linalg as SL               # More complete than numpy.linalg
 from pySNIFS import SNIFS_cube
 import ToolBox.Atmosphere as TA
 
+LbdaRef = 5000.     # Use constant ref. for easy comparison
+
 def print_msg(str, limit, verb=0):
     """Print message 'str' if verbosity level (typically
     opts.verbosity) >= limit."""
@@ -657,7 +659,7 @@ def read_psf_name(hdr):
 
 
 def read_psf_ctes(hdr, lrange=()):
-    """Read PSF constants [lRef,alphaDeg,ellDeg] from header."""
+    """Read PSF constants [lMid,alphaDeg,ellDeg] from header."""
 
     assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
            'ES_LMIN/ES_LMAX not found and lrange not set'
@@ -669,7 +671,7 @@ def read_psf_ctes(hdr, lrange=()):
     else:
         lmin = hdr['ES_LMIN']
         lmax = hdr['ES_LMAX']
-    lref = (lmin+lmax)/2.
+    lmid = (lmin+lmax)/2.
 
     # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
     # polynomial degrees
@@ -678,9 +680,9 @@ def read_psf_ctes(hdr, lrange=()):
 
     adeg = countKeys('ES_A\d+$') - 1
     edeg = countKeys('ES_E\d+$') - 1
-    print "PSF constants: lRef=%.2fA, alphaDeg=%d, ellDeg=%d" % (lref,adeg,edeg)
+    print "PSF constants: lMid=%.2fA, alphaDeg=%d, ellDeg=%d" % (lmid,adeg,edeg)
 
-    return [lref,adeg,edeg]
+    return [lmid,adeg,edeg]
 
 
 def read_psf_param(hdr, lrange=()):
@@ -690,7 +692,7 @@ def read_psf_param(hdr, lrange=()):
     assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
            'ES_LMIN/ES_LMAX not found and lrange not set'
 
-    # Polynomial coeffs in lr~ = lambda/LbdaRef - 1
+    # Chromatic expansion coefficients
     c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) ]
     c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) ]
 
@@ -703,14 +705,15 @@ def read_psf_param(hdr, lrange=()):
 
     psfname = hdr['ES_PSF']
 
-    # Convert polynomial coeffs from lr~ = lambda/LbdaRef - 1 = a+b*lr
-    # back to lr = (2*lambda - (lmin+lmax))/(lmax-lmin)
+    # Convert public polynomial coeffs from lr~ = lambda/LbdaRef - 1 =
+    # a+b*lr back to internal lr = (2*lambda -
+    # (lmin+lmax))/(lmax-lmin)
     a = (lmin+lmax) / (2*lref) - 1
     b = (lmax-lmin) / (2*lref)
     ecoeffs = polyConvert(c_ell, trans=(a,b), backward=True).tolist()
     if 'powerlaw' not in psfname:
         acoeffs = polyConvert(c_alp, trans=(a,b), backward=True).tolist()
-    else:
+    else:                       # Not needed for powerlaw expansion
         acoeffs = c_alp
 
     x0 = hdr['ES_XC']           # Reference position [spx]
@@ -916,7 +919,7 @@ class ExposurePSF:
         @param coords: if not None, should be (x,y).
         """
         self.spxSize  = psf_ctes[0]     # Spaxel size [arcsec]
-        self.lref = psf_ctes[1]         # Reference wavelength [AA]
+        self.lmid = psf_ctes[1]         # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
 
@@ -958,7 +961,7 @@ class ExposurePSF:
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
             pressure,temp = read_PT(None)   # Get default values for P and T
-        self.nRef = TA.atmosphericIndex(self.lref, P=pressure, T=temp)
+        self.nRef = TA.atmosphericIndex(self.lmid, P=pressure, T=temp)
         self.ADRcoeffs = ( self.nRef - 
                            TA.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
                            TA.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
@@ -998,10 +1001,10 @@ class ExposurePSF:
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel) # nslice,nlens
-        if self.model.endswith('powerlaw'):
-            alpha = powerLawEval(alphaCoeffs, self.l/self.lref)
-        else:
+        if not self.model.endswith('powerlaw'):
             alpha = polyEval(alphaCoeffs, self.lrel)
+        else:
+            alpha = powerLawEval(alphaCoeffs, self.l/LbdaRef)
 
         # PSF model
         if self.model=='chromatic':  # Includes chromatic correlations
@@ -1067,10 +1070,10 @@ class ExposurePSF:
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
         ell = polyEval(ellCoeffs, self.lrel)
-        if self.model.endswith('powerlaw'):
-            alpha = powerLawEval(alphaCoeffs, self.l/self.lref)
-        else:
+        if not self.model.endswith('powerlaw'):
             alpha = polyEval(alphaCoeffs, self.lrel)
+        else:
+            alpha = powerLawEval(alphaCoeffs, self.l/LbdaRef)
         
         # PSF model
         if self.model=='chromatic':  # Includes chromatic correlations
@@ -1117,17 +1120,17 @@ class ExposurePSF:
             grad[5+i] = -tmp/2 * dy2 * self.lrel**i
         dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
                  moffat * ( -b1*N.log(ea) + r2*j2/alpha ) # dPSF/dalpha
-        if self.model.endswith('powerlaw'):
-            lrel = self.l/self.lref
+        if not self.model.endswith('powerlaw'):
+            for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
+                grad[6+self.ellDeg+i] = dalpha * self.lrel**i
+        else:
+            lrel = self.l/LbdaRef
             imax = 6+self.ellDeg+self.alphaDeg
             grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel-1)
             if self.alphaDeg:
                 grad[imax-1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
                 for i in range(imax-2, imax-self.alphaDeg-1, -1):
                     grad[i] = grad[i+1] * (lrel-1)  # dPSF/dai, i=<0,alphaDeg>
-        else:
-            for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
-                grad[6+self.ellDeg+i] = dalpha * self.lrel**i
         grad[:self.npar_cor] *= self.param[N.newaxis,self.npar_cor:,N.newaxis]
         grad[self.npar_cor] = moffat + eta*gaussian # dPSF/dI
 
@@ -1136,10 +1139,10 @@ class ExposurePSF:
     def _HWHM_fn(self, r, alphaCoeffs, lbda):
         """Half-width at half maximum function (=0 at HWHM)."""
 
-        if self.model.endswith('powerlaw'):
-            alpha = powerLawEval(alphaCoeffs, lbda/self.lref)
-        else:
+        if not self.model.endswith('powerlaw'):
             alpha = polyEval(alphaCoeffs, chebNorm(lbda, self.lmin, self.lmax))
+        else:
+            alpha = powerLawEval(alphaCoeffs, lbda/LbdaRef)
 
         if self.model=='chromatic':
             lcheb = chebNorm(lbda, *self.chebRange)

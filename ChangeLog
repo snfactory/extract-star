@@ -1,3 +1,8 @@
+2014-05-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: debugging of power-law
+	chromaticity (inconsistant ref. wavelength).
+
 2014-04-30  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (model.fit): Help convergence by setting

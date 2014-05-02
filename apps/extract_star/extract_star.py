@@ -74,11 +74,13 @@ of alpha is computed similarly from ES_Axx coefficients:
 
 alpha(lbda) = a0 + a1*lr + a2*lr**2 + ...
 
+hence alpha(lref) = a0.
+
 For a 'powerlaw' PSF, the appropriate expression is:
 
-alpha(lbda) = a[-1] * (lbda/lmid)**( a[-2] + a[-3]*(lbda/lmid - 1) + ...)
+alpha(lbda) = a[-1] * (lbda/lref)**( a[-2] + a[-3]*(lbda/lref - 1) + ...)
 
-with lmid:=(lmin+lmax)/2.
+hence alpha(lref) = a[-1].
 """
 
 __author__ = "C. Buton, Y. Copin, E. Pecontal"
@@ -104,7 +106,7 @@ warnings.filterwarnings("ignore", "Overwriting existing file")
 # Numpy setup
 N.set_printoptions(linewidth=999)       # X-wide lines
 
-LbdaRef = 5000.     # Use constant ref. for easy comparison
+LbdaRef = libES.LbdaRef
 
 # Non-default colors
 blue   = MPL.blue
@@ -134,7 +136,7 @@ def param_covariance(self, param=None, order=3):
 
     hes = approx_deriv(self.objgrad, param, order=order) # Chi2 hessian
     try:
-        cov = 2 * SL.pinv2(hes)         # Covariance matrix
+        cov = 2 * SL.pinvh(hes)         # Covariance matrix
     except SL.LinAlgError, error:
         print "Error while inverting chi2 hessian:", error
         cov = N.zeros_like(hes)
@@ -148,7 +150,7 @@ def spec_covariance(cube, psf, skyDeg, covpar):
 
     from ToolBox.Optimizer import approx_deriv
 
-    psfFn, psfCtes, fitpar = psf
+    psfFn,psfCtes,fitpar = psf
 
     # Function fitpar to point-source spectrum (nslice,)
     func = lambda fitpar: libES.extract_specs(cube,
@@ -220,10 +222,9 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
     intensity    = params[-npar_sky-1]
     sky          = params[-npar_sky:]
 
-    labels = '# lbda  ' + \
-        '  '.join('%8s +/- d%-8s' % (n,n)
-                  for n in ['delta','theta','xc','yc','PA','ell','alpha','I'] + 
-                  ['sky%d' % d for d in xrange(npar_sky)])
+    names = ['delta','theta','xc','yc','PA','ell','alpha','I'] + \
+        [ 'sky%d' % d for d in xrange(npar_sky) ]
+    labels = '# lbda  ' + '  '.join( '%8s +/- d%-8s' % (n,n) for n in names )
     if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
         labels += '        RSS\n'
     else:                       # Chi2 fit: compute chi2 per slice
@@ -242,8 +243,8 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
                    alpha[n], dparams[n][6],
                    intensity[n], dparams[n][-npar_sky-1]]
         if npar_sky:
-            tmp = N.array((sky[:,n],dparams[n][-npar_sky:]))
-            list2D += tmp.T.flatten().tolist()
+            tmp = N.transpose((sky[:,n],dparams[n][-npar_sky:]))
+            list2D += tmp.flatten().tolist()
         list2D += [chi2[n]]
         logfile.write(fmt % tuple(list2D))
 
@@ -262,11 +263,10 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
 
     # Global parameters
     # lmin  lmax  delta +/- ddelta  ...  alphaN +/- dalphaN chi2|RSS
-    labels = '# lmin  lmax' + \
-        '  '.join('%8s +/- d%-8s' % (n,n)
-                  for n in ['delta','theta','xc','yc','PA'] + 
-                  ['ell%d' % d for d in xrange(ellDeg+1)] +
-                  ['alpha%d' % d for d in xrange(alphaDeg+1)])
+    names = ['delta','theta','xc','yc','PA'] + \
+        [   'ell%d' % d for d in xrange(ellDeg+1)   ] + \
+        [ 'alpha%d' % d for d in xrange(alphaDeg+1) ]
+    labels = '# lmin  lmax' + '  '.join('%8s +/- d%-8s' % (n,n) for n in names)
     if cube.var is None:        # Least-square fit: Residual Sum of Squares
         labels += '        RSS\n'
     else:                       # Chi2 fit: true chi2
@@ -292,9 +292,8 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     npar_psf = 7 + ellDeg + alphaDeg
     npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
 
-    labels = '# lbda  ' + \
-        '  '.join( '%8s +/- d%-8s' % (par,par) 
-                   for par in ['I']+['sky%d' % d for d in range(npar_sky)] )
+    names = ['I'] + ['sky%d' % d for d in range(npar_sky)]
+    labels = '# lbda  ' + '  '.join( '%8s +/- d%-8s' % (n,n) for n in names )
     if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
         labels += '        RSS\n'
     else:                       # Chi2 fit: compute chi2 per slice
@@ -697,13 +696,13 @@ if __name__ == "__main__":
     PA     = N.median(PA_vec[good])
     # Polynomial-fit with 3-MAD clipping
     polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
-    if opts.psf.endswith('powerlaw'):
-        guessAlphaCoeffs = libES.powerLawFit(
-            meta_cube.lbda[good]/lmid, alpha_vec[good], alphaDeg)
-    else:
+    if not opts.psf.endswith('powerlaw'):
         # Polynomial-fit with 3-MAD clipping
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
+    else:
+        guessAlphaCoeffs = libES.powerLawFit(
+            meta_cube.lbda[good]/LbdaRef, alpha_vec[good], alphaDeg)
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1     = [None]*(npar_psf+nmeta)
@@ -732,17 +731,18 @@ if __name__ == "__main__":
               [None, None],             # y0
               [None, None]]             # PA
         b1 += [[0, None]] + [[None, None]]*ellDeg # ell0 > 0
-        if opts.psf.endswith('powerlaw'):
-            b1 += [[None, None]]*alphaDeg + [[0, None]] # a[-1] > 0
-        else:
+        if not opts.psf.endswith('powerlaw'):
             b1 += [[0, None]] + [[None, None]]*alphaDeg # a[0] > 0
+        else:
+            b1 += [[None, None]]*alphaDeg + [[0, None]] # a[-1] > 0
     b1 += [[0, None]]*nmeta            # Intensities
 
     if opts.psf3Dconstraints:           # Read and set constraints from option
         setPSF3Dconstraints(opts.psf3Dconstraints, p1, b1)
 
-    func = [ '%s;%f,%f,%f,%f' % 
-             (psfFn.name, spxSize, lmid, alphaDeg, ellDeg) ] # PSF
+    psfCtes = [spxSize, lmid, alphaDeg, ellDeg]
+    func = [ '%s;%s' % 
+             (psfFn.name, ','.join( '%f'%p for p in psfCtes )) ] # PSF
     param = [p1]
     bounds = [b1]
 
@@ -817,11 +817,11 @@ if __name__ == "__main__":
     # Test positivity of alpha and ellipticity. At some point, maybe
     # it would be necessary to force positivity in the fit
     # (e.g. fmin_cobyla).
-    if opts.psf.endswith('powerlaw'):
-        fit_alpha = libES.powerLawEval(
-            fitpar[6+ellDeg:npar_psf], meta_cube.lbda/lmid)
-    else:
+    if not opts.psf.endswith('powerlaw'):
         fit_alpha = libES.polyEval(fitpar[6+ellDeg:npar_psf], lbda_rel)
+    else:
+        fit_alpha = libES.powerLawEval(
+            fitpar[6+ellDeg:npar_psf], meta_cube.lbda/LbdaRef)
     if fit_alpha.min() < 0:
         raise ValueError("Alpha is negative (%.2f) at %.0fA" % 
                          (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
@@ -849,7 +849,6 @@ if __name__ == "__main__":
         print "WARNING: No background adjusted."
 
     # Spectrum extraction (point-source, sky, etc.) 
-    psfCtes = [spxSize, lmid, alphaDeg, ellDeg]
     lbda,sigspecs,varspecs = libES.extract_specs(
         full_cube, (psfFn, psfCtes, fitpar[:npar_psf]),
         skyDeg=skyDeg, method=opts.method,
@@ -1227,11 +1226,11 @@ if __name__ == "__main__":
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
         guess_ell = N.polyval(polEll.coeffs,   lbda_rel)
-        if opts.psf.endswith('powerlaw'):
-            guess_alpha = libES.powerLawEval(
-                guessAlphaCoeffs, meta_cube.lbda/lmid)
-        else:
+        if not opts.psf.endswith('powerlaw'):
             guess_alpha = libES.polyEval(guessAlphaCoeffs, lbda_rel)
+        else:
+            guess_alpha = libES.powerLawEval(
+                guessAlphaCoeffs, meta_cube.lbda/LbdaRef)
 
         # err_ell and err_alpha are definitely wrong, and not only
         # because they do not include correlations between parameters!
