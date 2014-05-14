@@ -323,7 +323,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
     x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
-    print_msg("Reference position [%.0fA]: %.2f x %.2f spx" % 
+    print_msg("Reference position [%.0f A]: %.2f x %.2f spx" % 
               (LbdaRef,x0,y0), 1)
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
@@ -623,7 +623,7 @@ if __name__ == "__main__":
 
     print "Meta-slice 2D-fitting (%s)..." % \
           ('chi2' if opts.chi2fit else 'least-squares')
-    params,chi2s,dparams = libES.fit_metaslices(
+    params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
         verbosity=opts.verbosity)
     print_msg("", 1)
@@ -687,7 +687,7 @@ if __name__ == "__main__":
         if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
             raise ValueError('Not enough points for initial guesses')
 
-    print_msg("  Reference position guess [%.0fA]: %.2f x %.2f spx" % 
+    print_msg("  Reference position guess [%.0f A]: %.2f x %.2f spx" % 
               (lmid,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % 
               (delta0, theta0/N.pi*180), 1) # N.degrees() from python-2.5 only
@@ -775,7 +775,7 @@ if __name__ == "__main__":
 
     if data_model.status > 0:
         raise ValueError(
-            '3D-PSF fit did not converge (status=%d=%s)' % 
+            '3D-PSF fit did not converge (status %d: %s)' % 
             (data_model.status,
              pySNIFS_fit.S.optimize.tnc.RCSTRINGS[data_model.status]))
 
@@ -799,7 +799,7 @@ if __name__ == "__main__":
         print "Gradient checks:"
         data_model.check_grad()
 
-    print_msg("  Reference position fit [%.0fA]: %.2f x %.2f spx" % 
+    print_msg("  Reference position fit [%.0f A]: %.2f x %.2f spx" % 
               (lmid,fitpar[2],fitpar[3]), 1)
     adr.set_param(delta=fitpar[0], theta=fitpar[1]) # Update ADR params
     print_msg("  ADR fit: delta=%.2f, theta=%.1f deg" % 
@@ -808,7 +808,7 @@ if __name__ == "__main__":
 
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
-    print '  Seeing estimate @%.0fA: %.2f" FWHM' % (LbdaRef,seeing)
+    print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef,seeing)
 
     if not (0.4<seeing<4. and 1.<adr.get_airmass()<4.):
         raise ValueError('Unphysical seeing (%.2f") or airmass (%.3f)' % 
@@ -823,11 +823,11 @@ if __name__ == "__main__":
         fit_alpha = libES.powerLawEval(
             fitpar[6+ellDeg:npar_psf], meta_cube.lbda/LbdaRef)
     if fit_alpha.min() < 0:
-        raise ValueError("Alpha is negative (%.2f) at %.0fA" % 
+        raise ValueError("Alpha is negative (%.2f) at %.0f A" % 
                          (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
     fit_ell = libES.polyEval(fitpar[5:6+ellDeg], lbda_rel)
     if fit_ell.min() < 0:
-        raise ValueError("Ellipticity is negative (%.2f) at %.0fA" % 
+        raise ValueError("Ellipticity is negative (%.2f) at %.0f A" % 
                          (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
 
     # Computing final spectra for object and background ======================

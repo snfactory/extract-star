@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 ######################################################################
 ## Filename:      pySNIFS_fit.py
 ## Version:       $Revision$
@@ -8,10 +9,10 @@
 ######################################################################
 
 from pySNIFS import *
-import scipy as S
-from scipy import optimize
-import numpy
-import numpy.linalg.linalg as la
+import numpy as N
+import scipy.special as SS
+import scipy.optimize as SO
+import scipy.linalg as SL
 from copy import deepcopy
 
 __author__ = '$Author$'
@@ -39,10 +40,8 @@ class gaus1D:
         self.npar_ind = 0
         self.npar_cor = 3
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
-        #self.l = zeros(shape(transpose(cube.data)),Float64)
         self.name = 'gaus1D'
-        #self.l[:][:] = cube.lbda
-        self.l = S.reshape(cube.lbda,S.shape(cube.data))
+        self.l = N.reshape(cube.lbda, N.shape(cube.data))
 
     def comp(self,param):
         """
@@ -50,8 +49,10 @@ class gaus1D:
         @param param: Input parameters of the gaussian. A list of three
                       number: [xc,sigma,I]
         """
+
         self.param = param
-        val = param[2] * S.exp(-0.5*(((self.l-param[0])/param[1])**2))
+        val = param[2] * N.exp(-0.5*(((self.l-param[0])/param[1])**2))
+
         return val
 
     def deriv(self,param):
@@ -61,13 +62,15 @@ class gaus1D:
         @param param: Input parameters of the gaussian. A list of three
                       number: [xc,sigma,I]
         """
-        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.l),'d')
-        expo = S.exp(-0.5*(((self.l-param[0])/param[1])**2))
+
+        grad = N.zeros((self.npar_cor+self.npar_ind,) + N.shape(self.l),'d')
+        expo = N.exp(-0.5*(((self.l-param[0])/param[1])**2))
         val = expo * param[2] * (self.l-param[0])/param[1]**2
         grad[0] = val
         val = expo * param[2] * (self.l-param[0])**2 / param[1]**3
         grad[1] = val
         grad[2] = expo
+
         return grad
 
 class poly1D:
@@ -87,7 +90,7 @@ class poly1D:
         self.npar_cor = self.deg + 1
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'poly1D'
-        self.l = S.reshape(cube.lbda,S.shape(cube.data))
+        self.l = N.reshape(cube.lbda, N.shape(cube.data))
 
     def comp(self,param):
         """
@@ -95,7 +98,9 @@ class poly1D:
         @param param: Input parameters of the polynomial. A list of deg+1
                       numbers.
         """
-        val = S.poly1d(param[::-1])(self.l)
+
+        val = N.poly1d(param[::-1])(self.l)
+
         return val
 
     def deriv(self,param):
@@ -104,11 +109,10 @@ class poly1D:
         @param param: Input parameters of the polynomial. A list of deg+1
                       numbers.
         """
+
         grad = [ self.l**i for i in range(self.npar_cor) ]
-        grad = S.array(grad)
-        #grad = S.zeros((self.npar_cor+self.npar_ind,)+shape(self.l),'d')
-        #for i in arange(self.npar_cor):
-        #    grad[i] = l**i
+        grad = N.array(grad)
+
         return grad
 
 #######################################################
@@ -131,8 +135,8 @@ class gaus2D:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gaus2D'
-        self.x = S.zeros(S.shape(cube.data),'d')
-        self.y = S.zeros(S.shape(cube.data),'d')
+        self.x = N.zeros_like(cube.data, dtype='d')
+        self.y = N.zeros_like(cube.data, dtype='d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
 
@@ -142,9 +146,14 @@ class gaus2D:
         @param param: Input parameters of the gaussian. A list of five number:
                       [xc,yc,sx,sy,I]
         """
+
         self.param = param
-        tab_param_ind = S.transpose(S.reshape(param[self.npar_cor:],(self.npar_ind,self.nslice)))
-        val = tab_param_ind[:,4:5] * S.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
+        tab_param_ind = N.reshape(param[self.npar_cor:],
+                                  (self.npar_ind,self.nslice)).T
+        val = tab_param_ind[:,4:5] * N.exp(-0.5*(
+            ((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 +
+            ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
+
         return val
 
     def deriv(self,param):
@@ -154,26 +163,34 @@ class gaus2D:
         @param param: Input parameters of the gaussian. A list of five number:
                       [xc,yc,sx,sy,I]
         """
-        self.param = param
-        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
-        grad = S.ones((self.npar_ind,)+S.shape(self.x),'d')
 
-        expo = S.exp(-0.5*(((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 + ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
-        val = expo * tab_param_ind[:,4:5] * (self.x-tab_param_ind[:,0:1])/(tab_param_ind[:,2:3])**2
+        self.param = param
+        tab_param_ind = N.reshape(param,(self.npar_ind,self.nslice)).T
+        grad = N.ones((self.npar_ind,)+N.shape(self.x),'d')
+
+        expo = N.exp(-0.5*(
+            ((self.x-tab_param_ind[:,0:1])/tab_param_ind[:,2:3])**2 +
+            ((self.y-tab_param_ind[:,1:2])/tab_param_ind[:,3:4])**2))
+        val = expo * tab_param_ind[:,4:5] * \
+              (self.x-tab_param_ind[:,0:1])/(tab_param_ind[:,2:3])**2
         grad[0] = val
-        val = expo * tab_param_ind[:,4:5] * (self.y-tab_param_ind[:,1:2])/(tab_param_ind[:,3:4])**2
+        val = expo * tab_param_ind[:,4:5] * \
+              (self.y-tab_param_ind[:,1:2])/(tab_param_ind[:,3:4])**2
         grad[1] = val
-        val = expo * tab_param_ind[:,4:5] * (self.x-tab_param_ind[:,0:1])**2 / (tab_param_ind[:,2:3])**3
+        val = expo * tab_param_ind[:,4:5] * \
+              (self.x-tab_param_ind[:,0:1])**2 / (tab_param_ind[:,2:3])**3
         grad[2] = val
-        val = expo * tab_param_ind[:,4:5] * (self.y-tab_param_ind[:,1:2])**2 / (tab_param_ind[:,3:4])**3
+        val = expo * tab_param_ind[:,4:5] * \
+              (self.y-tab_param_ind[:,1:2])**2 / (tab_param_ind[:,3:4])**3
         grad[3] = val
         grad[4] = expo
-        return grad
 
+        return grad
 
 class gaus2D_integ:
     """
-    2D gaussian function with integration in the pixel, used by the L{model} class
+    2D gaussian function with integration in the pixel, used by the
+    L{model} class
     """
     def __init__(self,pix=None,cube=None):
         """
@@ -189,8 +206,8 @@ class gaus2D_integ:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'gauss2D_integ'
-        self.x = S.zeros(S.shape(cube.data),'d')
-        self.y = S.zeros(S.shape(cube.data),'d')
+        self.x = N.zeros_like(cube.data, dtype='d')
+        self.y = N.zeros_like(cube.data, dtype='d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
 
@@ -200,14 +217,22 @@ class gaus2D_integ:
         @param param: Input parameters of the gaussian. A list of five number:
                       [xc,yc,sx,sy,I]
         """
+
         self.param = param
-        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
-        sq2 = sqrt(2)
-        xpcn = (self.x + self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
-        xmcn = (self.x - self.pix/2 - tab_param_ind[:,0:1])/(sq2*tab_param_ind[:,2:3])
-        ypcn = (self.y + self.pix/2 - tab_param_ind[:,1:2])/(sq2*tab_param_ind[:,3:4])
-        ymcn = (self.y - self.pix/2 - tab_param_ind[:,1:2])/(sq2*tab_param_ind[:,3:4])
-        val = pi*tab_param_ind[:,2:3]*tab_param_ind[:,3:4]*tab_param_ind[:,4:5]*(erf(xpcn)-erf(xmcn))*(erf(ypcn)-erf(ymcn))/2
+        tab_param_ind = N.reshape(param,(self.npar_ind,self.nslice)).T
+        sq2 = 1.4142135623730951
+        xpcn = (self.x + self.pix/2 - tab_param_ind[:,0:1]) / \
+               (sq2*tab_param_ind[:,2:3])
+        xmcn = (self.x - self.pix/2 - tab_param_ind[:,0:1]) / \
+               (sq2*tab_param_ind[:,2:3])
+        ypcn = (self.y + self.pix/2 - tab_param_ind[:,1:2]) / \
+               (sq2*tab_param_ind[:,3:4])
+        ymcn = (self.y - self.pix/2 - tab_param_ind[:,1:2]) / \
+               (sq2*tab_param_ind[:,3:4])
+        val = N.pi/2 * tab_param_ind[:,2:3] * tab_param_ind[:,3:4] * \
+              tab_param_ind[:,4:5] * \
+              (SS.erf(xpcn)-SS.erf(xmcn)) * (SS.erf(ypcn)-SS.erf(ymcn))
+
         return val
 
     def deriv(self,param):
@@ -215,9 +240,10 @@ class gaus2D_integ:
         Compute the derivative of the gaussian function with respect to the parameters.
         @param param: Input parameters of the gaussian. A list of five number: [xc,yc,sx,sy,I]
         """
+
         self.param = param
-        tab_param_ind = S.transpose(S.reshape(param,(self.npar_ind,self.nslice)))
-        grad = S.ones((self.npar_ind,)+S.shape(self.x),'d')
+        tab_param_ind = N.reshape(param,(self.npar_ind,self.nslice)).T
+        grad = N.ones((self.npar_ind,)+N.shape(self.x),'d')
         sqpi_2 = sqrt(pi/2.)
         sq2 = sqrt(2.)
         xpc = (self.x + self.pix/2 - tab_param_ind[:,0:1])
@@ -228,10 +254,10 @@ class gaus2D_integ:
         xmcn = xmc/(sq2*tab_param_ind[:,2:3])
         ypcn = ypc/(sq2*tab_param_ind[:,3:4])
         ymcn = ymc/(sq2*tab_param_ind[:,3:4])
-        gxp = S.exp(-xpcn**2)
-        gxm = S.exp(-xmcn**2)
-        gyp = S.exp(-ypcn**2)
-        gym = S.exp(-ymcn**2)
+        gxp = N.exp(-xpcn**2)
+        gxm = N.exp(-xmcn**2)
+        gyp = N.exp(-ypcn**2)
+        gym = N.exp(-ymcn**2)
         Ix = sqpi_2*tab_param_ind[:,2:3]*(erf(xpcn)-erf(xmcn))
         Iy = sqpi_2*tab_param_ind[:,3:4]*(erf(ypcn)-erf(ymcn))
         grad[0] = tab_param_ind[:,4:5]*Iy*(gxm-gxp)
@@ -239,6 +265,7 @@ class gaus2D_integ:
         grad[2] = tab_param_ind[:,4:5]*Iy*(Ix-(xpc*gxp-xmc*gxm))/tab_param_ind[:,2:3]
         grad[3] = tab_param_ind[:,4:5]*Ix*(Iy-(ypc*gyp-ymc*gym))/tab_param_ind[:,3:4]
         grad[4] = Ix*Iy
+
         return grad
 
 class poly2D:
@@ -258,8 +285,8 @@ class poly2D:
         self.npar_cor = 0
         self.npar = self.npar_ind*self.nslice + self.npar_cor
         self.name = 'poly2D'
-        self.x = S.zeros(S.shape(cube.data),'d')
-        self.y = S.zeros(S.shape(cube.data),'d')
+        self.x = N.zeros_like(cube.data, dtype='d')
+        self.y = N.zeros_like(cube.data, dtype='d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
 
@@ -269,12 +296,12 @@ class poly2D:
         @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
         """
         self.param = param
-        tab_param_ind = S.transpose(S.reshape(S.transpose(param),
-                                              (self.npar_ind,self.nslice)))
+        tab_param_ind = N.reshape(N.transpose(param),
+                                  (self.npar_ind,self.nslice)).T
         n = 0
-        val = S.ones(S.shape(self.x),'d') * tab_param_ind[:,0:1]
+        val = N.ones_like(self.x, dtype='d') * tab_param_ind[:,0:1]
         #print str(self.param[0])
-        for d in S.arange(self.deg)+1:
+        for d in N.arange(self.deg)+1:
             for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
                 val = val + tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
@@ -287,13 +314,13 @@ class poly2D:
         @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
         """
         self.param = param
-        tab_param_ind = S.transpose(S.reshape(S.transpose(param),
-                                              (self.npar_ind,self.nslice)))
+        tab_param_ind = N.reshape(N.transpose(param),
+                                  (self.npar_ind,self.nslice)).T
         n = 0
-        grad = S.ones((self.npar_ind,)+S.shape((self.x)),'d')
+        grad = N.ones((self.npar_ind,)+N.shape((self.x)),'d')
         #print str(self.param[0])
 
-        for d in S.arange(self.deg)+1:
+        for d in N.arange(self.deg)+1:
             for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
                 grad[n+1] = self.x**(d-j) * self.y**(j)
@@ -322,13 +349,13 @@ class SNIFS_psf_3D:
         self.npar_cor = 11
         self.npar = self.npar_ind*cube.nslice + self.npar_cor
         self.name = 'SNIFS_psf_3D'
-        self.x = S.zeros((cube.nslice,cube.nlens),'d')
-        self.y = S.zeros((cube.nslice,cube.nlens),'d')
-        self.l = S.zeros(S.shape(S.transpose(cube.data)),'d')
+        self.x = N.zeros((cube.nslice,cube.nlens),'d')
+        self.y = N.zeros((cube.nslice,cube.nlens),'d')
+        self.l = N.zeros_like(cube.data.T, dtype='d')
         self.x[:][:] = cube.x
         self.y[:][:] = cube.y
         self.l[:][:] = cube.lbda
-        self.l = transpose(self.l)
+        self.l = self.l.T
         self.n_ref = 1e-6*(64.328 + \
                            29498.1/(146.-1./(self.lbda_ref*1e-4)**2) + \
                            255.4/(41.-1./(self.lbda_ref*1e-4)**2)) + 1.
@@ -341,19 +368,19 @@ class SNIFS_psf_3D:
         """
         Compute the function.
         @param param: Input parameters of the polynomial. A list of numbers:
-                - C{param[0:10]}: The 11 parameters of the PSF shape
-                     - C{param[0]}: Atmospheric dispersion power
-                     - C{param[1]}: Atmospheric dispersion position angle
-                     - C{param[2]}: X center at the reference wevelength
-                     - C{param[3]}: Y center at the reference wevelength
-                     - C{param[4]}: PSF core dispersion at the reference wevelength
-                     - C{param[5]}: PSF wing dispersion at the reference wevelength
-                     - C{param[6]}: exponent of the PSF width vs wavelength relation
-                     - C{param[7]}: Ratio between the core and the wing gaussians
-                     - C{param[8]}: Bluring gaussian kernel dispersion
-                     - C{param[9]}: Bluring gaussian kernel axis ratio
-                     - C{param[10]}: Bluring gaussian kernel position angle
-                - C{param[11:]} : The intensity parameters (one for each slice in the cube.
+        - C{param[0:10]}: The 11 parameters of the PSF shape
+        - C{param[0]}: Atmospheric dispersion power
+        - C{param[1]}: Atmospheric dispersion position angle
+        - C{param[2]}: X center at the reference wevelength
+        - C{param[3]}: Y center at the reference wevelength
+        - C{param[4]}: PSF core dispersion at the reference wevelength
+        - C{param[5]}: PSF wing dispersion at the reference wevelength
+        - C{param[6]}: exponent of the PSF width vs wavelength relation
+        - C{param[7]}: Ratio between the core and the wing gaussians
+        - C{param[8]}: Bluring gaussian kernel dispersion
+        - C{param[9]}: Bluring gaussian kernel axis ratio
+        - C{param[10]}: Bluring gaussian kernel position angle
+        - C{param[11:]}: Intensities (one for each slice in the cube).
         """
         self.param = param
         x0 = self.param[0]*self.ADR_coef*cos(self.param[1]) + self.param[2]
@@ -388,15 +415,16 @@ class SNIFS_psf_3D:
         Iwx = (erf(xrwp)-erf(xrwm))/2.
         Iwy = (erf(yrwp)-erf(yrwm))/2.
         #return sigma_c
-        return S.reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
+        return N.reshape(param[11:],(len(param[11:]),1))*(Icx*Icy+eps*Iwx*Iwy)
 
     def deriv(self,param):
         """
-        Compute the derivative of the function with respect to its parameters.
-        @param param: Input parameters of the polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
+        Compute the derivative of the function with respect to its
+        parameters.  @param param: Input parameters of the
+        polynomial. A list numbers (see L{SNIFS_psf_3D.comp}).
         """
         self.param = param
-        grad = S.zeros((self.npar_cor+self.npar_ind,)+S.shape(self.x),'d')
+        grad = N.zeros((self.npar_cor+self.npar_ind,)+N.shape(self.x),'d')
 
         costp = cos(self.param[1])
         sintp = sin(self.param[1])
@@ -433,15 +461,14 @@ class SNIFS_psf_3D:
         yrwp = (yr + self.pix/2)/(sq2*sig_wy)
         yrwm = (yr - self.pix/2)/(sq2*sig_wy)
 
-
-        gxrcp = S.exp(-xrcp**2)
-        gxrcm = S.exp(-xrcm**2)
-        gyrcp = S.exp(-yrcp**2)
-        gyrcm = S.exp(-yrcm**2)
-        gxrwp = S.exp(-xrwp**2)
-        gxrwm = S.exp(-xrwm**2)
-        gyrwp = S.exp(-yrwp**2)
-        gyrwm = S.exp(-yrwm**2)
+        gxrcp = N.exp(-xrcp**2)
+        gxrcm = N.exp(-xrcm**2)
+        gyrcp = N.exp(-yrcp**2)
+        gyrcm = N.exp(-yrcm**2)
+        gxrwp = N.exp(-xrwp**2)
+        gxrwm = N.exp(-xrwm**2)
+        gyrwp = N.exp(-yrwp**2)
+        gyrwm = N.exp(-yrwm**2)
         Icx = (erf(xrcp)-erf(xrcm))/2.
         Icy = (erf(yrcp)-erf(yrcm))/2.
         Iwx = (erf(xrwp)-erf(xrwm))/2.
@@ -473,9 +500,34 @@ class SNIFS_psf_3D:
                    eps*((Iwy*yr/sqrt(2*pi)/sig_wx)*(gxrwm-gxrwp) + \
                         (Iwx*xr/sqrt(2*pi)/sig_wy)*(gyrwp-gyrwm))
         grad[11] = Icx*Icy + eps*Iwx*Iwy
-        grad[0:11] = grad[0:11] * S.reshape(param[11:],(1,len(param[11:]),1))
+        grad[0:11] = grad[0:11] * N.reshape(param[11:],(1,len(param[11:]),1))
 
         return grad
+
+
+class Hyper:
+    """Example of Hyper class: (p-p̄)⋅Cov(p)⁻¹⋅(p-p̄)ᵀ"""
+
+    def __init__(self, mean, cov, hparam=1.):
+
+        self.hparam = hparam            # Hyper-parameter
+        self.mean = N.asarray(mean)     # Mean parameters
+        # Store inverse covariance (aka precision) matrix
+        if cov.ndim==1:                 # Variance vector
+            self.icov = N.diag(1/cov)
+        else:                           # Full covariance
+            self.icov = SL.pinvh(cov)
+
+    def comp(self, params):
+        """Hyper-term (p-p̄)⋅Cov(p)⁻¹⋅(p-p̄)ᵀ."""
+
+        dpar = N.asarray(params) - self.mean        
+        return self.hparam * dpar.dot(icov).dot(dpar) # Hyper-term ()
+
+    def deriv(self, params):
+
+        dpar = N.asarray(params) - self.mean
+        return self.hparam * 2*dpar.dot(icov) # Hyper-jacobian (npar,)
 
 
 #######################################################
@@ -486,37 +538,40 @@ class model:
     """
     Model fiting class
     """
-    def __init__(self,func=['gaus2D'],data=None,param=None,bounds=None,myfunc=None):
+    def __init__(self, func=['gaus2D'], data=None, param=None, bounds=None,
+                 myfunc=None, hyper={}):
+        """hyper={'fname':hyper term instance}."""
+        
         self.fitpar = None
 
         if param is None:
-            raise ValueError("A set of model parameters values must be provided.")
+            raise ValueError("A set of model param. values must be provided.")
 
-        if isinstance(data,SNIFS_cube):
+        if isinstance(data,SNIFS_cube): # 3D-case
             self.model_1D = False
             self.model_2D = False
             self.model_3D = True
             self.data = data
-        elif isinstance(data,image_array):
+        elif isinstance(data,image_array): # 2D-case
             self.model_1D = False
             self.model_2D = True
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = S.reshape(S.ravel(data.data),
-                                       (1,len(S.ravel(data.data))))
-            self.data.lbda = S.array([0])
+            self.data.data = N.reshape(N.ravel(data.data),
+                                       (1,len(N.ravel(data.data))))
+            self.data.lbda = N.array([0])
             self.data.nslice = 1
             self.data.nlens = data.nx * data.ny
-            self.data.i = S.ravel(numpy.indices((data.nx,data.ny))[0])
-            self.data.j = S.ravel(numpy.indices((data.nx,data.ny))[1])
+            self.data.i = N.ravel(N.indices((data.nx,data.ny))[0])
+            self.data.j = N.ravel(N.indices((data.nx,data.ny))[1])
             self.data.x = self.data.i*data.stepx+data.startx
             self.data.y = self.data.j*data.stepy+data.starty
-        elif isinstance(data,spectrum):
+        elif isinstance(data,spectrum): # 1D-case
             self.model_1D = True
             self.model_2D = False
             self.model_3D = False
             self.data = SNIFS_cube()
-            self.data.data = S.reshape(data.data[data.index_list],
+            self.data.data = N.reshape(data.data[data.index_list],
                                        (len(data.index_list),1))
             self.data.lbda = data.x[data.index_list]
             self.data.nslice = len(data.index_list)
@@ -527,53 +582,49 @@ class model:
             self.data.j = None
             self.data.no = None
         else:
-            raise TypeError("data array must be a SNIFS_cube, image_array or spectrum object.")
+            raise TypeError(
+                "Unknown datatype (SNIFS_cube|image_array|spectrum)")
 
-
-        func_dict = {}
-        func_dict['gaus1D']=gaus1D
-        func_dict['poly1D']=poly1D
-        func_dict['gaus2D']=gaus2D
-        func_dict['poly2D']=poly2D
-        func_dict['gaus2D_integ']=gaus2D_integ
-        func_dict['SNIFS_psf_3D']=SNIFS_psf_3D
+        # Predefined functions
+        func_dict = {'gaus1D': gaus1D,
+                     'poly1D': poly1D,
+                     'gaus2D': gaus2D,
+                     'poly2D': poly2D,
+                     'gaus2D_integ': gaus2D_integ,
+                     'SNIFS_psf_3D': SNIFS_psf_3D}
 
         # We add in the available function dictionary the user's ones
         if myfunc is not None:
             try:
                 func_dict.update(myfunc)
             except:
-                raise ValueError("User functions must be provided as dictionary {'name1':func1, 'name2':func2...}")
+                raise ValueError("User functions must be provided as "
+                                 "dictionary {'name1':func1, 'name2':func2...}")
 
         if self.model_1D:
             avail_func = ['gaus1D','poly1D']
-            if myfunc is not None:
-                avail_func = avail_func+myfunc.keys()
-
         else:
             avail_func = ['SNIFS_psf_3D','gaus2D','gaus2D_integ','poly2D']
-            if myfunc is not None:
-                avail_func = avail_func+myfunc.keys()
+        if myfunc is not None:          # Add user fns to available ones
+            avail_func = avail_func + myfunc.keys()
 
         if data.var is None:
             #self.weight = SNIFS_cube()
-            self.weight = S.ones(S.shape(self.data.data),'d')
+            self.weight = N.ones_like(self.data.data, dtype='d')
             #self.weight.ones_from(self.data)
         else:
             if self.model_3D:
-                #self.weight = SNIFS_cube()
-                #self.weight.data = S.array(where(data.var!=0,1./abs(data.var),0.),'d')
-                self.weight = S.where(data.var>0, 1/data.var, 0.).astype('d')
-            elif self.model_2D:# TODO: Implement the variance
-                self.data.var = S.array(data.var, dtype='d')
+                self.weight = N.where(data.var>0, 1/data.var, 0.).astype('d')
+            elif self.model_2D: 
+                self.data.var = N.array(data.var, dtype='d')
                 self.data.var = self.data.var.reshape(1,self.data.var.size)
-                self.weight = S.where(self.data.var>0, 1./self.data.var, 0.)
+                self.weight = N.where(self.data.var>0, 1./self.data.var, 0.)
             elif self.model_1D:
                 #self.weight = SNIFS_cube()
-                weight_val = S.where(data.var[data.index_list]>0,
+                weight_val = N.where(data.var[data.index_list]>0,
                                      1./data.var[data.index_list],
                                      0.).astype('d')
-                self.weight = S.reshape(weight_val,(len(data.index_list),1))
+                self.weight = N.reshape(weight_val,(len(data.index_list),1))
                 #self.weight.lbda = data.x
                 #self.weight.nslice = data.len
                 #self.weight.nlens = 1
@@ -583,69 +634,87 @@ class model:
                 #self.weight.j = None
                 #self.weight.no = None
 
-        self.khi2 = None
+        self.khi2 = None                # Total chi2 (excluding hyper-term)
 
         ######### Function list analysis #########
 
         self.func = []
-        for f in func:
-            fstring = f.split(';')[0]
-            if fstring not in avail_func:
+        for fstr in func:               # "name[;p1,p2...]"
+            fname = fstr.split(';')[0]  # "name"
+            if fname not in avail_func: # Unknown function
                 if self.model_1D:
-                    raise ValueError, "Function %s not available for 1D models." % fstring
+                    raise ValueError(
+                        "Function %s not available for 1D models." % fname)
                 else:
-                    raise ValueError, "Function %s not available for 2D/3D models." % fstring
-            #Check if the function has internal parameters
-            if len(f.split(';')) == 1:
-                self.func.append(func_dict[fstring](self.data))
+                    raise ValueError(
+                        "Function %s not available for 2D/3D models." % fname)
             else:
-                inpar_string = f.split(';')[1]
-                internal_param = [float(x) for x in inpar_string.split(',')]
-                if len(internal_param) == 1:
-                    internal_param = internal_param[0]
-                self.func.append(func_dict[fstring](internal_param,self.data))
+                fn = func_dict[fname]   # Actual function (class)
+            # Check if the function has internal parameters
+            if len(fstr.split(';')) == 1:  # No internal parameters
+                self.func.append(fn(self.data)) # Function instanciation
+            else:                       # Presence of internal parameters
+                fparams = fstr.split(';')[1] # "p1,p2,..."
+                fparams = [ float(x) for x in fparams.split(',') ] # [p1,p2,...]
+                if len(fparams) == 1:
+                    fparams = fparams[0]
+                self.func.append(fn(fparams, self.data)) # Fn instanciation
 
         ######### Parameter list analysis #########
+
         if len(param) != len(func):
-            raise ValueError, "param list and func list must have the same length."
+            raise ValueError(
+                "param list and func list must have the same length.")
         for i,f in enumerate(self.func):
-            if f.npar != S.size(param[i]):
-                raise ValueError, "Function %s must have %d parameters, %d given." % \
-                      (f.name, f.npar, len(param[i]))
+            if f.npar != N.size(param[i]):
+                raise ValueError(
+                    "Function %s must have %d parameters, %d given." % 
+                    (f.name, f.npar, len(param[i])))
         self.param = param
         nparam = [ len(p) for p in param ]
-        self.nparam = S.sum(nparam)
-        self.flatparam = S.concatenate(param).astype('d')
+        self.nparam = N.sum(nparam)     # Total number of parameters
+        self.flatparam = N.concatenate(param).astype('d')
+        # Total degrees of freedom
+        self.dof = self.data.nlens*self.data.nslice - self.nparam
 
         ######### Bounds list analysis #########
+
         if bounds is None:
             self.bounds = None
         else:
             if len(param) != len(bounds):
-                raise ValueError, "There must be one bound pairs for each variable."
+                raise ValueError(
+                    "There must be one bound pairs for each variable.")
             self.bounds = []
             n = 0
             for i in range(len(param)):
                 if len(param[i]) != len(bounds[i]):
-                    raise ValueError, "Function #%d has not the same bound pairs and variables number." % i
+                    raise ValueError(
+                        "Function #%d has not the same " 
+                        "bound pairs and variables number." % i)
                 for j in range(len(param[i])):
                     self.bounds.append(bounds[i][j])
                 n += nparam[i]
 
+        ######### Hyper-terms #########
+
+        self.hyper = hyper              # {'fname':hyper}
+
+
     def new_param(self,param=None):
         """ Store new parameters for the model evaluation. """
-        nparam = [ len(p) for p in param ]
-        if S.size(param) != S.size(self.param) or \
+
+        if N.size(param) != N.size(self.param) or \
                len(param) != len(self.param):
-            raise ValueError, "param has not the correct size."
+            raise ValueError("param has not the correct size.")
         self.param = param
-        self.flatparam = S.concatenate(param).astype('d')
+        self.flatparam = N.concatenate(param).astype('d')
 
     def eval(self, param=None):
         """Evaluate model with current parameters stored in flatparam."""
         if param is None:
             param = self.flatparam
-        val = S.zeros((self.data.nslice,self.data.nlens),'d')
+        val = N.zeros((self.data.nslice,self.data.nlens),'d')
         i = 0
         for f in self.func:
             val += f.comp(param[i:i+f.npar])
@@ -660,59 +729,83 @@ class model:
     def evalfit(self):
         """Evaluate model at fitted parameters stored in fitpar."""
         if self.fitpar is None:
-            raise ValueError, "No fit parameters to evaluate model."
+            raise ValueError("No fit parameters to evaluate model.")
         return self.eval(param=self.fitpar)
 
     def res_evalfit(self):
         """Evaluate model residuals at fitted parameters stored fitpar."""
         return self.data.data - self.evalfit()
 
-    def objfun(self, param=None):
-        """ Compute the objective function to be minimized:
-        Sum(weight*(data-model)^2) at the given parameters values."""
-        return (self.res_eval(param=param)**2 * self.weight).sum()
+    def eval_hyper(self, param=None):
 
-    def objgrad(self, param=None):
-        """ Compute the gradient of the objective function at the given
+        if param is None:
+            param = self.flatparam
+        i = 0
+        hyper = 0.
+        for f in self.func:             # Loop over functions
+            pars = param[i:i+f.npar]    # Function parameters
+            if f.name in self.hyper:    # Add hyper-term from this function
+                hyper += self.hyper[f.name].comp(pars)
+            i += f.npar
+
+        return hyper                    # Total hyper-term ()
+
+    def grad_hyper(self, param=None):
+
+        if param is None:
+            param = self.flatparam
+        i = 0
+        jac = N.zeros(N.size(param),'d') # (npars,)
+        for f in self.func:             # Loop over functions
+            pars = param[i:i+f.npar]    # Function parameters
+            if f.name in self.hyper:    # Add hyper-term from this function
+                hyper = self.hyper[f.name]
+                if hasattr(hyper,'deriv'):
+                    jac[i:i+f.npar] += hyper.deriv(pars)
+                else:
+                    jac[i:i+f.npar] += approx_deriv(hyper.comp, pars)
+            i += f.npar
+
+        return jac                      # Total hyper-jacobian (npars,)
+
+    def objfun(self, param=None, hyper=True):
+        """ Compute the objective function to be minimized:
+        Sum(weight*(data-model)^2) at the given parameters
+        values. Include hyper-term if needed."""
+        
+        chi2 = (self.res_eval(param=param)**2 * self.weight).sum()
+        if self.hyper and hyper:        # Add hyper-terms
+            chi2 += self.eval_hyper(param)
+
+        return chi2
+
+    def objgrad(self, param=None, hyper=True):
+        """Compute the gradient of the objective function at the given
         parameters value."""
         if param is None:
             param = self.flatparam
-        val1 = self.res_eval(param=param) * self.weight
-        val2 = S.zeros(S.size(param),'d')
+        val = self.res_eval(param=param) * self.weight
+        jac = N.zeros(N.size(param),'d') # (nparams,)
         i = 0
         for f in self.func:
             if hasattr(f,'deriv'):
-                deriv = -2*val1 * f.deriv(param[i:i+f.npar])
-                #try:
-                #    assert S.allclose(approx_deriv(f.comp, param[i:i+f.npar]),
-                #                      f.deriv(param[i:i+f.npar]))
-                #except AssertionError:
-                #    print "Deriv\n", f.deriv(param[i:i+f.npar])
-                #    print "Approx\n", approx_deriv(f.comp, param[i:i+f.npar])
+                deriv = -2*val * f.deriv(param[i:i+f.npar])
             else:
-                #raise AttributeError,"%s has not 'deriv' method" % f.name
-                #print "model.objgrad: using approx_deriv for", f.name
-                deriv = -2*val1 * approx_deriv(f.comp, param[i:i+f.npar])
-            #print "DEBUG OG: val1=%s, val2=%s" % \
-            #    (S.shape(val1),S.shape(val2))
-            #print "DEBUG OG: param=%s, param[]=%s" % \
-            #    (S.shape(param),S.shape(param[i:i+f.npar]))
-            #print "DEBUG OG: f.comp=%s, f.deriv=%s" % \
-            #    (S.shape(f.comp(param[i:i+f.npar])),
-            #     S.shape(f.deriv(param[i:i+f.npar])))
-            #print "DEBUG OG: approx_deriv=%s, deriv=%s" % \
-            #    (S.shape(approx_deriv(f.comp, param[i:i+f.npar])),
-            #     S.shape(deriv))
+                deriv = -2*val * approx_deriv(f.comp, param[i:i+f.npar])
 
             if f.npar_cor != 0:         # Sum over all axes except 0
-                val2[i:i+f.npar_cor] = \
-                     deriv[0:f.npar_cor].sum(axis=-1).sum(axis=-1)
+                jac[i:i+f.npar_cor] = \
+                    deriv[0:f.npar_cor].sum(axis=-1).sum(axis=-1)
             for n in range(f.npar_ind):
-                val2[i+f.npar_cor+n*self.data.nslice:
-                     i+f.npar_cor+(n+1)*self.data.nslice] = \
-                     deriv[n+f.npar_cor].sum(axis=1)
+                jac[i+f.npar_cor+n*self.data.nslice:
+                    i+f.npar_cor+(n+1)*self.data.nslice] = \
+                    deriv[n+f.npar_cor].sum(axis=1)
             i += f.npar
-        return val2
+
+        if self.hyper and hyper:        # Add hyper-jacobians
+            jac += self.grad_hyper(param)
+            
+        return jac
 
     def check_grad(self, param=None, eps=1e-6):
         """ Check the gradient of the objective function at the current
@@ -722,12 +815,12 @@ class model:
             param = self.flatparam
         print "%2s  %15s  %15s  %15s" % \
               ("#", "Finite diff.","Objgrad","Rel. diff.")
-        approx_grad = approx_deriv(self.objfun, param, order=3, eps=eps)
-        comp_grad = self.objgrad(param)
-        for n in range(S.size(param)):
+        grad = self.objgrad(param)
+        approx = approx_deriv(self.objfun, param, order=3, eps=eps)
+        for n in range(N.size(param)):
             print "%02d  %15.6f  %15.6f  %15.6f" % (
-                n, approx_grad[n],comp_grad[n],
-                abs(approx_grad[n]-comp_grad[n])/max(abs(comp_grad[n]),1e-10))
+                n+1, approx[n],grad[n],
+                abs(approx[n]-grad[n])/max(abs(grad[n]),1e-10))
 
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters
@@ -736,153 +829,252 @@ class model:
         self.param = self.unflat_param(self.fitpar)
 
     def fit(self, disp=False, save=False, deriv=True,
-            maxfun=1000, msge=0, scale=None):
-        """ Perform the model fitting by minimizing the objective function
-        objfun."""
+            maxfun=1000, msge=0):
+        """Perform the model fitting by minimizing the objective
+        function objfun."""
 
-        # Help convergence by setting realistic objective: fmin=dof
-        self.dof = self.data.nlens*self.data.nslice - self.nparam
-
+        # Help convergence by setting realistic objective: fmin=dof.
         # Use auto-offset and auto-scale
-        x,nfeval,rc = S.optimize.fmin_tnc(self.objfun, self.flatparam.tolist(),
-                                          fprime=deriv and self.objgrad or None,
-                                          approx_grad=not deriv,
-                                          bounds=self.bounds,
-                                          messages=msge, maxfun=maxfun,
-                                          fmin=self.dof)
+        x,nfeval,rc = SO.fmin_tnc(self.objfun, self.flatparam.tolist(),
+                                  fprime=deriv and self.objgrad or None,
+                                  approx_grad=not deriv,
+                                  bounds=self.bounds,
+                                  messages=msge, maxfun=maxfun,
+                                  fmin=self.dof)
 
-        # See S.optimize.tnc.RCSTRINGS for status message
+        # See SO.tnc.RCSTRINGS for status message
         self.status = rc>2 and rc or 0 # 0,1,2 means "fit has converged"
         if msge>=1:
             print "fmin_tnc (%d funcalls): %s" % \
-                (nfeval,S.optimize.tnc.RCSTRINGS[rc])
-        self.fitpar = S.asarray(x,'d')
+                (nfeval, SO.tnc.RCSTRINGS[rc])
+        self.fitpar = N.asarray(x,'d')
 
-        # Reduced khi2 = khi2 / DoF
-        self.khi2 = self.objfun(param=self.fitpar) / self.dof
+        # Reduced khi2 = khi2 / DoF (not including hyper term)
+        self.khi2 = self.objfun(param=self.fitpar, hyper=False) / self.dof
 
         if disp:
             return self.fitpar
+        
         if save:
             self.flatparam = self.fitpar.copy()
 
     def fit_bfgs(self, disp=False, save=False, deriv=True,
-                 maxfun=1000, msge=0, scale=None):
-        """Same as fit, but using S.optimize.fmin_l_bfgs_b instead of
-        S.optimize.fmin_tnc."""
+                 maxfun=1000, msge=0):
+        """Same as fit, but using SO.fmin_l_bfgs_b instead of
+        SO.fmin_tnc."""
 
-        x,f,d = S.optimize.fmin_l_bfgs_b(self.objfun, self.flatparam.tolist(),
-                                         fprime=deriv and self.objgrad or None,
-                                         approx_grad=not deriv,
-                                         bounds=self.bounds,
-                                         iprint= msge==0 and -1 or 0)
+        x,f,d = SO.fmin_l_bfgs_b(self.objfun, self.flatparam.tolist(),
+                                 fprime=deriv and self.objgrad or None,
+                                 approx_grad=not deriv,
+                                 bounds=self.bounds,
+                                 iprint= msge==0 and -1 or 0)
         self.status = d['warnflag']
         if msge>=1:
             print "fmin_l_bfgs_b [%d funcalls]: %s" % (d['funcalls'],d['task'])
-        self.fitpar = S.asarray(x,'d')
+        self.fitpar = N.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
-        self.dof = self.data.nlens*self.data.nslice - self.nparam
         self.khi2 = f / self.dof
 
         if disp:
             return self.fitpar
+        
         if save:
             self.flatparam = self.fitpar.copy()
 
-    def param_error(self,param=None):
-        """Actually returns covariance matrix computed from hessian."""
+    def minimize(self, save=False, verbose=False,
+                 method='TNC', tol=None, options={}):
+        """Perform the model fitting by minimizing the objective
+        function objfun. Similar to self.fit[_bfgs], but using unified
+        minimizer SO.minimize."""
+
+        if method.lower()=='tnc':
+            options.setdefault('minfev', self.dof)
+
+        self.res = SO.minimize(self.objfun, self.flatparam.tolist(),
+                               method=method,
+                               jac=self.objgrad,
+                               bounds=self.bounds,
+                               tol=tol, options=options)
+
+        self.success = self.res.success # Boolean
+        self.status = self.res.status   # Integer (can be >0 if successful)
+        if verbose:
+            print "minimize[%s]: success=%s, status=%d: %s, %d funcalls" % \
+                  (method, self.success, self.status, self.res.message,
+                   self.res.nfev)
+        self.fitpar = self.res.x
+
+        # Reduced khi2 = khi2 / DoF (not including hyper term)
+        self.khi2 = self.objfun(param=self.fitpar, hyper=False) / self.dof
+
+        if save:
+            self.flatparam = self.fitpar.copy()
+
+        return self.fitpar
+
+    def facts(self, params=False, names=[]):
+
+        from ToolBox.IO import str_magn
+
+        fns = [ (f.name,len(pars)) for f,pars in zip(self.func, self.param) ]
+        s  = "Model: %s, %d parameters\n" % \
+             (' + '.join( '%s[%d]' % fn for fn in fns ), self.nparam)
+        if self.fitpar is not None:     # Minimization was performed
+            s += "Minimization: status=%d, chi2/Dof = %.2f/%d\n" % \
+                 (self.status, self.khi2*self.dof, self.dof)
+            if params:
+                covpar = self.param_error()
+                dpars = N.sqrt(covpar.diagonal()) # StdErr on parameters
+                for i in range(self.nparam):
+                    ip = self.flatparam[i] # Initial guess
+                    p = self.fitpar[i]     # Fitted parameters
+                    dp = dpars[i]          # Error
+                    pmin,pmax = self.bounds[i] # Bounds
+                    if names:
+                        name = '%15s = ' % names[i]
+                    else:
+                        name = ''
+                    #s += "#%02d: %s%8.4g +/- %8.4f" % (i+1,name,p,dp)
+                    s += "#%02d: %s%9s  %s" % \
+                         (i+1,name, str_magn(ip),
+                          '%9s +/- %9s' % str_magn(p,dp))
+                    if not (pmin,pmax)==(None,None) and pmin==pmax:
+                        s += '  fixed'               # Fixed parameters
+                    elif pmin is not None and p==pmin: # Hit minimal bound
+                        s += '  <<<' 
+                    elif pmax is not None and p==pmax: # Hit maximal bound
+                        s += '  >>>'
+                    s += '\n'
+
+        return s
+
+    def param_cov(self, param=None):
+        """Adjusted parameter covariance matrix computed from
+        approximated hessian.
+
+        Hessian is 2nd-order derivative matrix, numerically estimated
+        from 1st-order derivative vector. Non-fitted elements (lb=ub)
+        should be removed prior to inversion.
+        """
 
         if param is None:
             param = self.fitpar
+
+        hess = approx_deriv(self.objgrad, param) # Hessian approximation
+        free = ~N.array([ pmin==pmax!=None for pmin,pmax in self.bounds ])
+        nfree = free.sum()
+        selhess = hess[N.outer(free,free)].reshape(nfree,nfree)
+
+        cov = N.zeros((len(param),len(param)),'d')
         try:
-            # Hessian is 2nd-order derivative matrix, numerically estimated
-            # from 1st-order derivative vector. Non-fitted elements (lb=ub)
-            # should be removed prior to inversion.
-            hess = approx_deriv(self.objgrad, param)
-            cov = 2 * S.linalg.inv(hess)
-            return cov
-        except:
-            return numpy.zeros((len(param),len(param)),'d')
+            selcov = 2 * SL.pinvh(selhess)
+            cov[N.outer(free,free)] = selcov.ravel()
+        except SL.LinAlgError:
+            print "WARNING: cannot invert (selected) hessian approximation."
+        
+        return cov
+
+    def param_error(self, param=None):
+        """DEPRECATED"""
+
+        return self.param_cov(param=param)
 
     def unflat_param(self,param):
 
-        if S.size(param) != S.size(self.flatparam):
-            raise ValueError, "Parameter list does not have the right size."
+        if N.size(param) != N.size(self.flatparam):
+            raise ValueError("Parameter list does not have the right size.")
         newparam = []
         i = 0
         for f in self.func:
             newparam.append(param[i:i+f.npar])
             i += f.npar
+
         return newparam
 
     def save_fit_as_SNIFS_cube(self):
+
         fit_cube = deepcopy(self.data)
         fit_cube.data = self.evalfit()
+
         return fit_cube
 
     def save_guess_as_SNIFS_cube(self):
+
         guess_cube = deepcopy(self.data)
         guess_cube.data = self.eval()
+
         return guess_cube
 
 #######################################################
 #                   Fit auxilliary functions          #
 #######################################################
 
-def approx_deriv(func, pars, dpars=None, order=3, eps=1e-6, args=()):
-    """Let's assume len(pars)=N and func returns a array of shape S.
+# 1st derivative central finite difference coefficients
+# Ref: http://en.wikipedia.org/wiki/Finite_difference_coefficients
+_CFDcoeffs = ((1/2.,),                               # 2nd-order
+              (2/3.,-1/12.,),                        # 4th-order
+              (3/4.,-3/20.,1/60.,),                  # 6th-order
+              (4/5.,-1/5.,4/105.,-1/280.,),          # 8th-order
+              )
 
-    S.optimize.approx_fprime corresponds to approx_deriv(order=2),
-    with very poor accuracy around extrema.
+def approx_deriv(func, pars, dpars=None, eps=1e-6, order=3, args=()):
+    """Function 1st derivative approximation using central finite
+    differences.
 
-    S.derivative only works with univariate function. One could use
-    S.optimize.approx_fprime (and associated check_grad) instead, but it
-    only works with scalar function (e.g. chi2), and it cannot therefore be
-    used to check model derivatives or hessian.
+    Hereafter, m=len(pars) and func returns a array of shape
+    S=[m×[m×]]n.
+
+    .. Notes::
+
+       * `scipy.derivative` only works with univariate function.
+       * `scipy.optimize.approx_fprime` corresponds to
+         `approx_deriv(order=2)`.
+       * `scipy.optimize.approx_fprime` (and associated `check_grad`)
+         only works with scalar function (e.g. chi2), and it cannot
+         therefore be used to check model derivatives or hessian.
+
+    .. Todo:: implement higher derivatives
     """
 
-    if order == 2:                    # Simplest symmetric differentiation
-        weights = S.array([-1.,1.])   # Similar to S.optimize.approx_fprime
-    elif order == 3:
-        weights = S.array([-1,0,1])/2.
-    elif order == 5:
-        weights = S.array([1,-8,0,8,-1])/12.
-    elif order == 7:
-        weights = S.array([-1,9,-45,0,45,-9,1])/60.
-    elif order == 9:
-        weights = S.array([3,-32,168,-672,0,672,-168,32,-3])/840.
+    horder = order // 2                 # Half-order
+
+    if horder <= 4:
+        coeffs = _CFDcoeffs[horder-1]
     else:
-        raise NotImplementedError
+        raise NotImplementedError("approx_deriv supports order up to 8/9")
 
     if dpars is None:
-        dpars = S.ones(len(pars))*eps   # (N,)
-    mat = S.diag(dpars)                 # (N,N)
+        dpars = N.zeros(len(pars))+eps  # m
+    mat = N.diag(dpars)                 # m×m diagonal matrix
 
-    delta = S.arange(len(weights))-(len(weights)-1)//2 # [-order/2...+order/2]
-    df = 0
-    for w,d in zip(weights,delta):
-        if w:
-            df += w*S.array([ func(pars+d*dpi, *args) for dpi in mat ]) # (N,S)
+    der = 0                             # Finite differences
+    for i,c in enumerate(coeffs):       # Faster than N.sum(axis=0)
+        der += c*N.array([ (func(pars+(i+1)*dpi, *args) -
+                            func(pars-(i+1)*dpi, *args))
+                           for dpi in mat ]) # m×S
+    ## der = N.sum([ [ c*(func(pars+(i+1)*dpi,*args)-func(pars-(i+1)*dpi,*args))
+    ##                 for dpi in mat ]
+    ##               for i,c in enumerate(coeffs) ], axis=0)
 
-    f = func(pars, *args)               # (S,)
-    if f.ndim==0:                       # func returns a scalar S=()
-        der = df/dpars                  # (N,)
+    if der.ndim==1:                     # func actually returns a scalar (n=0)
+        der /= dpars                    # m×0 / m = m
     else:                               # func returns an array of shape S
-        der = df/dpars[...,S.newaxis]   # (N,S)
+        der /= dpars[...,N.newaxis]     # m×S / m×1 = S
 
-    return der
+    return der                          # S
+
 
 def fit_spectrum(spec,func='gaus1D',param=None,bounds=None,abs=False):
     if param is None:
         param=init_param(func)
     if not isinstance(spec,spectrum):
-        raise TypeError, 'spec must be a pySNIFS.spectrum'
+        raise TypeError('spec must be a pySNIFS.spectrum')
     # copying the input spectrum into a temporary one
     spec2 = deepcopy(spec)
-    spec2.data = spec2.data/S.mean(spec2.data) # Normalisation of the data
+    spec2.data = spec2.data/N.mean(spec2.data) # Normalisation of the data
     if spec2.var is not None:
-        spec2.var = spec2.var/S.mean(spec2.var) # Normalisation of the data
+        spec2.var = spec2.var/N.mean(spec2.var) # Normalisation of the data
     mod_spec = model(data=spec2,func=func,param=param,bounds=bounds)
     mod_spec.fit()
     return mod_spec.fitpar
@@ -933,18 +1125,18 @@ def fnnls(XtX, Xty, tol = 0) :
 
     if tol == 0 :
         eps = 2.2204e-16
-        tol = 10 * eps * la.norm(XtX,1)*max(m, n)
+        tol = 10 * eps * SL.norm(XtX,1)*max(m, n)
     #end
 
-    P = numpy.zeros(n, 'i')
+    P = N.zeros(n, 'i')
     P -= 1
-    Z = numpy.arange(0,n)
+    Z = N.arange(0,n)
 
-    z = numpy.zeros(m, 'd')
+    z = N.zeros(m, 'd')
     x = P.copy()
     ZZ = Z.copy()
 
-    w = Xty - numpy.dot(XtX, x)
+    w = Xty - N.dot(XtX, x)
 
     # set up iteration criterion
     iter = 0
@@ -952,7 +1144,7 @@ def fnnls(XtX, Xty, tol = 0) :
 
     # outer loop to put variables into set to hold positive coefficients
 
-    def find(X): return numpy.where(X)[0]
+    def find(X): return N.where(X)[0]
 
     while Z.any() and (w[ZZ] > tol).any() :
         wt = w[ZZ].max()
@@ -969,13 +1161,14 @@ def fnnls(XtX, Xty, tol = 0) :
             XtXPP = XtX[PP, PP]
             z[PP] = XtyPP / XtXPP
         else :
-            XtyPP = numpy.array(Xty[PP])
-            XtXPP = numpy.array(XtX[PP, numpy.array(PP)[:, numpy.newaxis]])
-            z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP))
+            XtyPP = N.array(Xty[PP])
+            XtXPP = N.array(XtX[PP, N.array(PP)[:, N.newaxis]])
+            z[PP] = N.dot(XtyPP, SL.pinv(XtXPP))
         #end
         z[ZZ] = 0
 
-        # inner loop to remove elements from the positive set which no longer belong
+        # inner loop to remove elements from the positive set which no
+        # longer belong
         while (z[PP] <= tol).any() and (iter < itmax) :
             iter += 1
             iztol = find(z <= tol)
@@ -993,7 +1186,7 @@ def fnnls(XtX, Xty, tol = 0) :
             ip = find(P[iabs] != -1)
             ij = iabs[ip]
 
-            Z[ij] = numpy.array(ij)
+            Z[ij] = N.array(ij)
             P[ij] = -1
             PP = find(P != -1)
             ZZ = find(Z != -1)
@@ -1003,12 +1196,12 @@ def fnnls(XtX, Xty, tol = 0) :
                 XtXPP = XtX[PP, PP]
                 z[PP] = XtyPP / XtXPP
             else :
-                XtyPP = numpy.array(Xty[PP])
-                XtXPP = numpy.array(XtX[PP, numpy.array(PP)[:, numpy.newaxis]])
-                z[PP] = numpy.dot(XtyPP, la.pinv(XtXPP))
+                XtyPP = N.array(Xty[PP])
+                XtXPP = N.array(XtX[PP, N.array(PP)[:, N.newaxis]])
+                z[PP] = N.dot(XtyPP, SL.pinv(XtXPP))
             #endif
             z[ZZ] = 0
-        x = numpy.array(z)
-        w = Xty - numpy.dot(XtX, x)
+        x = N.array(z)
+        w = Xty - N.dot(XtX, x)
 
     return x, w

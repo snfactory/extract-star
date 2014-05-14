@@ -104,7 +104,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         loop = range(cube.nslice)       # Redward loop
     
     for i in loop:                      # Loop over cube slices
-        print_msg("Meta-slice #%d/%d, %.0fA:" % (i+1,cube.nslice,cube.lbda[i]),
+        print_msg("Meta-slice #%d/%d, %.0f A:" % (i+1,cube.nslice,cube.lbda[i]),
                   2, verbosity)
         cube_star.lbda = N.array([cube.lbda[i]])
         cube_star.data = cube.data[i, N.newaxis]
@@ -135,6 +135,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         if (xc,yc)==(None,None):                # No previous estimate
             xc = N.average(cube.x, weights=medstar) # Flux-weighted centroid
             yc = N.average(cube.y, weights=medstar)
+            if not (-7 < xc < 7 and -7 < yc < 7):
+                xc,yc = 0.,0.
 
         cube_sky.data -= skyLev
         if chi2fit:
@@ -142,23 +144,23 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         else:
             cube_sky.var = None                   # Least-square
 
-        model = pySNIFS_fit.model(data=cube_sky,
-                                  func=['gaus2D','poly2D;0'],
-                                  param=[[xc,yc,1,1,imax],[0]],
-                                  bounds=[ [[-7.5,7.5]]*2 + # x0,y0
-                                           [[0.1,5]]*2 +    # sx,sy
-                                           [[0,None]],
-                                           [[None,None]] ])
-        model.fit(msge=(verbosity >= 4))
+        model_gauss = pySNIFS_fit.model(data=cube_sky,
+                                        func=['gaus2D','poly2D;0'],
+                                        param=[[xc,yc,1,1,imax],[0]],
+                                        bounds=[ [[-7.5,7.5]]*2 + # x0,y0
+                                                 [[0.1,5]]*2 +    # sx,sy
+                                                 [[0,None]],
+                                                 [[None,None]] ])
+        model_gauss.minimize(verbose=(verbosity >= 3), tol=1e-4)
 
-        if model.status:
-            print "WARNING: gaussian fit on meta-slice " \
-                      "did not converge [%d]" % model.status
+        if not model_gauss.success:
+            print "WARNING: gaussian fit failed (status=%d: %s) " % \
+                (model_gauss.status, model_gauss.res.message)
             if alpha is None:
-                alpha = 2.4
+                alpha = 2.4             # Educated guess
         else:
-            xc,yc = model.fitpar[:2]    # Update centroid
-            alpha = max(N.hypot(*model.fitpar[2:4]), 1.)
+            xc,yc = model_gauss.fitpar[:2] # Update centroid position
+            alpha = max(N.hypot(*model_gauss.fitpar[2:4]), 1.)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., alpha, imax] # psf parameters
@@ -198,44 +200,46 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
                                        myfunc={psf_fn.name:psf_fn})
-        model_star.fit(maxfun=400, msge=(verbosity >= 4))
+        #model_star.fit(maxfun=400, msge=(verbosity >= 4))
+        model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
 
-        # Restore true chi2 (not reduced one), ie.
-        # chi2 = ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
-        # If least-square fitting, this actually corresponds to
+        # Restore true chi2 (not reduced one), ie. chi2 =
+        # ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
+        # For least-square fitting, this actually corresponds to
         # RSS=residual sum of squares
         model_star.khi2 *= model_star.dof
 
         # Check fit results
-        if model_star.status>0:
-            print "WARNING: fit of metaslice %d failed (status=%d=%s) " % \
-                (i+1, model_star.status,
-                 pySNIFS_fit.S.optimize.tnc.RCSTRINGS[model_star.status])
-        elif not model_star.fitpar[5]>0:
-            print "WARNING: ellipticity of metaslice %d is null" % (i+1)
+        if not model_star.success:      # Fit failure
+            pass
+        elif not model_star.fitpar[5] > 0:
+            model_star.success = False
             model_star.status = -1
-        elif not 0<model_star.fitpar[6]<10:
-            print "WARNING: alpha of metaslice %d is null" % (i+1)
-            model_star.status = -1
-        elif not model_star.fitpar[7]>0:
-            print "WARNING: intensity of metaslice %d is null" % (i+1)
-            model_star.status = -1
+            model_star.res.message = "ellipticity is null"
+        elif not 0 < model_star.fitpar[6] < 10:
+            model_star.success = False
+            model_star.status = -2
+            model_star.res.message = "alpha is invalid (%.2f)" % \
+                                     model_star.fitpar[6]
+        elif not model_star.fitpar[7] > 0:
+            model_star.success = False
+            model_star.status = -3
+            model_star.res.message = "intensity is null"
 
-        # Error computation
-        if not model_star.status:
-            # Cannot use model_star.param_error to compute cov, since
-            # it does not handle fixed parameters (lb=ub).
-            hess = approx_deriv(model_star.objgrad, model_star.fitpar)
-            cov = 2*SL.pinv2(hess[2:,2:]) # Discard 1st 2 lines (unfitted)
+        # Error computation and metaslice clipping
+        if model_star.success:
+            cov = model_star.param_cov()
             diag = cov.diagonal()
-            if (diag>0).all():
-                dpar = N.concatenate(([0.,0.], N.sqrt(diag)))
+            if (diag>=0).all():
+                dpar = N.sqrt(diag)
             else:                       # Some negative diagonal elements!
-                print "WARNING: negative covariance diagonal elements " \
-                    "in metaslice %d" % (i+1)
-                model_star.khi2 *= -1   # To be discarded
-                dpar = N.zeros(len(dparams.T))
-        else:                           # Set error to 0 if status
+                model_star.success = False
+                model_star.status = -4
+                model_star.res.message = "negative covariance diagonal elements"
+
+        if not model_star.success:      # Set error to 0 if status
+            print "WARNING: metaslice #%d, status=%d: %s" % \
+                  (i+1, model_star.status, model_star.res.message,)
             model_star.khi2 *= -1       # To be discarded
             dpar = N.zeros(len(dparams.T))
 
@@ -245,11 +249,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         chi2s[i]   = model_star.khi2
         if chi2fit:
             print_msg("  Chi2 fit [%d, chi2/dof=%.2f/%d]: %s" % 
-                      (model_star.status,model_star.khi2,model_star.dof,
+                      (model_star.status, model_star.khi2, model_star.dof,
                        model_star.fitpar), 1, verbosity)
         else:
             print_msg("  Lsq fit [%d, RSS/dof=%.2f/%d]: %s" % 
-                      (model_star.status,model_star.khi2,model_star.dof,
+                      (model_star.status, model_star.khi2, model_star.dof,
                        model_star.fitpar), 1, verbosity)
 
         if verbosity >= 3:
@@ -680,7 +684,8 @@ def read_psf_ctes(hdr, lrange=()):
 
     adeg = countKeys('ES_A\d+$') - 1
     edeg = countKeys('ES_E\d+$') - 1
-    print "PSF constants: lMid=%.2fA, alphaDeg=%d, ellDeg=%d" % (lmid,adeg,edeg)
+    print "PSF constants: lMid=%.2f A, alphaDeg=%d, ellDeg=%d" % \
+          (lmid,adeg,edeg)
 
     return [lmid,adeg,edeg]
 
@@ -730,7 +735,7 @@ def read_psf_param(hdr, lrange=()):
     x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True)
 
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
-          "refpos=%.2fx%.2f spx @%.2fA" % (airmass,parang,x0,y0,(lmin+lmax)/2)
+          "refpos=%.2fx%.2f spx @%.2f A" % (airmass,parang,x0,y0,(lmin+lmax)/2)
 
     return [adr.delta,adr.theta,x0,y0,pa] + ecoeffs + acoeffs
 
@@ -969,8 +974,8 @@ class ExposurePSF:
     def comp(self, param, normed=False):
         """
         Compute the function.
-        @param param: Input parameters of the polynomial. A list of numbers:
-        - C{param[0:7+n+m]}: The n parameters of the PSF shape
+        @param param: Input parameters for the PSF model:
+        - C{param[0:7+n+m]}: parameters of the PSF shape
           - C{param[0]}: Atmospheric dispersion power
           - C{param[1]}: Atmospheric dispersion position angle
           - C{param[2]}: X center at the reference wavelength
@@ -1268,3 +1273,37 @@ class ShortRed_ExposurePSF(ExposurePSF):
     sigma1 = [ 0.212,-0.017, 0.000] # s10,s11,s12
     eta0   = [ 0.704,-0.060, 0.044] # e00,e01,e02
     eta1   = [ 0.343, 0.113,-0.045] # e10,e11,e12
+
+
+class HyperPSF(object):
+    """Hyper-term to be added to 3D-PSF fit."""
+
+    def __init__(self, delta, theta, ddelta=0.1, dtheta=5.):
+
+        self.delta = delta
+        self.theta = theta
+        self.ddelta = ddelta
+        self.dtheta = dtheta
+
+    def comp(self, param):
+        """Input parameters, same as ExposurePSF.comp, notably:
+        - param[0]: Atmospheric dispersion power (delta)
+        - param[1]: Atmospheric dispersion position angle (theta[deg])
+        - param[2,3]: X,Y center at the reference wavelength
+        - param[4]: Position angle
+        - param[5:6+n]: Ellipticity (n:polynomial degree of ellipticity)
+        - param[6+n:7+n+m]: Moffat scale (m:polynomial degree of alpha)
+        """
+
+        hyper = ((param[0]-self.delta)/self.ddelta)**2 + \
+                ((param[1]-self.theta)/self.dtheta)**2
+
+        return hyper                    # Scalar ()
+
+    def deriv(self, param):
+
+        jac = N.zeros(len(params))
+        jac[0] = 2*(param[0]-self.delta)/self.ddelta**2
+        jac[1] = 2*(param[1]-self.theta)/self.dtheta**2
+
+        return jac                      # (npar,)

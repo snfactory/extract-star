@@ -1,7 +1,21 @@
+2014-05-14  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
+
+	* lib/libExtractStar.py (HyperPSF): evolution toward the use of
+	PSF-related hyper-terms in the chi2.
+
+	* lib/pySNIFS_fit.py: slight code refactoring (e.g. use numpy
+	rather than scipy).
+	(model.eval_hyper, grad_hyper, objfun, objgrad): add support for
+	hyper terms in the chi2, STILL EXPERIMENTAL.
+	(Hyper): example class for an hyper terms.
+	(model.minimize): wrapper to generic minimizer
+	scipy.optimize.minimize.
+	(model.facts): print-out of model parameters.
+
 2014-05-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: debugging of power-law
-	chromaticity (inconsistant ref. wavelength).
+	chromaticity (inconsistent ref. wavelength).
 
 2014-04-30  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
