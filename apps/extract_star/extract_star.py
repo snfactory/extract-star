@@ -60,7 +60,7 @@ PSF parameter keywords
 - ES_TFLUX: integrated flux of extracted point-source spectrum
 - ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
 - SEEING: estimated seeing FWHM [arcsec] at reference wavelength
-- ES_SNMOD: supernova mode (no final 3D-fit)
+- ES_SNMOD: supernova mode
 - ES_BNDx: constraints on 3D-PSF parameters
 
 The chromatic evolution of Y2-coefficient can be computed from ES_Exx
@@ -94,7 +94,7 @@ import numpy as N
 import pySNIFS
 import pySNIFS_fit
 import libExtractStar as libES
-from ToolBox.Atmosphere import ADR
+import ToolBox.Atmosphere as TA
 from ToolBox.Arrays import metaslice
 from ToolBox.Misc import make_method, warning2stdout
 from ToolBox import MPL
@@ -123,32 +123,9 @@ def print_msg(str, limit):
     libES.print_msg(str, limit, verb=opts.verbosity)
 
 
-@make_method(pySNIFS_fit.model)
-def param_covariance(self, param=None, order=3):
-    """Overrides pySNIFS_fit.model.param_error for covariance
-    computation."""
-
-    from ToolBox.Optimizer import approx_deriv
-    import scipy.linalg as SL
-
-    if param is None:
-        param = self.fitpar
-
-    hes = approx_deriv(self.objgrad, param, order=order) # Chi2 hessian
-    try:
-        cov = 2 * SL.pinvh(hes)         # Covariance matrix
-    except SL.LinAlgError, error:
-        print "Error while inverting chi2 hessian:", error
-        cov = N.zeros_like(hes)
-
-    return cov
-
-
 def spec_covariance(cube, psf, skyDeg, covpar):
     """Compute point-source spectrum full covariance from
     parameter covariance."""
-
-    from ToolBox.Optimizer import approx_deriv
 
     psfFn,psfCtes,fitpar = psf
 
@@ -157,7 +134,7 @@ def spec_covariance(cube, psf, skyDeg, covpar):
                                               (psfFn, psfCtes, fitpar),
                                               skyDeg=skyDeg)[1][:,0]
     # Associated jacobian (numerical evaluation) (npar,nslice)
-    jac = approx_deriv(func, fitpar)
+    jac = pySNIFS_fit.approx_deriv(func, fitpar)
 
     # Covariance propagation
     return N.dot(N.dot(jac.T, covpar), jac) # (nslice,nslice)
@@ -323,7 +300,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
     x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
-    print_msg("Reference position [%.0f A]: %.2f x %.2f spx" % 
+    print_msg("Ref. position [%.0f A]: %.2f × %.2f spx" % 
               (LbdaRef,x0,y0), 1)
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
@@ -486,8 +463,10 @@ if __name__ == "__main__":
                       help="3D adjustment logfile name.")
 
     # Expert options
+    parser.add_option("--no3Dfit", action='store_true',
+                      help="Do not perform final 3D-fit.")
     parser.add_option("--supernova", action='store_true',
-                      help="SN mode (no final 3D fit).")
+                      help="SN mode (hyper-parameters).")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes.")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
@@ -657,9 +636,10 @@ if __name__ == "__main__":
     # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position
-    adr = ADR(pressure, temp, lref=lmid, airmass=airmass, parangle=parangle)
+    adr = TA.ADR(pressure, temp, lref=lmid, airmass=airmass, parangle=parangle)
     delta0 = adr.delta                  # ADR power = tan(zenithal distance)
-    theta0 = adr.theta                  # ADR angle = parallactic angle [rad]
+    # MLA vertical is rotated by 5° wrt. north: theta_MLA = theta_DTCS + 5°
+    theta0 = adr.theta + 5./TA.RAD2DEG  # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)
     xref,yref = adr.refract(
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
@@ -687,10 +667,10 @@ if __name__ == "__main__":
         if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
             raise ValueError('Not enough points for initial guesses')
 
-    print_msg("  Reference position guess [%.0f A]: %.2f x %.2f spx" % 
+    print_msg("  Ref. position guess [%.0f A]: %.2f × %.2f spx" % 
               (lmid,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % 
-              (delta0, theta0/N.pi*180), 1) # N.degrees() from python-2.5 only
+              (delta0, theta0*TA.RAD2DEG), 1)
 
     # 2) Other parameters
     PA     = N.median(PA_vec[good])
@@ -712,13 +692,13 @@ if __name__ == "__main__":
     p1[npar_psf:npar_psf+nmeta] = int_vec.tolist()
 
     # Bounds ------------------------------
-    if opts.supernova:                  # Fix all parameters but intensities
-        print "WARNING: Supernova-mode, no 3D PSF-fit."
+    if opts.no3Dfit:              # Fix all parameters but intensities
+        print "WARNING: no 3D PSF-fit."
         # This mode completely discards 3D fit. In pratice, a 3D-fit
         # is still performed on intensities, just to be coherent w/
         # the remaining of the code.
         b1 = [[delta0, delta0],         # delta
-              [theta0, theta0],         # theta
+              [theta0, theta0],         # theta [rad]
               [xc, xc],                 # x0
               [yc, yc],                 # y0
               [PA, PA]]                 # PA
@@ -771,6 +751,10 @@ if __name__ == "__main__":
     data_model = pySNIFS_fit.model(data=meta_cube, func=func,
                                    param=param, bounds=bounds,
                                    myfunc={psfFn.name:psfFn})
+    if opts.verbosity >= 3:
+        print "Gradient checks:"
+        data_model.check_grad()
+
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
 
     if data_model.status > 0:
@@ -783,11 +767,18 @@ if __name__ == "__main__":
     fitpar = data_model.fitpar          # Adjusted parameters
     data_model.khi2 *= data_model.dof   # Restore real chi2 (or RSS)
     chi2 = data_model.khi2              # Total chi2 of 3D-fit
-    covpar = data_model.param_covariance(fitpar) # Parameter covariance matrix
+    covpar = data_model.param_cov(fitpar) # Parameter covariance matrix
     dfitpar = N.sqrt(covpar.diagonal()) # Diagonal errors on adjusted parameters
 
     print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % 
               (data_model.status, chi2, data_model.dof), 1)
+    # DEBUG DEBUG DEBUG
+    hyper = libES.HyperPSF(delta0, theta0)
+    print "ADR hyper-term: delta=%.2f±%.2f, theta=%.2f±%.2f deg, h=%f" % \
+          (hyper.delta, hyper.ddelta,
+           hyper.theta*TA.RAD2DEG, hyper.dtheta*TA.RAD2DEG,
+           hyper.comp(fitpar[:npar_psf]))
+    # DEBUG DEBUG DEBUG    
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % 
               fitpar[npar_psf:npar_psf+nmeta], 3)
@@ -795,17 +786,14 @@ if __name__ == "__main__":
         print_msg("  Fit result [Background]: %s" % 
                   fitpar[npar_psf+nmeta:], 3)
 
-    if opts.verbosity >= 3:
-        print "Gradient checks:"
-        data_model.check_grad()
-
-    print_msg("  Reference position fit [%.0f A]: %.2f x %.2f spx" % 
-              (lmid,fitpar[2],fitpar[3]), 1)
-    adr.set_param(delta=fitpar[0], theta=fitpar[1]) # Update ADR params
-    print_msg("  ADR fit: delta=%.2f, theta=%.1f deg" % 
-              (adr.delta, adr.get_parangle()), 1)
+    print_msg("  Ref. position fit [%.0f A]: %+.2f±%.2f × %+.2f±%.2f spx" % 
+              (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
+    print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
+              (fitpar[0], dfitpar[0],
+               fitpar[1]*TA.RAD2DEG, dfitpar[1]*TA.RAD2DEG), 1)
+    # Update ADR params
+    adr.set_param(delta=fitpar[0], theta=fitpar[1]) 
     print "  Effective airmass: %.2f" % adr.get_airmass()
-
     # Compute seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
     print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef,seeing)

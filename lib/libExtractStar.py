@@ -200,6 +200,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
                                        myfunc={psf_fn.name:psf_fn})
+
+        if verbosity >= 3:
+            print "Gradient checks:"
+            model_star.check_grad()
+
         #model_star.fit(maxfun=400, msge=(verbosity >= 4))
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
 
@@ -255,10 +260,6 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             print_msg("  Lsq fit [%d, RSS/dof=%.2f/%d]: %s" % 
                       (model_star.status, model_star.khi2, model_star.dof,
                        model_star.fitpar), 1, verbosity)
-
-        if verbosity >= 3:
-            print "Gradient checks:"
-            model_star.check_grad()
 
     return params,chi2s,dparams
 
@@ -1278,12 +1279,14 @@ class ShortRed_ExposurePSF(ExposurePSF):
 class HyperPSF(object):
     """Hyper-term to be added to 3D-PSF fit."""
 
-    def __init__(self, delta, theta, ddelta=0.1, dtheta=5.):
+    def __init__(self, delta, theta, hyper=1.,
+                 ddelta=0.1, dtheta=5./TA.RAD2DEG):
 
-        self.delta = delta
-        self.theta = theta
+        self.delta = delta              # ADR amplitude
+        self.theta = theta              # ADR angle [rad]
         self.ddelta = ddelta
         self.dtheta = dtheta
+        self.hyper = hyper
 
     def comp(self, param):
         """Input parameters, same as ExposurePSF.comp, notably:
@@ -1298,12 +1301,12 @@ class HyperPSF(object):
         hyper = ((param[0]-self.delta)/self.ddelta)**2 + \
                 ((param[1]-self.theta)/self.dtheta)**2
 
-        return hyper                    # Scalar ()
+        return self.hyper*hyper         # Scalar ()
 
     def deriv(self, param):
 
-        jac = N.zeros(len(params))
+        jac = N.zeros(len(param))
         jac[0] = 2*(param[0]-self.delta)/self.ddelta**2
         jac[1] = 2*(param[1]-self.theta)/self.dtheta**2
 
-        return jac                      # (npar,)
+        return self.hyper*jac           # (npar,)
