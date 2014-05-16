@@ -1,3 +1,8 @@
+2014-05-16  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: supernova-mode now use
+	hyper-term to constrain ADR. WORK IN PROGRESS!
+
 2014-05-14  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
 
 	* lib/libExtractStar.py (HyperPSF): evolution toward the use of

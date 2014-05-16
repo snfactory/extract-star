@@ -300,7 +300,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
     x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
-    print_msg("Ref. position [%.0f A]: %.2f × %.2f spx" % 
+    print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" % 
               (LbdaRef,x0,y0), 1)
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
@@ -466,7 +466,7 @@ if __name__ == "__main__":
     parser.add_option("--no3Dfit", action='store_true',
                       help="Do not perform final 3D-fit.")
     parser.add_option("--supernova", action='store_true',
-                      help="SN mode (hyper-parameters).")
+                      help="SN mode (add hyper-terms).")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes.")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
@@ -667,7 +667,7 @@ if __name__ == "__main__":
         if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
             raise ValueError('Not enough points for initial guesses')
 
-    print_msg("  Ref. position guess [%.0f A]: %.2f × %.2f spx" % 
+    print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
               (lmid,xc,yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % 
               (delta0, theta0*TA.RAD2DEG), 1)
@@ -747,10 +747,20 @@ if __name__ == "__main__":
     if not opts.chi2fit:
         meta_cube.var = None    # Will be handled by pySNIFS_fit.model
 
+    # Hyper-term
+    if opts.supernova:
+        h = libES.HyperPSF(delta0, theta0) # Instantiation
+        hyper = {psfFn.name:h}             # Hyper dict {fname:hyper}
+        print "SN-mode: PSF hyper-term delta=%.2f±%.2f, theta=%.2f±%.2f deg" % \
+              (h.delta, h.ddelta, h.theta*TA.RAD2DEG, h.dtheta*TA.RAD2DEG)
+    else:
+        hyper = {}
+
     # Instantiate the model and perform the 3D-fit (fmin_tnc)
     data_model = pySNIFS_fit.model(data=meta_cube, func=func,
                                    param=param, bounds=bounds,
-                                   myfunc={psfFn.name:psfFn})
+                                   myfunc={psfFn.name:psfFn},
+                                   hyper=hyper)
     if opts.verbosity >= 3:
         print "Gradient checks:"
         data_model.check_grad()
@@ -773,11 +783,9 @@ if __name__ == "__main__":
     print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % 
               (data_model.status, chi2, data_model.dof), 1)
     # DEBUG DEBUG DEBUG
-    hyper = libES.HyperPSF(delta0, theta0)
-    print "ADR hyper-term: delta=%.2f±%.2f, theta=%.2f±%.2f deg, h=%f" % \
-          (hyper.delta, hyper.ddelta,
-           hyper.theta*TA.RAD2DEG, hyper.dtheta*TA.RAD2DEG,
-           hyper.comp(fitpar[:npar_psf]))
+    if not hyper:
+        h = libES.HyperPSF(delta0, theta0)
+    print "  PSF hyper-term: h=%f" % h.comp(fitpar[:npar_psf])
     # DEBUG DEBUG DEBUG    
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % 
@@ -786,7 +794,7 @@ if __name__ == "__main__":
         print_msg("  Fit result [Background]: %s" % 
                   fitpar[npar_psf+nmeta:], 3)
 
-    print_msg("  Ref. position fit [%.0f A]: %+.2f±%.2f × %+.2f±%.2f spx" % 
+    print_msg("  Ref. position fit [%.0f A]: %+.2f±%.2f x %+.2f±%.2f spx" % 
               (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
     print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
               (fitpar[0], dfitpar[0],

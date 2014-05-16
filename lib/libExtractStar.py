@@ -658,7 +658,7 @@ def read_psf_name(hdr):
 
     psffn = eval(fnname)
     if psfmodel.endswith('powerlaw'):
-        psffn.model += '-powerlaw'
+        psffn.model = psffn.model+'-powerlaw'
 
     return psffn
 
