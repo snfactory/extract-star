@@ -1,3 +1,7 @@
+2014-05-30  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: still work in progress.
+
 2014-05-16  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: supernova-mode now use

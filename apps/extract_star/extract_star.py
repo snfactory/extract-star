@@ -4,8 +4,7 @@
 ## Filename:          extract_star.py
 ## Version:           $Revision$
 ## Description:       Standard star spectrum extraction
-## Author:            Clément BUTON <buton@physik.uni-bonn.de>
-## Author:            $Author$
+## Author:            Yannick Copin <y.copin@ipnl.in2p3.fr>
 ## Created at:        $Date$
 ## Modified at:       2012/11/16 16:13:34
 ## $Id$
@@ -83,7 +82,7 @@ alpha(lbda) = a[-1] * (lbda/lref)**( a[-2] + a[-3]*(lbda/lref - 1) + ...)
 hence alpha(lref) = a[-1].
 """
 
-__author__ = "C. Buton, Y. Copin, E. Pecontal"
+__author__ = "Y. Copin, C. Buton, E. Pecontal"
 __version__ = '$Id$'
 
 import os
@@ -114,6 +113,10 @@ red    = MPL.red
 green  = MPL.green
 orange = MPL.orange
 purple = MPL.purple
+
+# MLA tilt: MLA vertical is rotated by ~5° wrt. north: theta_MLA =
+# theta_DTCS + 5°
+DTHETA = {'B':2.6, 'R':5.0}             # [deg]
 
 # Definitions ================================================================
 
@@ -518,7 +521,7 @@ if __name__ == "__main__":
     efftime = inhdr['EFFTIME']            # [s]
     airmass = inhdr['AIRMASS']
     try:
-        parangle = inhdr['PARANG']        # [deg]
+        parangle = inhdr['PARANG']        # Sky parallactic angle [deg]
     except KeyError:                      # Not in original headers
         from ToolBox.Astro import Coords
         phi = inhdr['LATITUDE']
@@ -635,11 +638,11 @@ if __name__ == "__main__":
 
     # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
-    # median position
-    adr = TA.ADR(pressure, temp, lref=lmid, airmass=airmass, parangle=parangle)
-    delta0 = adr.delta                  # ADR power = tan(zenithal distance)
-    # MLA vertical is rotated by 5° wrt. north: theta_MLA = theta_DTCS + 5°
-    theta0 = adr.theta + 5./TA.RAD2DEG  # ADR angle = parallactic angle [rad]
+    # median position, using effective parangle including MLA tilt
+    adr = TA.ADR(pressure, temp, lref=lmid,
+                 airmass=airmass, parangle=parangle + DTHETA[channel])
+    delta0 = adr.delta           # ADR power = tan(zenithal distance)
+    theta0 = adr.theta           # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)
     xref,yref = adr.refract(
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
@@ -749,7 +752,7 @@ if __name__ == "__main__":
 
     # Hyper-term
     if opts.supernova:
-        h = libES.HyperPSF(delta0, theta0) # Instantiation
+        h = libES.HyperPSF(delta0, theta0, ddelta=0.05, dtheta=5./TA.RAD2DEG)
         hyper = {psfFn.name:h}             # Hyper dict {fname:hyper}
         print "SN-mode: PSF hyper-term delta=%.2f±%.2f, theta=%.2f±%.2f deg" % \
               (h.delta, h.ddelta, h.theta*TA.RAD2DEG, h.dtheta*TA.RAD2DEG)
@@ -771,7 +774,7 @@ if __name__ == "__main__":
         raise ValueError(
             '3D-PSF fit did not converge (status %d: %s)' % 
             (data_model.status,
-             pySNIFS_fit.S.optimize.tnc.RCSTRINGS[data_model.status]))
+             pySNIFS_fit.SO.tnc.RCSTRINGS[data_model.status]))
 
     # Store guess and fit parameters
     fitpar = data_model.fitpar          # Adjusted parameters
@@ -1007,7 +1010,7 @@ if __name__ == "__main__":
         nrow = int(N.ceil(nmeta/float(ncol)))
 
         fig2 = P.figure()
-        fig2.suptitle("Slices plot [%s, airmass=%.2f]" % (objname,airmass))
+        fig2.suptitle("Slice plots [%s, airmass=%.2f]" % (objname,airmass))
 
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
 
@@ -1030,7 +1033,7 @@ if __name__ == "__main__":
                 ax.plot(sno, bkg2[i,:], color=orange, ls='-') # Background
             P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1,0.8, u"%.0f Å" % meta_cube.lbda[i],
+            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
                     fontsize='x-small', horizontalalignment='left',
                     transform=ax.transAxes)
 
@@ -1085,7 +1088,7 @@ if __name__ == "__main__":
 
                 P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.1,0.8, u"%.0f Å" % meta_cube.lbda[i],
+                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
                         fontsize='x-small', horizontalalignment='left',
                         transform=ax.transAxes)
                 if ax.is_last_row() and ax.is_first_col():
@@ -1169,8 +1172,7 @@ if __name__ == "__main__":
         ax4a.plot(meta_cube.lbda, xfit, green, label="Fit 3D")
         P.setp(ax4a.get_xticklabels()+ax4a.get_yticklabels(),
                fontsize='xx-small')
-        leg = ax4a.legend(loc='best')
-        P.setp(leg.get_texts(), fontsize='small')
+        leg = ax4a.legend(loc='best', fontsize='small', frameon=False)
 
         ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
                       fmt=None, ecolor=green)
@@ -1206,7 +1208,7 @@ if __name__ == "__main__":
                                                  ec='0.8',lw=2,fc='None')) # FoV
         ax4c.text(0.03, 0.85,
                   u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
-                  (xc, yc, airmass, parangle),
+                  (xc, yc, airmass, theta0*TA.RAD2DEG),
                   transform=ax4c.transAxes, fontsize='small')
         ax4c.text(0.03, 0.75,
                   u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
@@ -1292,8 +1294,7 @@ if __name__ == "__main__":
                       ['a%d=%.2f' % (i,a) for i,a in
                        enumerate(fitpar[6+ellDeg:npar_psf]) ]) ),
                   transform=ax6a.transAxes, fontsize='small')
-        leg = ax6a.legend(loc='best')
-        P.setp(leg.get_texts(), fontsize='small')
+        leg = ax6a.legend(loc='best', fontsize='small')
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
         ax6b.errorbar(meta_cube.lbda[good], ell_vec[good], dparams[good,5],
@@ -1388,8 +1389,9 @@ if __name__ == "__main__":
                         ms=1, ls='None') # Sky
             P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.9,0.8, u"%.0f Å" % meta_cube.lbda[i], fontsize='x-small',
-                    horizontalalignment='right', transform=ax.transAxes)
+            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
+                    fontsize='x-small', horizontalalignment='left',
+                    transform=ax.transAxes)
             if opts.method != 'psf':
                 ax.axvline(radius/spxSize, color=orange, lw=2)
             if ax.is_last_row() and ax.is_first_col():
@@ -1438,8 +1440,8 @@ if __name__ == "__main__":
                             marker='.', mfc=orange, mec=orange, ls='None')
                 P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.9,0.8, u"%.0f Å" % meta_cube.lbda[i],
-                        fontsize='x-small', horizontalalignment='right',
+                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
+                        fontsize='x-small', horizontalalignment='left',
                         transform=ax.transAxes)
                 if opts.method != 'psf':
                     ax.axvline(radius/spxSize, color=orange, lw=2)
@@ -1468,8 +1470,8 @@ if __name__ == "__main__":
                         marker='.', ls='none', mfc=blue, mec=blue)
                 P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.9,0.8, u"%.0f Å" % meta_cube.lbda[i],
-                        fontsize='x-small', horizontalalignment='right',
+                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
+                        fontsize='x-small', horizontalalignment='left',
                         transform=ax.transAxes)
                 if opts.method != 'psf':
                     ax.axvline(radius/spxSize, color=orange, lw=2)
@@ -1512,7 +1514,7 @@ if __name__ == "__main__":
                                               fc='None', ec=orange, lw=2))
             P.setp(ax.get_xticklabels()+ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1,0.1, u"%.0f Å" % meta_cube.lbda[i],
+            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
                     fontsize='x-small', horizontalalignment='left',
                     transform=ax.transAxes)
             ax.axis(extent)
