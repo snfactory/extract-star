@@ -15,7 +15,10 @@ __version__ = '$Id$'
 import re
 import numpy as N
 import scipy.linalg as SL               # More complete than numpy.linalg
+import scipy.optimize as SO
+
 from pySNIFS import SNIFS_cube
+
 import ToolBox.Atmosphere as TA
 
 LbdaRef = 5000.     # Use constant ref. for easy comparison
@@ -54,7 +57,6 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     """Adjust PSF parameters on (meta)slices of (meta)*cube* using PSF
     *psf_fn* and a background of polynomial degree *skyDeg*."""
 
-    from ToolBox.Optimizer import approx_deriv
     from scipy.ndimage.filters import median_filter
     import pySNIFS_fit
 
@@ -168,8 +170,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
               [0, 0],                   # theta (unfitted)
               [-10, 10],                # xc
               [-10, 10],                # yc
-              [None, None],             # PA
-              [0, None],                # ellipticity > 0
+              [None, None],             # Position angle parameter
+              [0, None],                # Ellipticity parameter > 0
               [0.1, 10],                # alpha > 0
               [0, None]]                # Intensity > 0
 
@@ -724,7 +726,7 @@ def read_psf_param(hdr, lrange=()):
 
     x0 = hdr['ES_XC']           # Reference position [spx]
     y0 = hdr['ES_YC']
-    pa = hdr['ES_XY']           # (Nearly) position angle
+    pa = hdr['ES_XY']           # Position angle parameter
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
@@ -733,7 +735,7 @@ def read_psf_param(hdr, lrange=()):
     parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
     adr = TA.ADR(pressure, temp, lref=(lmin+lmax)/2,
                  airmass=airmass, parangle=parang)
-    x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True)
+    x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True) # [spx]
 
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
           "refpos=%.2fx%.2f spx @%.2f A" % (airmass,parang,x0,y0,(lmin+lmax)/2)
@@ -777,9 +779,9 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
     opposite transformation.
 
     Note: backward transformation could be done using more general
-    polynomial composition polyval, but forward transformation is a
-    long standing issue in the general case (functional decomposition
-    of univariate polynomial)."""
+    polynomial composition `polyval`, but forward transformation is a
+    long standing issue in the general case (look for functional
+    decomposition of univariate polynomial)."""
 
     a,b = trans
     if not backward:
@@ -831,24 +833,36 @@ def chebEval(pars, nx, chebpolys=[]):
 def powerLawEval(coeffs, x):
     """Evaluate (curved) power-law:
     coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*(x-1) + ...)
+
+    Note that f(1) = pars[-1] = alpha(lref) with x = lbda/lref.
     """
 
     return coeffs[-1] * x**N.polyval(coeffs[:-1], x-1)
 
+def powerLawJac(coeffs, x):
+
+    ncoeffs = len(coeffs)                          # M
+    jac = N.empty((ncoeffs,len(x)), dtype=x.dtype) # M×N
+    jac[-1] = x**N.polyval(coeffs[:-1], x-1)       # df/dcoeffs[-1]
+    jac[-2] = coeffs[-1]*jac[-1] * N.log(x)        # df/dcoeffs[-2]
+    for i in range(-3,-ncoeffs-1,-1):
+        jac[i] = jac[i+1] * (x-1)
+
+    return jac                          # M×N
+
 def powerLawFit(x, y, deg=2, guess=None):
 
     import ToolBox.Optimizer as TO
-    import scipy.optimize as O
 
     if guess is None:
         guess = [0.]*(deg-1) + [-1.,2.]
     else:
         assert len(guess)==(deg+1)
 
-    model = TO.Model(powerLawEval)
+    model = TO.Model(powerLawEval, jac=powerLawJac)
     data = TO.DataSet(y, x=x)
     fit = TO.Fitter(model, data)
-    lsqPars,msg = O.leastsq(fit.residuals, guess, args=(x,))
+    lsqPars,msg = SO.leastsq(fit.residuals, guess, args=(x,))
 
     if msg <= 4:
         return lsqPars
@@ -909,20 +923,22 @@ def flatAndPA(cy2, c2xy):
 
 class ExposurePSF:
     """
-    Empirical PSF 3D function used by the L{model} class.
+    Empirical PSF3D function used by the `model` class.
 
-    Note that the so-called PA parameter is not the PA of the adjusted
-    ellipse, but half the x*y coefficient. Similarly, ell is not the
-    ellipticity, but the y**2 coefficient: x2 + ell*y2 + 2*PA*x*y + ... = 0.
-    See quadEllipse/flatAndPA for conversion.
+    Note that the so-called `PA` parameter is *not* the PA of the
+    adjusted ellipse, but half the x*y coefficient. Similarly, 'ell'
+    is not the ellipticity, but the y**2 coefficient: x2 + ell*y2 +
+    2*PA*x*y + ... = 0.  See `quadEllipse`/`flatAndPA` for conversion
+    routines.
     """
 
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
-        @param psf_ctes: Internal parameters (pixel size in cube spatial unit,
-                         reference wavelength and polynomial degrees).
-        @param cube: Input cube. This is a L{SNIFS_cube} object.
-        @param coords: if not None, should be (x,y).
+        
+        psf_ctes: Internal parameters (pixel size in cube spatial unit,
+                  reference wavelength and polynomial degrees).
+        cube:     Input cube. This is a `SNIFS_cube` object.
+        coords:   if not None, should be (x,y).
         """
         self.spxSize  = psf_ctes[0]     # Spaxel size [arcsec]
         self.lmid = psf_ctes[1]         # Reference wavelength [AA]
@@ -975,20 +991,18 @@ class ExposurePSF:
     def comp(self, param, normed=False):
         """
         Compute the function.
-        @param param: Input parameters for the PSF model:
-        - C{param[0:7+n+m]}: parameters of the PSF shape
-          - C{param[0]}: Atmospheric dispersion power
-          - C{param[1]}: Atmospheric dispersion position angle
-          - C{param[2]}: X center at the reference wavelength
-          - C{param[3]}: Y center at the reference wavelength
-          - C{param[4]}: Position angle
-          - C{param[5:6+n]}: Ellipticity
-                             (n:polynomial degree of ellipticity)
-          - C{param[6+n:7+n+m]}: Moffat scale
-                                 (m:polynomial degree of alpha)
-        - C{param[7+m+n:]}: Intensity parameters
-                            (one for each slice in the cube).
-        @param normed: Should the function be normalized (integral)
+        
+        param: Input parameters for the PSF model:
+
+        - param[0:7+n+m]: parameters of the PSF shape
+        - param[0,1]: Atmospheric dispersion power and parall. angle [rad]
+        - param[2,3]: X,Y position at reference wavelength
+        - param[4]: Position angle parameter
+        - param[5:6+n]: Ellipticity param. expansion (n+1: # of coeffs)
+        - param[6+n:7+n+m]: Moffat scale alpha expansion (m+1: # of coeffs)
+        - param[7+m+n:]: Intensity parameters (one for each slice in the cube)
+        
+        normed: Should the function be normalized (integral)
         """
 
         self.param = N.asarray(param)
@@ -1054,8 +1068,9 @@ class ExposurePSF:
     def deriv(self, param):
         """
         Compute the derivative of the function with respect to its parameters.
-        @param param: Input parameters of the polynomial.
-                      A list numbers (see L{SNIFS_psf_3D.comp}).
+        
+        param: Input parameters of the polynomial.
+               A list numbers (see `SNIFS_psf_3D.comp`).
         """
 
         self.param = N.asarray(param)
@@ -1071,7 +1086,7 @@ class ExposurePSF:
         y0 = yc - delta*self.ADRcoeffs*costheta
 
         # Other params
-        PA  = self.param[4]
+        PA = self.param[4]
         ellCoeffs   = self.param[5:6+self.ellDeg]
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
@@ -1177,14 +1192,33 @@ class ExposurePSF:
     def FWHM(self, param, lbda):
         """Estimate FWHM of PSF at wavelength lbda."""
 
-        from scipy.optimize import fsolve
-
         alphaCoeffs = param[6+self.ellDeg:self.npar_cor]
         # Compute FWHM from radial profile
-        fwhm = 2*fsolve(func=self._HWHM_fn, x0=1., args=(alphaCoeffs,lbda))
+        fwhm = 2*SO.fsolve(func=self._HWHM_fn, x0=1., args=(alphaCoeffs,lbda))
 
         # Beware: scipy-0.8.0 fsolve returns a size 1 array
         return N.squeeze(fwhm)  # In spaxels
+
+    @classmethod
+    def seeing_powerlaw(cls, lbda, alphaCoeffs):
+        """Estimate power-law chromatic model seeing FWHM [arcsec] at
+        wavelength `lbda` for alpha coefficients `alphaCoeffs`."""
+
+        def hwhm(r, alphaCoeffs, lbda):
+
+            alpha = powerLawEval(alphaCoeffs, lbda/LbdaRef)
+            sigma = cls.sigma0 + cls.sigma1*alpha
+            beta  =  cls.beta0 +  cls.beta1*alpha
+            eta   =   cls.eta0 +   cls.eta1*alpha
+            gaussian = N.exp(-0.5*r**2/sigma**2)
+            moffat = (1 + r**2/alpha**2)**(-beta)
+            # PSF=moffat + eta*gaussian, maximum is 1+eta
+            return moffat + eta*gaussian - (eta + 1)/2
+        
+        # Compute FWHM from radial profile [spx]
+        seeing = 2 * SO.fsolve(func=hwhm, x0=1., args=(alphaCoeffs,lbda))
+
+        return N.squeeze(seeing)*0.43   # Spx → arcsec
 
 
 class Long_ExposurePSF(ExposurePSF):
@@ -1276,37 +1310,147 @@ class ShortRed_ExposurePSF(ExposurePSF):
     eta1   = [ 0.343, 0.113,-0.045] # e10,e11,e12
 
 
-class HyperPSF(object):
-    """Hyper-term to be added to 3D-PSF fit."""
+class Hyper_PSF3D_PL(object):
+    """Hyper-term to be added to 3D-PSF fit, power-law chromaticity."""
 
-    def __init__(self, delta, theta, hyper=1.,
-                 ddelta=0.1, dtheta=5./TA.RAD2DEG):
+    def __init__(self, psf_ctes, inhdr, seeing, hyper=1., verbose=False):
 
-        self.delta = delta              # ADR amplitude
-        self.theta = theta              # ADR angle [rad]
-        self.ddelta = ddelta
-        self.dtheta = dtheta
-        self.hyper = hyper
+        alphaDeg = int(psf_ctes[2])     # Alpha expansion degree
+        if alphaDeg != 2:
+            raise NotImplementedError("Hyper-term trained for alphaDeg=2 only")
+        ellDeg   = int(psf_ctes[3])     # Ellipticity expansion degree
+        self.alphaSlice = slice(6+ellDeg, 7+ellDeg+alphaDeg)
+
+        self.hyper = hyper              # Global hyper-scaling
+
+        self.X = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
+        if self.X not in ('B','R'):
+            raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
+
+        self.predict_ADR(inhdr, verbose=verbose) # ADR parameters
+        self.predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
+
+    def predict_ADR(self, inhdr, verbose=False):
+        """Predict ADR parameters delta,theta and prediction errors
+        ddelta,dtheta, for use in hyper-term computation. 1st-order
+        corrections and model dispersions were obtained from faint
+        standard star ad-hoc analysis (`adr.py` and `runaway.py`)."""
+
+        # 0th-order estimates
+        delta0 = N.tan(N.arccos(1./inhdr['AIRMASS']))
+        theta0 = inhdr['PARANG'] / TA.RAD2DEG # Parallactic angle [rad]
+
+        # 1st-order corrections from ad-hoc linear regressions
+        sinpar = N.sin(theta0)
+        cospar = N.cos(theta0)
+        if self.X=='B':                 # Blue
+            ddelta1 = -0.00734 * sinpar + 0.00766
+            dtheta1 = -0.554   * cospar + 3.027 # [deg]
+            # Final model dispersion
+            self.ddelta = 0.0173
+            self.dtheta = 1.651         # [deg]
+        else:                           # Red
+            ddelta1 = +0.04674 * sinpar + 0.00075
+            dtheta1 = +3.078   * cospar + 4.447 # [deg]
+            self.ddelta = 0.0122
+            self.dtheta = 1.453         # [deg]
+        dtheta1 /= TA.RAD2DEG           # [rad]
+        self.dtheta /= TA.RAD2DEG       # [rad]
+
+        # Final predictions
+        self.delta = delta0 + ddelta1
+        self.theta = theta0 + dtheta1
+
+        if verbose:
+            print "ADR parameter predictions:"
+            print "  0th-order:  δ=% .2f,  θ=%+.2f°" % \
+                  (delta0, theta0*TA.RAD2DEG)
+            print "  1st-order: dδ=%+.2f, dθ=%+.2f°" % \
+                  (ddelta1, dtheta1*TA.RAD2DEG)
+            print "  Parameters: δ=% .2f,  θ=%+.2f°" % \
+                  (self.delta, self.theta*TA.RAD2DEG)
+            print "  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
+                  (self.ddelta, self.dtheta*TA.RAD2DEG)
+
+    def predict_PL(self, seeing, verbose=False):
+        """Predict ADR parameters power-law parameters {p_i} and
+        prediction precision matrix cov^{-1}({p_i}), for use in
+        hyper-term computation. 1st-order corrections and model
+        dispersions were obtained from faint standard star ad-hoc
+        analysis (`adr.py` and `runaway.py`)."""
+
+        # Predict power-law expansion coefficients and precision matrix
+        if self.X=='B':                 # Blue
+            self.plpars = N.array([
+                -0.134  * seeing + 0.572,  # p0
+                -0.1339 * seeing - 0.0913, # p1
+                +3.474  * seeing - 1.388]) # p2
+            self.plicov = N.array(              # Precision matrix = 1/Cov
+                [[  43.33738708, -66.87684631, -0.23146413],
+                 [ -66.87684631, 242.87202454,  4.43127346],
+                 [  -0.231464,     4.43127346, 12.65395737]])
+        else:                           # Red
+            self.plpars = N.array([
+                -0.0777 * seeing + 0.1741, # p0
+                -0.0202 * seeing - 0.3434, # p1
+                +3.400  * seeing - 1.352]) # p2
+            self.plicov = N.array(              # Precision matrix = 1/Cov
+                [[ 476.81713867,  19.62824821, 23.05086708],
+                 [  19.62825203, 612.26849365, 11.54866409],
+                 [  23.05086899,  11.54866314, 11.4956665 ]])
+
+        if verbose:
+            print "Power-law expansion coefficient predictions:"
+            print "  Seeing prior: %.2f\"" % seeing
+            print "  Parameters: p0=%+.3f  p1=%+.3f  p2=%+.3f" % \
+                  tuple(self.plpars)
+            print "  ~dParams:  dp0=% .3f dp1=% .3f dp2=% .3f" % \
+                  tuple(self.plicov.diagonal()**-0.5)
 
     def comp(self, param):
-        """Input parameters, same as ExposurePSF.comp, notably:
-        - param[0]: Atmospheric dispersion power (delta)
-        - param[1]: Atmospheric dispersion position angle (theta[deg])
-        - param[2,3]: X,Y center at the reference wavelength
-        - param[4]: Position angle
-        - param[5:6+n]: Ellipticity (n:polynomial degree of ellipticity)
-        - param[6+n:7+n+m]: Moffat scale (m:polynomial degree of alpha)
+        """Input parameters, same as `ExposurePSF.comp`, notably:
+        
+        - param[0,1]: ADR power (delta) and parallactic angle (theta[rad])
+        - param[2,3]: X,Y position at reference wavelength
+        - param[4]: Position angle parameter
+        - param[5:6+n]: Ellipticity param. expansion (n+1: # of coeffs)
+        - param[6+n:7+n+m]: Moffat scale alpha expansion (m+1: # of coeffs)
         """
 
-        hyper = ((param[0]-self.delta)/self.ddelta)**2 + \
-                ((param[1]-self.theta)/self.dtheta)**2
+        # Term from ADR parameters
+        hadr = ( (param[0]-self.delta)/self.ddelta )**2 + \
+               ( (param[1]-self.theta)/self.dtheta )**2
+        
+        # Term from PL parameters
+        dalpha = param[self.alphaSlice] - self.plpars
+        # Faster than dalpha.dot(self.plicov).dot(dalpha)
+        hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
 
-        return self.hyper*hyper         # Scalar ()
+        return self.hyper*(hadr + hpl)  # Scalar ()
 
     def deriv(self, param):
 
         jac = N.zeros(len(param))
+
+        # ADR parameter jacobian
         jac[0] = 2*(param[0]-self.delta)/self.ddelta**2
         jac[1] = 2*(param[1]-self.theta)/self.dtheta**2
+        # PL-expansion parameter jacobian
+        jac[self.alphaSlice] = 2*N.dot(
+            self.plicov, param[self.alphaSlice] - self.plpars)
 
         return self.hyper*jac           # (npar,)
+
+    def __str__(self):
+
+        s = u"PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
+        s += u"  ADR: δ=%.2f ± %.2f\n" % (self.delta, self.ddelta)
+        s += u"  ADR: θ=%+.2f ± %.2f°\n" % \
+             (self.theta*TA.RAD2DEG, self.dtheta*TA.RAD2DEG)
+        dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
+        s += u"  PL: p0=%.3f ± %.3f\n" % (self.plpars[0], dplpars[0])
+        s += u"  PL: p1=%.3f ± %.3f\n" % (self.plpars[1], dplpars[1])
+        s += u"  PL: p2=%.3f ± %.3f" % (self.plpars[2], dplpars[2])
+
+        return s
+    

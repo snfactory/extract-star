@@ -1,3 +1,9 @@
+2014-06-25  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (Hyper_PSF3D_PL): hyper-term including
+	predictions for ADR parameters and power-law expansion
+	coefficients. WORK IN PROGRESS.
+
 2014-05-30  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: still work in progress.

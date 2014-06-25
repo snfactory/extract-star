@@ -58,7 +58,7 @@ PSF parameter keywords
 - ES_APRAD: aperture radius (>0: arcsec, <0: seeing sigma)
 - ES_TFLUX: integrated flux of extracted point-source spectrum
 - ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
-- SEEING: estimated seeing FWHM [arcsec] at reference wavelength
+- SEEING: estimated seeing FWHM [\"] at reference wavelength
 - ES_SNMOD: supernova mode
 - ES_BNDx: constraints on 3D-PSF parameters
 
@@ -338,14 +338,14 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     hdr['ES_METH'] = (opts.method, 'Extraction method')
     hdr['ES_PSF'] = (psfname, 'PSF model name')
     if opts.method.endswith('aperture'):
-        hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [arcsec or sigma]')
+        hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [" or sigma]')
 
     tflux, sflux = fluxes
     hdr['ES_TFLUX'] = (tflux, 'Total spectrum flux')
     if opts.skyDeg >= 0:
         hdr['ES_SFLUX'] = (sflux, 'Total sky flux')
 
-    hdr['SEEING'] = (seeing, 'Seeing @lbdaRef [arcsec] (extract_star)')
+    hdr['SEEING'] = (seeing, 'Seeing @lbdaRef ["] (extract_star)')
 
     if opts.supernova:
         hdr['ES_SNMOD'] = (opts.supernova, 'Supernova mode')
@@ -443,7 +443,7 @@ if __name__ == "__main__":
                       default="psf")
     parser.add_option("-r", "--radius", type="float",
                       help="Aperture radius for non-PSF extraction " \
-                           "(>0: in arcsec, <0: in seeing sigma) [%default]",
+                           "(>0: in \", <0: in seeing sigma) [%default]",
                       default=-5.)
     parser.add_option("-L", "--leastSquares", 
                       dest="chi2fit", action="store_false",
@@ -470,6 +470,8 @@ if __name__ == "__main__":
                       help="Do not perform final 3D-fit.")
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (add hyper-terms).")
+    parser.add_option("--seeingprior", type="float",
+                      help="Seeing prior (Exposure.Seeing) [\"]")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes.")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
@@ -494,6 +496,9 @@ if __name__ == "__main__":
 
     if opts.verbosity<=0:
         N.seterr(all='ignore')
+
+    if opts.supernova and not opts.seing:
+        parser.error("Supernova mode requires a seeing prior.")
 
     # Input datacube ===========================================================
 
@@ -524,11 +529,12 @@ if __name__ == "__main__":
         parangle = inhdr['PARANG']        # Sky parallactic angle [deg]
     except KeyError:                      # Not in original headers
         from ToolBox.Astro import Coords
-        phi = inhdr['LATITUDE']
         ha,dec = Coords.altaz2hadec(inhdr['ALTITUDE'], inhdr['AZIMUTH'],
-                                   phi=phi, deg=True)
-        zd,parangle = Coords.hadec2zdpar(ha, dec, phi=phi, deg=True)
+                                    phi=inhdr['LATITUDE'], deg=True)
+        zd,parangle = Coords.hadec2zdpar(ha, dec,
+                                         phi=inhdr['LATITUDE'], deg=True)
         print "WARNING: Computing PARANG from ALTITUDE, AZIMUTH and LATITUDE."
+        inhdr['PARANG'] = parangle
 
     channel = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
     pressure,temp = libES.read_PT(inhdr)  # Include validity tests and defaults
@@ -561,7 +567,7 @@ if __name__ == "__main__":
         parser.error("Invalid PSF model '%s'" % opts.psf)
 
     print "  Object: %s, Airmass: %.2f, Efftime: %.1fs, PSF: %s" % \
-          (objname, airmass, efftime, ', '.join((psfFn.model,psfFn.name)))
+          (objname, airmass, efftime, ', '.join((psfFn.model, psfFn.name)))
 
     # Test channel and set default output name
     if channel not in ('B','R'):
@@ -667,7 +673,7 @@ if __name__ == "__main__":
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nmeta)
-        if len(xc_vec[good]) <= max(alphaDeg+1,ellDeg+1):
+        if len(xc_vec[good]) <= max(alphaDeg+1, ellDeg+1):
             raise ValueError('Not enough points for initial guesses')
 
     print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
@@ -751,18 +757,18 @@ if __name__ == "__main__":
         meta_cube.var = None    # Will be handled by pySNIFS_fit.model
 
     # Hyper-term
-    if opts.supernova:
-        h = libES.HyperPSF(delta0, theta0, ddelta=0.05, dtheta=5./TA.RAD2DEG)
-        hyper = {psfFn.name:h}             # Hyper dict {fname:hyper}
-        print "SN-mode: PSF hyper-term delta=%.2f±%.2f, theta=%.2f±%.2f deg" % \
-              (h.delta, h.ddelta, h.theta*TA.RAD2DEG, h.dtheta*TA.RAD2DEG)
-    else:
-        hyper = {}
+    hyper = {}
+    hterm = None
+    if opts.psf.endswith('powerlaw') and opts.seeingprior:
+        hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, opts.seeingprior, hyper=1.)
+        if opts.supernova:
+            print hterm
+            hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
     # Instantiate the model and perform the 3D-fit (fmin_tnc)
     data_model = pySNIFS_fit.model(data=meta_cube, func=func,
                                    param=param, bounds=bounds,
-                                   myfunc={psfFn.name:psfFn},
+                                   myfunc={psfFn.name: psfFn},
                                    hyper=hyper)
     if opts.verbosity >= 3:
         print "Gradient checks:"
@@ -785,11 +791,10 @@ if __name__ == "__main__":
 
     print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % 
               (data_model.status, chi2, data_model.dof), 1)
-    # DEBUG DEBUG DEBUG
-    if not hyper:
-        h = libES.HyperPSF(delta0, theta0)
-    print "  PSF hyper-term: h=%f" % h.comp(fitpar[:npar_psf])
-    # DEBUG DEBUG DEBUG    
+    if hterm is not None:
+        print "  Hyper-term: h=%f %s" % \
+              (hterm.comp(fitpar[:npar_psf]),
+               '' if hyper else '(not included')
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % 
               fitpar[npar_psf:npar_psf+nmeta], 3)
@@ -805,13 +810,14 @@ if __name__ == "__main__":
     # Update ADR params
     adr.set_param(delta=fitpar[0], theta=fitpar[1]) 
     print "  Effective airmass: %.2f" % adr.get_airmass()
-    # Compute seeing (FWHM in arcsec)
+    # Estimated seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
     print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef,seeing)
 
-    if not (0.4<seeing<4. and 1.<adr.get_airmass()<4.):
-        raise ValueError('Unphysical seeing (%.2f") or airmass (%.3f)' % 
-                         (seeing, adr.get_airmass()))
+    if not 0.4 < seeing < 4.:
+        raise ValueError('Unphysical seeing (%.2f")' % seeing)
+    if not 1. < adr.get_airmass() < 4.:
+        raise ValueError('Unphysical airmass (%.3f)' % adr.get_airmass())
 
     # Test positivity of alpha and ellipticity. At some point, maybe
     # it would be necessary to force positivity in the fit
@@ -841,7 +847,7 @@ if __name__ == "__main__":
             method = '%s r=%.1f sigma=%.2f"' % \
                      (opts.method, -opts.radius, radius)
         else:                   # Aperture radius [arcsec]
-            radius = opts.radius # [arcsec]
+            radius = opts.radius        # [arcsec]
             method = '%s r=%.2f"' % (opts.method, radius)
     print "Extracting the point-source spectrum (method=%s)..." % method
     if skyDeg < 0:
