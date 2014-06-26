@@ -53,9 +53,11 @@ def get_slices_lrange(cube, nmeta=12):
 
 # PSF fitting ==============================
 
-def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
-    """Adjust PSF parameters on (meta)slices of (meta)*cube* using PSF
-    *psf_fn* and a background of polynomial degree *skyDeg*."""
+def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
+                   seeingprior=None, verbosity=1):
+    """Adjust PSF parameters on each (meta)slices of (meta)*cube*
+    using PSF *psf_fn* and a background of polynomial degree
+    *skyDeg*. Add a prior on seeing if any."""
 
     from scipy.ndimage.filters import median_filter
     import pySNIFS_fit
@@ -66,7 +68,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     npar_psf = 7                        # Number of parameters of the psf
     npar_sky = (skyDeg+1)*(skyDeg+2)/2  # Nb. param. in polynomial bkgnd
 
-    cube_sky = SNIFS_cube()
+    cube_sky = SNIFS_cube()             # 1-slice cube for background fit
     cube_sky.x = cube.x
     cube_sky.y = cube.y
     cube_sky.i = cube.i
@@ -74,7 +76,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
     cube_sky.nslice = 1
     cube_sky.nlens = cube.nlens
 
-    cube_star = SNIFS_cube()
+    cube_star = SNIFS_cube()            # 1-slice cube for point-source fit
     cube_star.x = cube.x
     cube_star.y = cube.y
     cube_star.i = cube.i
@@ -106,20 +108,21 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         loop = range(cube.nslice)       # Redward loop
     
     for i in loop:                      # Loop over cube slices
+        # Fill-in the meta-slice
         print_msg("Meta-slice #%d/%d, %.0f A:" % (i+1,cube.nslice,cube.lbda[i]),
                   2, verbosity)
         cube_star.lbda = N.array([cube.lbda[i]])
         cube_star.data = cube.data[i, N.newaxis]
         cube_star.var  = cube.var[i,  N.newaxis]
-        cube_sky.data  = cube.data[i, N.newaxis].copy() # To be modified
+        cube_sky.data  = cube.data[i, N.newaxis].copy() # Will be modified
         cube_sky.var   = cube.var[i,  N.newaxis].copy()
 
-        # Sky median estimate (from FoV edge spx)
+        # Sky median estimate from FoV edge spx
         skyLev = N.median(cube_sky.data.T[skySpx].squeeze())
 
         if skyDeg > 0:
-            # Fit a 2D polynomial of degree skyDeg on the edge pixels of a
-            # given cube slice.
+            # Fit a 2D polynomial of degree skyDeg on the edge pixels
+            # of a given cube slice.
             cube_sky.var.T[~skySpx] = 0 # Discard central spaxels
             if not chi2fit:
                 cube_sky.var[cube_sky.var > 0] = 1 # Least-square
@@ -131,7 +134,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             model_sky.fit()
             skyLev = model_sky.evalfit().squeeze() # Structured bkgnd estimate
 
-        # Guess parameters for the current slice
+        # Rough guess parameters for the current slice
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()                    # Intensity
         if (xc,yc)==(None,None):                # No previous estimate
@@ -146,6 +149,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         else:
             cube_sky.var = None                   # Least-square
 
+        # Guess parameters from 2D-Gaussian + polynomial background fit
         model_gauss = pySNIFS_fit.model(data=cube_sky,
                                         func=['gaus2D','poly2D;0'],
                                         param=[[xc,yc,1,1,imax],[0]],
@@ -155,14 +159,17 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
                                                  [[None,None]] ])
         model_gauss.minimize(verbose=(verbosity >= 3), tol=1e-4)
 
-        if not model_gauss.success:
+        if model_gauss.success:
+            xc,yc = model_gauss.fitpar[:2] # Update centroid position
+            print " DEBUG "*5
+            print "Gaussian-fit sigmas:", model_gauss.fitpar[2:4]
+            print " DEBUG "*5
+            alpha = max(N.hypot(*model_gauss.fitpar[2:4]), 1.)
+        else:
             print "WARNING: gaussian fit failed (status=%d: %s) " % \
                 (model_gauss.status, model_gauss.res.message)
             if alpha is None:
                 alpha = 2.4             # Educated guess
-        else:
-            xc,yc = model_gauss.fitpar[:2] # Update centroid position
-            alpha = max(N.hypot(*model_gauss.fitpar[2:4]), 1.)
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., alpha, imax] # psf parameters
@@ -181,6 +188,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
         param = [p1]
         bounds = [b1]
 
+        # Background initial guess
         if skyDeg >= 0:
             if skyDeg:                  # Use estimate from prev. polynomial fit
                 p2 = list(model_sky.fitpar)
@@ -192,19 +200,24 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
             bounds += [b2]
         else:                           # No background
             p2 = []
+            
         print_msg("  Initial guess: %s" % (p1+p2), 2, verbosity)
 
         # Chi2 vs. Least-square fit
         if not chi2fit:
             cube_star.var = None # Will be handled by pySNIFS_fit.model
 
+        # Hyper-term on alpha from seeing prior
+        if seeingprior:
+            raise NotImplementedError
+
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
-                                       myfunc={psf_fn.name:psf_fn})
+                                       myfunc={psf_fn.name: psf_fn})
 
         if verbosity >= 3:
-            print "Gradient checks:"
+            print "Gradient checks:"    # Includes hyper-term if any
             model_star.check_grad()
 
         #model_star.fit(maxfun=400, msge=(verbosity >= 4))
@@ -259,7 +272,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True, verbosity=1):
                       (model_star.status, model_star.khi2, model_star.dof,
                        model_star.fitpar), 1, verbosity)
         else:
-            print_msg("  Lsq fit [%d, RSS/dof=%.2f/%d]: %s" % 
+            print_msg("  LSq fit [%d, RSS/dof=%.2f/%d]: %s" % 
                       (model_star.status, model_star.khi2, model_star.dof,
                        model_star.fitpar), 1, verbosity)
 

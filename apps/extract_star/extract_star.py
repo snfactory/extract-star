@@ -425,7 +425,7 @@ if __name__ == "__main__":
                       default=0)
 
     parser.add_option("-N", "--nmeta", type='int',
-                      help="Number of meta-slices [%default].",
+                      help="Number of meta-slices [%default]",
                       default=12)
 
     # PSF model
@@ -447,7 +447,7 @@ if __name__ == "__main__":
                       default=-5.)
     parser.add_option("-L", "--leastSquares", 
                       dest="chi2fit", action="store_false",
-                      help="Least-square fit [default is a chi2 fit].",
+                      help="Least-square fit [default is a chi2 fit]",
                       default=True)
 
     # Plotting
@@ -461,21 +461,22 @@ if __name__ == "__main__":
 
     # Debug logs
     parser.add_option("-f", "--file", type="string", dest="log2D",
-                      help="2D adjustment logfile name.")
+                      help="2D adjustment logfile name")
     parser.add_option("-F", "--File", type="string", dest="log3D",
-                      help="3D adjustment logfile name.")
+                      help="3D adjustment logfile name")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
-                      help="Do not perform final 3D-fit.")
+                      help="Do not perform final 3D-fit")
     parser.add_option("--supernova", action='store_true',
-                      help="SN mode (add hyper-terms).")
+                      help="SN mode (add hyper-terms; " \
+                      "requires powerlaw PSF and seeing prior)")
     parser.add_option("--seeingprior", type="float",
                       help="Seeing prior (Exposure.Seeing) [\"]")
     parser.add_option("--keepmodel", action='store_true',
-                      help="Store meta-slices and adjusted model in 3D cubes.")
+                      help="Store meta-slices and adjusted model in 3D cubes")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
-                      help="Constraints on PSF parameters (n:val,[val]).")
+                      help="Constraints on PSF parameters (n:val,[val])")
 
     opts,args = parser.parse_args()
     if not opts.input:
@@ -494,11 +495,15 @@ if __name__ == "__main__":
         if opts.sky:
             print "WARNING: Cannot extract sky spectrum in no-sky mode."
 
-    if opts.verbosity<=0:
+    if opts.verbosity <= 0:
         N.seterr(all='ignore')
 
-    if opts.supernova and not opts.seing:
-        parser.error("Supernova mode requires a seeing prior.")
+    if opts.supernova:
+        if not opts.seeingprior:
+            parser.error(
+                "Supernova mode requires a seeing prior (--seeingprior).")
+        if not opts.psf.endswith('powerlaw'):
+            parser.error("Supernova mode implemented for 'powerlaw' PSF only.")
 
     # Input datacube ===========================================================
 
@@ -573,7 +578,7 @@ if __name__ == "__main__":
     if channel not in ('B','R'):
         parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % 
                      (opts.input, channel))
-    if not opts.out:
+    if not opts.out:                    # Default output
         opts.out = 'spec_%s.fits' % (channel)
 
     # Meta-slice definition (min,max,step [px])
@@ -613,16 +618,16 @@ if __name__ == "__main__":
           ('chi2' if opts.chi2fit else 'least-squares')
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
-        verbosity=opts.verbosity)
+        seeingprior=opts.seeingprior, verbosity=opts.verbosity)
     print_msg("", 1)
 
     params = params.T             # (nparam,nslice)
-    delta_vec,theta_vec = params[:2]
-    xc_vec,yc_vec       = params[2:4]
-    PA_vec,ell_vec,alpha_vec = params[4:7]
-    int_vec = params[7]
+    #delta_vec,theta_vec = params[:2] # Forced to 0,0
+    xc_vec,yc_vec = params[2:4]         # PSF centroid position
+    PA_vec,ell_vec,alpha_vec = params[4:7] # PSF shape parameters
+    int_vec = params[7]                    # PSF intensity
     if skyDeg >= 0:
-        sky_vec = params[8:]
+        sky_vec = params[8:]            # Background parameters
 
     # Save 2D adjusted parameter file ==========================================
 
@@ -682,7 +687,7 @@ if __name__ == "__main__":
               (delta0, theta0*TA.RAD2DEG), 1)
 
     # 2) Other parameters
-    PA     = N.median(PA_vec[good])
+    PA = N.median(PA_vec[good])
     # Polynomial-fit with 3-MAD clipping
     polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
     if not opts.psf.endswith('powerlaw'):
@@ -758,12 +763,10 @@ if __name__ == "__main__":
 
     # Hyper-term
     hyper = {}
-    hterm = None
-    if opts.psf.endswith('powerlaw') and opts.seeingprior:
+    if opts.supernova:
         hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, opts.seeingprior, hyper=1.)
-        if opts.supernova:
-            print hterm
-            hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
+        print hterm
+        hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
     # Instantiate the model and perform the 3D-fit (fmin_tnc)
     data_model = pySNIFS_fit.model(data=meta_cube, func=func,
@@ -771,10 +774,12 @@ if __name__ == "__main__":
                                    myfunc={psfFn.name: psfFn},
                                    hyper=hyper)
     if opts.verbosity >= 3:
-        print "Gradient checks:"
+        print "Gradient checks:"        # Include hyper-terms if any
         data_model.check_grad()
 
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
+
+    data_model.facts(params=opts.verbosity >= 2) # Fit facts
 
     if data_model.status > 0:
         raise ValueError(
@@ -791,16 +796,14 @@ if __name__ == "__main__":
 
     print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % 
               (data_model.status, chi2, data_model.dof), 1)
-    if hterm is not None:
-        print "  Hyper-term: h=%f %s" % \
-              (hterm.comp(fitpar[:npar_psf]),
-               '' if hyper else '(not included')
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % 
               fitpar[npar_psf:npar_psf+nmeta], 3)
     if skyDeg >= 0:
         print_msg("  Fit result [Background]: %s" % 
                   fitpar[npar_psf+nmeta:], 3)
+    if opts.supernova:
+        print "  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf])
 
     print_msg("  Ref. position fit [%.0f A]: %+.2f±%.2f x %+.2f±%.2f spx" % 
               (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
