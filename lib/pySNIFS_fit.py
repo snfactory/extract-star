@@ -712,6 +712,7 @@ class model:
 
     def eval(self, param=None):
         """Evaluate model with current parameters stored in flatparam."""
+        
         if param is None:
             param = self.flatparam
         val = N.zeros((self.data.nslice,self.data.nlens),'d')
@@ -724,16 +725,20 @@ class model:
     def res_eval(self, param=None):
         """Evaluate model residuals with current parameters stored in
         param (or flatparam)."""
+        
         return self.data.data - self.eval(param)
 
     def evalfit(self):
         """Evaluate model at fitted parameters stored in fitpar."""
+        
         if self.fitpar is None:
             raise ValueError("No fit parameters to evaluate model.")
+        
         return self.eval(param=self.fitpar)
 
     def res_evalfit(self):
         """Evaluate model residuals at fitted parameters stored fitpar."""
+
         return self.data.data - self.evalfit()
 
     def eval_hyper(self, param=None):
@@ -782,6 +787,7 @@ class model:
     def objgrad(self, param=None, hyper=True):
         """Compute the gradient of the objective function at the given
         parameters value."""
+
         if param is None:
             param = self.flatparam
         val = self.res_eval(param=param) * self.weight
@@ -825,6 +831,7 @@ class model:
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters
         (flatparam and param)."""
+
         self.flatparam = self.fitpar.copy()
         self.param = self.unflat_param(self.fitpar)
 
@@ -832,6 +839,8 @@ class model:
             maxfun=1000, msge=0):
         """Perform the model fitting by minimizing the objective
         function objfun."""
+
+        self.guessparam = self.flatparam.copy()
 
         # Help convergence by setting realistic objective: fmin=dof.
         # Use auto-offset and auto-scale
@@ -863,6 +872,8 @@ class model:
         """Same as fit, but using SO.fmin_l_bfgs_b instead of
         SO.fmin_tnc."""
 
+        self.guessparam = self.flatparam.copy()
+
         x,f,d = SO.fmin_l_bfgs_b(self.objfun, self.flatparam.tolist(),
                                  fprime=deriv and self.objgrad or None,
                                  approx_grad=not deriv,
@@ -888,6 +899,8 @@ class model:
         function objfun. Similar to self.fit[_bfgs], but using unified
         minimizer SO.minimize."""
 
+        self.guessparam = self.flatparam.copy()
+
         if method.lower()=='tnc':
             options.setdefault('minfev', self.dof)
 
@@ -900,9 +913,9 @@ class model:
         self.success = self.res.success # Boolean
         self.status = self.res.status   # Integer (can be >0 if successful)
         if verbose:
-            print "minimize[%s]: success=%s, status=%d: %s, %d funcalls" % \
-                  (method, self.success, self.status, self.res.message,
-                   self.res.nfev)
+            print "minimize[%s]: %d funcalls, success=%s, status=%d: %s" % \
+                  (method, self.res.nfev,
+                   self.success, self.status, self.res.message)
         self.fitpar = self.res.x
 
         # Reduced khi2 = khi2 / DoF (not including hyper term)
@@ -917,26 +930,31 @@ class model:
 
         from ToolBox.IO import str_magn
 
+        if names:
+            assert len(names)==self.nparam
+
         fns = [ (f.name,len(pars)) for f,pars in zip(self.func, self.param) ]
-        s  = "Model: %s, %d parameters\n" % \
+        s  = "Model: %s, %d parameters" % \
              (' + '.join( '%s[%d]' % fn for fn in fns ), self.nparam)
         if self.fitpar is not None:     # Minimization was performed
-            s += "Minimization: status=%d, chi2/Dof = %.2f/%d\n" % \
+            s += "\nMinimization: status=%d, chi2/Dof=%.2f/%d" % \
                  (self.status, self.khi2*self.dof, self.dof)
             if params:
+                s += "\n     %s--Guess--  ---Fit--- +/- --Error--  --Note--" % \
+                     ('Name'.center(10,'-')+'  ' if names else '')
                 covpar = self.param_error()
                 dpars = N.sqrt(covpar.diagonal()) # StdErr on parameters
                 for i in range(self.nparam):
-                    ip = self.flatparam[i] # Initial guess
-                    p = self.fitpar[i]     # Fitted parameters
-                    dp = dpars[i]          # Error
+                    ip = self.guessparam[i] # Initial guess
+                    p = self.fitpar[i]      # Fitted parameters
+                    dp = dpars[i]           # Error
                     pmin,pmax = self.bounds[i] # Bounds
                     if names:
-                        name = '%15s = ' % names[i]
+                        name = '%10s  ' % names[i]
                     else:
                         name = ''
                     #s += "#%02d: %s%8.4g +/- %8.4f" % (i+1,name,p,dp)
-                    s += "#%02d: %s%9s  %s" % \
+                    s += "\n#%02d  %s%9s  %s" % \
                          (i+1,name, str_magn(ip),
                           '%9s +/- %9s' % str_magn(p,dp))
                     if not (pmin,pmax)==(None,None) and pmin==pmax:
@@ -945,13 +963,12 @@ class model:
                         s += '  <<<' 
                     elif pmax is not None and p==pmax: # Hit maximal bound
                         s += '  >>>'
-                    s += '\n'
 
         return s
 
     def param_cov(self, param=None):
         """Adjusted parameter covariance matrix computed from
-        approximated hessian.
+        approximated hessian (not including hyper-term if any).
 
         Hessian is 2nd-order derivative matrix, numerically estimated
         from 1st-order derivative vector. Non-fitted elements (lb=ub)
@@ -961,7 +978,10 @@ class model:
         if param is None:
             param = self.fitpar
 
-        hess = approx_deriv(self.objgrad, param) # Hessian approximation
+        # Do not take into account hyper-term
+        objgrad = lambda param: self.objgrad(param=param, hyper=False)
+        hess = approx_deriv(objgrad, param) # Hessian approximation
+        # Unfixed parameters
         free = ~N.array([ pmin==pmax!=None for pmin,pmax in self.bounds ])
         nfree = free.sum()
         selhess = hess[N.outer(free,free)].reshape(nfree,nfree)

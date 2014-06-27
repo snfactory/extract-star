@@ -931,7 +931,8 @@ class SNIFS_cube:
         """
         Write the datacube in a NAXIS=3 FITS file.
         @param filename: name of the output FITS file
-        @param mode: writing mode. If w+, the file is overwritten. Otherwise the writing will fail. 
+        @param mode: writing mode. If w+, the file is overwritten;
+                     otherwise the writing will fail. 
         """
         if header is None:
             header = self.e3d_data_header.copy()

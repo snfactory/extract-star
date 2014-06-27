@@ -153,7 +153,8 @@ def write_fits(self, filename=None, header=None):
     # Primary HDU: signal
     hdusig = F.PrimaryHDU(self.data, header=header)
     for key in ['EXTNAME','CTYPES','CRVALS','CDELTS','CRPIXS']:
-        del(hdusig.header[key])  # Remove technical keys from E3D cube
+        if key in hdusig.header:
+            del(hdusig.header[key])  # Remove technical keys from E3D cube
     hdusig.header.set('CRVAL1', self.start, after='NAXIS1')
     hdusig.header.set('CDELT1', self.step, after='CRVAL1')
 
@@ -203,7 +204,7 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
     sky          = params[-npar_sky:]
 
     names = ['delta','theta','xc','yc','PA','ell','alpha','I'] + \
-        [ 'sky%d' % d for d in xrange(npar_sky) ]
+            [ 'sky%d' % d for d in xrange(npar_sky) ]
     labels = '# lbda  ' + '  '.join( '%8s +/- d%-8s' % (n,n) for n in names )
     if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
         labels += '        RSS\n'
@@ -244,8 +245,8 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     # Global parameters
     # lmin  lmax  delta +/- ddelta  ...  alphaN +/- dalphaN chi2|RSS
     names = ['delta','theta','xc','yc','PA'] + \
-        [   'ell%d' % d for d in xrange(ellDeg+1)   ] + \
-        [ 'alpha%d' % d for d in xrange(alphaDeg+1) ]
+            [   'ell%d' % d for d in xrange(ellDeg+1)   ] + \
+            [ 'alpha%d' % d for d in xrange(alphaDeg+1) ]
     labels = '# lmin  lmax' + '  '.join('%8s +/- d%-8s' % (n,n) for n in names)
     if cube.var is None:        # Least-square fit: Residual Sum of Squares
         labels += '        RSS\n'
@@ -272,7 +273,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     npar_psf = 7 + ellDeg + alphaDeg
     npar_sky = (opts.skyDeg+1)*(opts.skyDeg+2)/2
 
-    names = ['I'] + ['sky%d' % d for d in range(npar_sky)]
+    names = ['I'] + [ 'sky%d' % d for d in range(npar_sky) ]
     labels = '# lbda  ' + '  '.join( '%8s +/- d%-8s' % (n,n) for n in names )
     if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
         labels += '        RSS\n'
@@ -310,8 +311,11 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     # to lr~ = lbda/LbdaRef - 1 = a + b*lr
     a = (lmin+lmax) / (2*LbdaRef) - 1
     b = (lmax-lmin) / (2*LbdaRef)
-    c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
-    if 'powerlaw' not in psfname:
+    if opts.ellDeg:                     # Beyond a simple constant
+        c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
+    else:
+        c_ell = param[5:6+opts.ellDeg]
+    if opts.alphaDeg and 'powerlaw' not in psfname:
         c_alp = libES.polyConvert(
             param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg], trans=(a,b))
     else:
@@ -657,6 +661,8 @@ if __name__ == "__main__":
     print_msg(str(adr), 1)
     xref,yref = adr.refract(
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
+    xref = N.atleast_1d(xref) # Some dimension could squeezed in adr.refract
+    yref = N.atleast_1d(yref)
     valid = chi2s > 0                   # Discard unfitted slices
     xref0 = N.median(xref[valid])       # Robust to outliers
     yref0 = N.median(yref[valid])
@@ -678,8 +684,10 @@ if __name__ == "__main__":
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nmeta)
-        if len(xc_vec[good]) <= max(alphaDeg+1, ellDeg+1):
-            raise ValueError('Not enough points for initial guesses')
+        if len(xc_vec[good]) <= ellDeg+1:
+            raise ValueError('Not enough points for ellipticity initial guess')
+        if len(xc_vec[good]) <= alphaDeg+1 and not opts.supernova:
+            raise ValueError('Not enough points for alpha initial guess')
 
     print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
               (lmid,xc,yc), 1)
@@ -689,21 +697,26 @@ if __name__ == "__main__":
     # 2) Other parameters
     PA = N.median(PA_vec[good])
     # Polynomial-fit with 3-MAD clipping
-    polEll = pySNIFS.fit_poly(ell_vec[good],3,ellDeg,lbda_rel[good])
-    if not opts.psf.endswith('powerlaw'):
+    polEll = pySNIFS.fit_poly(ell_vec[good], 3, ellDeg, lbda_rel[good])
+    if not opts.psf.endswith('powerlaw'): # Polynomial expansion
         # Polynomial-fit with 3-MAD clipping
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
-    else:
-        guessAlphaCoeffs = libES.powerLawFit(
-            meta_cube.lbda[good]/LbdaRef, alpha_vec[good], alphaDeg)
+    else:                               # Power-law expansion
+        # Supernova mode: predict parameters from seeing prior
+        if opts.supernova:
+            guessAlphaCoeffs = libES.Hyper_PSF3D_PL.predict_alpha_coeffs(
+                opts.seeingprior, channel)
+        else:
+            guessAlphaCoeffs = libES.powerLawFit(
+                meta_cube.lbda[good]/LbdaRef, alpha_vec[good], alphaDeg)
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1     = [None]*(npar_psf+nmeta)
     p1[:5] = [delta0, theta0, xc, yc, PA]
     p1[5:6+ellDeg]        = polEll.coeffs[::-1]
     p1[6+ellDeg:npar_psf] = guessAlphaCoeffs
-    p1[npar_psf:npar_psf+nmeta] = int_vec.tolist()
+    p1[npar_psf:npar_psf+nmeta] = int_vec.tolist() # Intensities
 
     # Bounds ------------------------------
     if opts.no3Dfit:              # Fix all parameters but intensities
@@ -779,11 +792,18 @@ if __name__ == "__main__":
 
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
 
-    data_model.facts(params=opts.verbosity >= 2) # Fit facts
+    # Print out fit facts
+    parnames = ['delta', 'theta', 'x0', 'y0', 'PA'] + \
+               [ 'E%02d' % i for i in range(ellDeg+1) ] + \
+               [ 'A%02d' % i for i in range(alphaDeg+1) ] + \
+               [ 'I%02d' % (i+1) for i in range(nmeta) ] + \
+               [ 'B%02d_%02d' % (i+1,j)
+                 for i in range(nmeta) for j in range(npar_sky) ]
+    print data_model.facts(params=opts.verbosity >= 1, names=parnames)
 
     if data_model.status > 0:
         raise ValueError(
-            '3D-PSF fit did not converge (status %d: %s)' % 
+            '3D-PSF fit did not converge (status=%d: %s)' % 
             (data_model.status,
              pySNIFS_fit.SO.tnc.RCSTRINGS[data_model.status]))
 
@@ -805,7 +825,7 @@ if __name__ == "__main__":
     if opts.supernova:
         print "  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf])
 
-    print_msg("  Ref. position fit [%.0f A]: %+.2f±%.2f x %+.2f±%.2f spx" % 
+    print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
               (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
     print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
               (fitpar[0], dfitpar[0],
@@ -1383,9 +1403,9 @@ if __name__ == "__main__":
             #r    = N.hypot(meta_cube.x-xfit[i], meta_cube.y-yfit[i])
             #rfit = N.hypot(cube_fit.x-xfit[i], cube_fit.y-yfit[i])
             r = ellRadius(meta_cube.x, meta_cube.y,
-                          xfit[i],yfit[i], fit_ell[i], fitpar[4])
+                          xfit[i], yfit[i], fit_ell[i], fitpar[4])
             rfit = ellRadius(cube_fit.x, cube_fit.y,
-                             xfit[i],yfit[i], fit_ell[i], fitpar[4])
+                             xfit[i], yfit[i], fit_ell[i], fitpar[4])
             ax.plot(r, meta_cube.data[i],
                     marker=',', mfc=blue, mec=blue, ls='None') # Data
             ax.plot(rfit, cube_fit.data[i],

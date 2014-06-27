@@ -161,15 +161,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         if model_gauss.success:
             xc,yc = model_gauss.fitpar[:2] # Update centroid position
-            print " DEBUG "*5
-            print "Gaussian-fit sigmas:", model_gauss.fitpar[2:4]
-            print " DEBUG "*5
             alpha = max(N.hypot(*model_gauss.fitpar[2:4]), 1.)
         else:
             print "WARNING: gaussian fit failed (status=%d: %s) " % \
                 (model_gauss.status, model_gauss.res.message)
             if alpha is None:
-                alpha = 2.4             # Educated guess
+                alpha = 2.4             # Educated guess from median seeing
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., alpha, imax] # psf parameters
@@ -209,7 +206,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         # Hyper-term on alpha from seeing prior
         if seeingprior:
-            raise NotImplementedError
+            print "WARNING: seeing prior not yet implemented"
 
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
@@ -829,7 +826,12 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
 def chebNorm(x, xmin, xmax):
     """Normalization [xmin,xmax] to [-1,1]"""
 
-    return ( 2*x - (xmax+xmin) ) / (xmax-xmin)
+    if xmin!=xmax:
+        return ( 2*x - (xmax+xmin) ) / (xmax-xmin)
+    elif x==xmin:
+        return N.zeros_like(x)
+    else:
+        raise ValueError("Invalid Chebychev normalization.")
 
 def chebEval(pars, nx, chebpolys=[]):
     """Orthogonal Chebychev polynomial expansion, x should be already
@@ -1385,6 +1387,24 @@ class Hyper_PSF3D_PL(object):
             print "  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
                   (self.ddelta, self.dtheta*TA.RAD2DEG)
 
+    @staticmethod
+    def predict_alpha_coeffs(seeing, channel):
+
+        if channel=='B':
+            coeffs = N.array([
+                -0.134  * seeing + 0.572,  # p0
+                -0.1339 * seeing - 0.0913, # p1
+                +3.474  * seeing - 1.388]) # p2
+        elif channel=='R':
+            coeffs = N.array([
+                -0.0777 * seeing + 0.1741, # p0
+                -0.0202 * seeing - 0.3434, # p1
+                +3.400  * seeing - 1.352]) # p2
+        else:
+            raise KeyError("Unknown channel '%s'" % channel)
+
+        return coeffs
+
     def predict_PL(self, seeing, verbose=False):
         """Predict ADR parameters power-law parameters {p_i} and
         prediction precision matrix cov^{-1}({p_i}), for use in
@@ -1394,19 +1414,13 @@ class Hyper_PSF3D_PL(object):
 
         # Predict power-law expansion coefficients and precision matrix
         if self.X=='B':                 # Blue
-            self.plpars = N.array([
-                -0.134  * seeing + 0.572,  # p0
-                -0.1339 * seeing - 0.0913, # p1
-                +3.474  * seeing - 1.388]) # p2
+            self.plpars = self.predict_alpha_coeffs(seeing, self.X)
             self.plicov = N.array(              # Precision matrix = 1/Cov
                 [[  43.33738708, -66.87684631, -0.23146413],
                  [ -66.87684631, 242.87202454,  4.43127346],
                  [  -0.231464,     4.43127346, 12.65395737]])
         else:                           # Red
-            self.plpars = N.array([
-                -0.0777 * seeing + 0.1741, # p0
-                -0.0202 * seeing - 0.3434, # p1
-                +3.400  * seeing - 1.352]) # p2
+            self.plpars = self.predict_alpha_coeffs(seeing, self.X)
             self.plicov = N.array(              # Precision matrix = 1/Cov
                 [[ 476.81713867,  19.62824821, 23.05086708],
                  [  19.62825203, 612.26849365, 11.54866409],
@@ -1456,14 +1470,14 @@ class Hyper_PSF3D_PL(object):
 
     def __str__(self):
 
-        s = u"PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
-        s += u"  ADR: δ=%.2f ± %.2f\n" % (self.delta, self.ddelta)
-        s += u"  ADR: θ=%+.2f ± %.2f°\n" % \
+        s = "PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
+        s += "  ADR: delta=%.2f +/- %.2f\n" % (self.delta, self.ddelta)
+        s += "  ADR: theta=%+.2f +/- %.2fdeg\n" % \
              (self.theta*TA.RAD2DEG, self.dtheta*TA.RAD2DEG)
         dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
-        s += u"  PL: p0=%.3f ± %.3f\n" % (self.plpars[0], dplpars[0])
-        s += u"  PL: p1=%.3f ± %.3f\n" % (self.plpars[1], dplpars[1])
-        s += u"  PL: p2=%.3f ± %.3f" % (self.plpars[2], dplpars[2])
+        s += "  PL:  p0=%.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
+        s += "  PL:  p1=%.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
+        s += "  PL:  p2=%.3f +/- %.3f" % (self.plpars[2], dplpars[2])
 
         return s
     

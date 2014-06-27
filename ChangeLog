@@ -1,3 +1,10 @@
+2014-06-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: option '--supernova'
+	now (more or less) implemented and functional; works down to
+	'--nmeta=1'. Prior on seeing in meta-slice fit not yet
+	implemented; not yet tested in production, WORK STILL IN PROGRESS.
+
 2014-06-25  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (Hyper_PSF3D_PL): hyper-term including
