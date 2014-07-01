@@ -608,11 +608,11 @@ class model:
         if myfunc is not None:          # Add user fns to available ones
             avail_func = avail_func + myfunc.keys()
 
-        if data.var is None:
-            #self.weight = SNIFS_cube()
+        if data.var is None:            # Least-square
+            self.chi2fit = False
             self.weight = N.ones_like(self.data.data, dtype='d')
-            #self.weight.ones_from(self.data)
-        else:
+        else:                           # Chi2
+            self.chi2fit = True
             if self.model_3D:
                 self.weight = N.where(data.var>0, 1/data.var, 0.).astype('d')
             elif self.model_2D: 
@@ -620,19 +620,10 @@ class model:
                 self.data.var = self.data.var.reshape(1,self.data.var.size)
                 self.weight = N.where(self.data.var>0, 1./self.data.var, 0.)
             elif self.model_1D:
-                #self.weight = SNIFS_cube()
                 weight_val = N.where(data.var[data.index_list]>0,
                                      1./data.var[data.index_list],
                                      0.).astype('d')
                 self.weight = N.reshape(weight_val,(len(data.index_list),1))
-                #self.weight.lbda = data.x
-                #self.weight.nslice = data.len
-                #self.weight.nlens = 1
-                #self.weight.x = None
-                #self.weight.y = None
-                #self.weight.i = None
-                #self.weight.j = None
-                #self.weight.no = None
 
         self.khi2 = None                # Total chi2 (excluding hyper-term)
 
@@ -934,11 +925,14 @@ class model:
             assert len(names)==self.nparam
 
         fns = [ (f.name,len(pars)) for f,pars in zip(self.func, self.param) ]
-        s  = "Model: %s, %d parameters" % \
+        s  = "Model: %s = %d parameters" % \
              (' + '.join( '%s[%d]' % fn for fn in fns ), self.nparam)
         if self.fitpar is not None:     # Minimization was performed
-            s += "\nMinimization: status=%d, chi2/Dof=%.2f/%d" % \
-                 (self.status, self.khi2*self.dof, self.dof)
+            s += "\n%s: status=%d, %s/Dof=%.2f/%d" % \
+                 ('Chi2 minimization' if self.chi2fit else 'Least-squares',
+                  self.status,
+                  'Chi2' if self.chi2fit else 'RSS',
+                  self.khi2*self.dof, self.dof)
             if params:
                 s += "\n     %s--Guess--  ---Fit--- +/- --Error--  --Note--" % \
                      ('Name'.center(10,'-')+'  ' if names else '')

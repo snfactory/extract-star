@@ -47,7 +47,7 @@ PSF parameter keywords
 - ES_AIRM: Effective airmass, from ADR fit
 - ES_PARAN: Effective parallactic angle [deg], from ADR fit
 - ES_[X|Y]C: Point-source position [spx] at reference wavelength
-- ES_XY: XY coefficient (related to position angle)
+- ES_PA: XY coefficient (related to position angle)
 - ES_LMIN: wavelength of first meta-slice
 - ES_LMAX: wavelength of last meta-slice
 - ES_Exx: Y2 coefficients (related to flattening)
@@ -199,11 +199,11 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
 
     delta,theta  = params[:2]
     xc,yc        = params[2:4]
-    PA,ell,alpha = params[4:7]
+    xy,ell,alpha = params[4:7]
     intensity    = params[-npar_sky-1]
     sky          = params[-npar_sky:]
 
-    names = ['delta','theta','xc','yc','PA','ell','alpha','I'] + \
+    names = ['delta','theta','x0','y0','xy','ell','alpha','I'] + \
             [ 'sky%d' % d for d in xrange(npar_sky) ]
     labels = '# lbda  ' + '  '.join( '%8s +/- d%-8s' % (n,n) for n in names )
     if cube.var is None:        # Least-square fit: compute Res. Sum of Squares
@@ -219,7 +219,7 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
                    theta[n], dparams[n][1],
                    xc[n]   , dparams[n][2],
                    yc[n]   , dparams[n][3],
-                   PA[n]   , dparams[n][4],
+                   xy[n]   , dparams[n][4],
                    ell[n]  , dparams[n][5],
                    alpha[n], dparams[n][6],
                    intensity[n], dparams[n][-npar_sky-1]]
@@ -244,7 +244,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
 
     # Global parameters
     # lmin  lmax  delta +/- ddelta  ...  alphaN +/- dalphaN chi2|RSS
-    names = ['delta','theta','xc','yc','PA'] + \
+    names = ['delta','theta','xc','yc','xy'] + \
             [   'ell%d' % d for d in xrange(ellDeg+1)   ] + \
             [ 'alpha%d' % d for d in xrange(alphaDeg+1) ]
     labels = '# lmin  lmax' + '  '.join('%8s +/- d%-8s' % (n,n) for n in names)
@@ -330,7 +330,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     hdr['ES_PARAN'] = (adr.get_parangle(), 'Effective parangle [deg]')
     hdr['ES_XC'] = (x0, 'xc @lbdaRef [spx]')
     hdr['ES_YC'] = (y0, 'yc @lbdaRef [spx]')
-    hdr['ES_XY'] = (param[4], 'XY coeff.')
+    hdr['ES_PA'] = (param[4], 'XY coeff.')
     hdr['ES_LMIN'] = (lmin, 'Meta-slices minimum lambda')
     hdr['ES_LMAX'] = (lmax, 'Meta-slices maximum lambda')
 
@@ -362,7 +362,7 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
     """Decipher psf3Dconstraints=[constraint] option and set initial
     guess params and/or bounds accordingly. Each constraint is a
     string 'n:val' (strict constraint) or 'n:val1,val2' (loose
-    constraint), for n=0 (delta), 1 (theta), 2,3 (position), 4 (PA),
+    constraint), for n=0 (delta), 1 (theta), 2,3 (position), 4 (xy),
     5...6+ellDeg (ellipticity polynomial coefficients) and
     7+ellDeg...8+ellDeg+alphaDeg (alpha polynomial coefficients)."""
 
@@ -474,7 +474,7 @@ if __name__ == "__main__":
                       help="Do not perform final 3D-fit")
     parser.add_option("--supernova", action='store_true',
                       help="SN mode (add hyper-terms; " \
-                      "requires powerlaw PSF and seeing prior)")
+                      "requires powerlaw-PSF and seeing prior)")
     parser.add_option("--seeingprior", type="float",
                       help="Seeing prior (Exposure.Seeing) [\"]")
     parser.add_option("--keepmodel", action='store_true',
@@ -622,13 +622,13 @@ if __name__ == "__main__":
           ('chi2' if opts.chi2fit else 'least-squares')
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
-        seeingprior=opts.seeingprior, verbosity=opts.verbosity)
+        seeingprior=opts.seeingprior if opts.supernova else None,
+        verbosity=opts.verbosity)
     print_msg("", 1)
 
-    params = params.T             # (nparam,nslice)
-    #delta_vec,theta_vec = params[:2] # Forced to 0,0
-    xc_vec,yc_vec = params[2:4]         # PSF centroid position
-    PA_vec,ell_vec,alpha_vec = params[4:7] # PSF shape parameters
+    params = params.T                      # (nparam,nslice)
+    xc_vec,yc_vec = params[2:4]            # PSF centroid position
+    xy_vec,ell_vec,alpha_vec = params[4:7] # PSF shape parameters
     int_vec = params[7]                    # PSF intensity
     if skyDeg >= 0:
         sky_vec = params[8:]            # Background parameters
@@ -654,8 +654,12 @@ if __name__ == "__main__":
     # 1) Reference position
     # Convert meta-slice centroids to position at ref. lbda, and clip around
     # median position, using effective parangle including MLA tilt
-    adr = TA.ADR(pressure, temp, lref=lmid,
-                 airmass=airmass, parangle=parangle + DTHETA[channel])
+    if opts.supernova:
+        delta,theta = libES.Hyper_PSF3D_PL.predict_adr_params(inhdr)
+        adr = TA.ADR(pressure, temp, lref=lmid, delta=delta, theta=theta)
+    else:
+        adr = TA.ADR(pressure, temp, lref=lmid,
+                     airmass=airmass, parangle=parangle + DTHETA[channel])
     delta0 = adr.delta           # ADR power = tan(zenithal distance)
     theta0 = adr.theta           # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)
@@ -695,16 +699,16 @@ if __name__ == "__main__":
               (delta0, theta0*TA.RAD2DEG), 1)
 
     # 2) Other parameters
-    PA = N.median(PA_vec[good])
+    xy = N.median(xy_vec[good])
     # Polynomial-fit with 3-MAD clipping
     polEll = pySNIFS.fit_poly(ell_vec[good], 3, ellDeg, lbda_rel[good])
     if not opts.psf.endswith('powerlaw'): # Polynomial expansion
         # Polynomial-fit with 3-MAD clipping
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
-    else:                               # Power-law expansion
-        # Supernova mode: predict parameters from seeing prior
+    else:                                 # Power-law expansion
         if opts.supernova:
+            # Supernova mode: predict parameters from seeing prior
             guessAlphaCoeffs = libES.Hyper_PSF3D_PL.predict_alpha_coeffs(
                 opts.seeingprior, channel)
         else:
@@ -713,7 +717,7 @@ if __name__ == "__main__":
 
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1     = [None]*(npar_psf+nmeta)
-    p1[:5] = [delta0, theta0, xc, yc, PA]
+    p1[:5] = [delta0, theta0, xc, yc, xy]
     p1[5:6+ellDeg]        = polEll.coeffs[::-1]
     p1[6+ellDeg:npar_psf] = guessAlphaCoeffs
     p1[npar_psf:npar_psf+nmeta] = int_vec.tolist() # Intensities
@@ -728,7 +732,7 @@ if __name__ == "__main__":
               [theta0, theta0],         # theta [rad]
               [xc, xc],                 # x0
               [yc, yc],                 # y0
-              [PA, PA]]                 # PA
+              [xy, xy]]                 # xy
         for coeff in p1[5:6+ellDeg]+p1[6+ellDeg:npar_psf]:
             b1 += [[coeff,coeff]]       # ell and alpha coeff.
     else:
@@ -736,7 +740,7 @@ if __name__ == "__main__":
               [None, None],             # theta
               [None, None],             # x0
               [None, None],             # y0
-              [None, None]]             # PA
+              [None, None]]             # xy
         b1 += [[0, None]] + [[None, None]]*ellDeg # ell0 > 0
         if not opts.psf.endswith('powerlaw'):
             b1 += [[0, None]] + [[None, None]]*alphaDeg # a[0] > 0
@@ -749,7 +753,7 @@ if __name__ == "__main__":
 
     psfCtes = [spxSize, lmid, alphaDeg, ellDeg]
     func = [ '%s;%s' % 
-             (psfFn.name, ','.join( '%f'%p for p in psfCtes )) ] # PSF
+             (psfFn.name, ','.join( '%f' % p for p in psfCtes )) ] # PSF
     param = [p1]
     bounds = [b1]
 
@@ -760,7 +764,7 @@ if __name__ == "__main__":
         param += [p2]
         bounds += [b2]
 
-    print_msg("  Adjusted parameters: delta,theta,xc,yc,PA,"
+    print_msg("  Adjusted parameters: delta,theta,xc,yc,xy,"
               "%d ellCoeffs,%d alphaCoeffs,%d intensities, %d bkgndCoeffs" % 
               (ellDeg+1,alphaDeg+1,nmeta, npar_sky*nmeta if skyDeg>=0 else 0),
               2)
@@ -793,7 +797,7 @@ if __name__ == "__main__":
     data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
 
     # Print out fit facts
-    parnames = ['delta', 'theta', 'x0', 'y0', 'PA'] + \
+    parnames = ['delta', 'theta', 'x0', 'y0', 'xy'] + \
                [ 'E%02d' % i for i in range(ellDeg+1) ] + \
                [ 'A%02d' % i for i in range(alphaDeg+1) ] + \
                [ 'I%02d' % (i+1) for i in range(nmeta) ] + \
@@ -1235,14 +1239,14 @@ if __name__ == "__main__":
                                                  ec='0.8',fc='None'))
         ax4c.add_patch(M.patches.Rectangle((-7.5,-7.5),15,15,
                                                  ec='0.8',lw=2,fc='None')) # FoV
-        ax4c.text(0.03, 0.85,
+        ax4c.text(0.97, 0.85,
                   u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
                   (xc, yc, airmass, theta0*TA.RAD2DEG),
-                  transform=ax4c.transAxes, fontsize='small')
-        ax4c.text(0.03, 0.75,
+                  transform=ax4c.transAxes, fontsize='small', ha='right')
+        ax4c.text(0.97, 0.75,
                   u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
                   (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle()),
-                  transform=ax4c.transAxes, fontsize='small')
+                  transform=ax4c.transAxes, fontsize='small', ha='right')
 
         fig4.tight_layout()
         if plot4:
@@ -1252,16 +1256,16 @@ if __name__ == "__main__":
 
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
-        guess_ell = N.polyval(polEll.coeffs,   lbda_rel)
+        guessEll = N.polyval(polEll.coeffs,   lbda_rel)
         if not opts.psf.endswith('powerlaw'):
-            guess_alpha = libES.polyEval(guessAlphaCoeffs, lbda_rel)
+            guessAlpha = libES.polyEval(guessAlphaCoeffs, lbda_rel)
         else:
-            guess_alpha = libES.powerLawEval(
+            guessAlpha = libES.powerLawEval(
                 guessAlphaCoeffs, meta_cube.lbda/LbdaRef)
 
         # err_ell and err_alpha are definitely wrong, and not only
         # because they do not include correlations between parameters!
-        err_PA = dfitpar[4]
+        err_xy = dfitpar[4]
 
         def plot_conf_interval(ax, x, y, dy):
             ax.plot(x, y, green, label="Fit 3D")
@@ -1282,7 +1286,7 @@ if __name__ == "__main__":
                                 xlabel=u"Wavelength [Å]",
                                 ylabel=u'xy coeff.')
 
-        # WARNING: the so-called PA parameter is not the PA of the
+        # WARNING: the so-called `xy` parameter is not the PA of the
         # adjusted ellipse, but half the x*y coefficient. Similarly,
         # ell is not the ellipticity, but the y**2 coefficient: x2 +
         # ell*y2 + 2*PA*x*y + ... = 1. One should use quadEllipse for
@@ -1310,19 +1314,17 @@ if __name__ == "__main__":
         if bad.any():
             ax6a.plot(meta_cube.lbda[bad], alpha_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None', label="_")
-        ax6a.plot(meta_cube.lbda, guess_alpha, 'k--', label="Guess 3D")
+        ax6a.plot(meta_cube.lbda, guessAlpha, 'k--', label="Guess 3D")
         #plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, None)
-        ax6a.text(0.03, 0.15,
-                  'Guess: %s' % (', '.join(
-                      [ 'a%d=%.2f' % (i,a) for i,a in
-                        enumerate(guessAlphaCoeffs) ]) ),
-                  transform=ax6a.transAxes, fontsize='small')
-        ax6a.text(0.03, 0.05,
-                  'Fit: %s' % (', '.join(
-                      ['a%d=%.2f' % (i,a) for i,a in
-                       enumerate(fitpar[6+ellDeg:npar_psf]) ]) ),
-                  transform=ax6a.transAxes, fontsize='small')
+        ax6a.text(0.97, 0.15, 'Guess: %s' %
+                  (', '.join([ 'a%d=%.2f' % (i,a) for i,a
+                               in enumerate(guessAlphaCoeffs) ])),
+                  transform=ax6a.transAxes, fontsize='small', ha='right')
+        ax6a.text(0.97, 0.05, 'Fit: %s' %
+                  (', '.join([ 'a%d=%.2f' % (i,a) for i,a
+                               in enumerate(fitpar[6+ellDeg:npar_psf]) ])),
+                  transform=ax6a.transAxes, fontsize='small', ha='right')
         leg = ax6a.legend(loc='best', fontsize='small')
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
@@ -1332,34 +1334,34 @@ if __name__ == "__main__":
         if bad.any():
             ax6b.plot(meta_cube.lbda[bad],ell_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
-        ax6b.plot(meta_cube.lbda, guess_ell, 'k--')
+        ax6b.plot(meta_cube.lbda, guessEll, 'k--')
         #plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, None)
-        ax6b.text(0.03, 0.3,
+        ax6b.text(0.97, 0.3,
                   'Guess: %s' % (', '.join(
                       [ 'e%d=%.2f' % (i,e)
                         for i,e in enumerate(polEll.coeffs[::-1]) ]) ),
-                  transform=ax6b.transAxes, fontsize='small')
-        ax6b.text(0.03, 0.1,
+                  transform=ax6b.transAxes, fontsize='small', ha='right')
+        ax6b.text(0.97, 0.1,
                   'Fit: %s' % (', '.join(
                       [ 'e%d=%.2f' % (i,e)
                         for i,e in enumerate(fitpar[5:6+ellDeg]) ]) ),
-                  transform=ax6b.transAxes, fontsize='small')
+                  transform=ax6b.transAxes, fontsize='small', ha='right')
         P.setp(ax6b.get_yticklabels(), fontsize='x-small')
 
-        ax6c.errorbar(meta_cube.lbda[good], PA_vec[good], dparams[good,4],
+        ax6c.errorbar(meta_cube.lbda[good], xy_vec[good], dparams[good,4],
                       marker='.',
                       mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
-            ax6c.plot(meta_cube.lbda[bad],PA_vec[bad],
+            ax6c.plot(meta_cube.lbda[bad], xy_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
-        ax6c.plot([meta_cube.lstart,meta_cube.lend], [PA]*2, 'k--')
+        ax6c.plot([meta_cube.lstart,meta_cube.lend], [xy]*2, 'k--')
         plot_conf_interval(ax6c,
                            N.asarray([meta_cube.lstart,meta_cube.lend]),
-                           N.ones(2)*fitpar[4], N.ones(2)*err_PA)
-        ax6c.text(0.03, 0.1,
-                  u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (PA,fitpar[4]),
-                  transform=ax6c.transAxes, fontsize='small')
+                           N.ones(2)*fitpar[4], N.ones(2)*err_xy)
+        ax6c.text(0.97, 0.1,
+                  u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (xy, fitpar[4]),
+                  transform=ax6c.transAxes, fontsize='small', ha='right')
         P.setp(ax6c.get_xticklabels() + ax6c.get_yticklabels(),
                fontsize='x-small')
 
@@ -1375,11 +1377,11 @@ if __name__ == "__main__":
         fig7.suptitle("Radial profile plot [%s, airmass=%.2f]" %
                       (objname,airmass))
 
-        def ellRadius(x,y, x0,y0, ell, q):
+        def ellRadius(x, y, x0, y0, ell, xy):
             dx = x - x0
             dy = y - y0
             # BEWARE: can return NaN's if ellipse is ill-defined
-            return N.sqrt(dx**2 + ell*dy**2 + 2*q*dx*dy)
+            return N.sqrt(dx**2 + ell*dy**2 + 2*xy*dx*dy)
 
         def radialbin(r,f, binsize=20, weighted=True):
             rbins = N.sort(r)[::binsize] # Bin limits, starting from min(r)

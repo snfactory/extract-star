@@ -94,11 +94,10 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15-nsky) | \
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
 
-    print_msg("  Set initial guess from 2D-Gaussian + Cte fit",
-              2, verbosity)
-    print_msg("  Adjusted parameters: [delta=0,theta=0],xc,yc,PA,ell,alpha,I,"
-              "%d bkgndCoeffs" % (npar_sky if skyDeg>=0 else 0),
-              2, verbosity)
+    print_msg("  Set initial guess from 2D-Gaussian + Cte fit", 2, verbosity)
+    parnames = ['delta=0', 'theta=0', 'x0', 'y0', 'xy', 'y2', 'alpha', 'I'] + \
+               [ 'B%02d' % j for j in range(npar_sky) ]
+    print_msg("  Adjusted parameters: %s" % ','.join(parnames), 2, verbosity)
 
     xc,yc = None,None                   # Position guess
     alpha = None                        # Alpha guess
@@ -106,6 +105,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         loop = range(cube.nslice)[::-1] # Blueward loop
     else:                               # Red cube
         loop = range(cube.nslice)       # Redward loop
+
+    # Hyper-term on alpha from seeing prior
+    if seeingprior:
+        if not psf_fn.model.endswith('powerlaw'):
+            raise NotImplementedError
+        print "WARNING: Seeing prior: %.2f\" NOT YET IMPLEMENTED" % seeingprior
     
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -155,8 +160,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                                         param=[[xc,yc,1,1,imax],[0]],
                                         bounds=[ [[-7.5,7.5]]*2 + # x0,y0
                                                  [[0.1,5]]*2 +    # sx,sy
-                                                 [[0,None]],
-                                                 [[None,None]] ])
+                                                 [[0,None]],      # intensity
+                                                 [[None,None]] ]) # background
         model_gauss.minimize(verbose=(verbosity >= 3), tol=1e-4)
 
         if model_gauss.success:
@@ -198,7 +203,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         else:                           # No background
             p2 = []
             
-        print_msg("  Initial guess: %s" % (p1+p2), 2, verbosity)
+        # print_msg("  Initial guess: %s" % (p1+p2), 2, verbosity)
 
         # Chi2 vs. Least-square fit
         if not chi2fit:
@@ -206,7 +211,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         # Hyper-term on alpha from seeing prior
         if seeingprior:
-            print "WARNING: seeing prior not yet implemented"
+            alpha = Hyper_PSF3D_PL.predict_alpha(seeingprior, cube.lbda[i])
+            print "DEBUG DEBUG DEBUG Predicted alpha:", alpha
 
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
@@ -219,6 +225,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         #model_star.fit(maxfun=400, msge=(verbosity >= 4))
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
+
+        print model_star.facts(params=(verbosity >= 2), names=parnames)
 
         # Restore true chi2 (not reduced one), ie. chi2 =
         # ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
@@ -264,14 +272,14 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         params[i]  = model_star.fitpar
         dparams[i] = dpar
         chi2s[i]   = model_star.khi2
-        if chi2fit:
-            print_msg("  Chi2 fit [%d, chi2/dof=%.2f/%d]: %s" % 
-                      (model_star.status, model_star.khi2, model_star.dof,
-                       model_star.fitpar), 1, verbosity)
-        else:
-            print_msg("  LSq fit [%d, RSS/dof=%.2f/%d]: %s" % 
-                      (model_star.status, model_star.khi2, model_star.dof,
-                       model_star.fitpar), 1, verbosity)
+        # if chi2fit:
+        #     print_msg("  Chi2 fit [%d, chi2/dof=%.2f/%d]: %s" % 
+        #               (model_star.status, model_star.khi2, model_star.dof,
+        #                model_star.fitpar), 1, verbosity)
+        # else:
+        #     print_msg("  LSQ fit [%d, RSS/dof=%.2f/%d]: %s" % 
+        #               (model_star.status, model_star.khi2, model_star.dof,
+        #                model_star.fitpar), 1, verbosity)
 
     return params,chi2s,dparams
 
@@ -705,7 +713,7 @@ def read_psf_ctes(hdr, lrange=()):
 
 def read_psf_param(hdr, lrange=()):
     """Read (7+ellDeg+alphaDeg) PSF parameters from header:
-    delta,theta,x0,y0,PA,e0,...en,a0,...an."""
+    delta,theta,x0,y0,xy,e0,...en,a0,...an."""
 
     assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
            'ES_LMIN/ES_LMAX not found and lrange not set'
@@ -736,7 +744,7 @@ def read_psf_param(hdr, lrange=()):
 
     x0 = hdr['ES_XC']           # Reference position [spx]
     y0 = hdr['ES_YC']
-    pa = hdr['ES_XY']           # Position angle parameter
+    xy = hdr['ES_PA']           # Position angle parameter
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
@@ -750,7 +758,7 @@ def read_psf_param(hdr, lrange=()):
     print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
           "refpos=%.2fx%.2f spx @%.2f A" % (airmass,parang,x0,y0,(lmin+lmax)/2)
 
-    return [adr.delta,adr.theta,x0,y0,pa] + ecoeffs + acoeffs
+    return [adr.delta,adr.theta,x0,y0,xy] + ecoeffs + acoeffs
 
 # Polynomial utilities ======================================================
 
@@ -940,11 +948,11 @@ class ExposurePSF:
     """
     Empirical PSF3D function used by the `model` class.
 
-    Note that the so-called `PA` parameter is *not* the PA of the
-    adjusted ellipse, but half the x*y coefficient. Similarly, 'ell'
-    is not the ellipticity, but the y**2 coefficient: x2 + ell*y2 +
-    2*PA*x*y + ... = 0.  See `quadEllipse`/`flatAndPA` for conversion
-    routines.
+    Note that the so-called `PA` or `xy` parameter is *not* the PA of
+    the adjusted ellipse, but half the x*y coefficient. Similarly,
+    'ell' is not the ellipticity, but the y**2 coefficient: x2 +
+    ell*y2 + 2*xy*x*y + ... = 0.  See `quadEllipse`/`flatAndPA` for
+    conversion routines.
     """
 
     def __init__(self, psf_ctes, cube, coords=None):
@@ -966,7 +974,7 @@ class ExposurePSF:
         self.npar = self.npar_cor + self.npar_ind*self.nslice
 
         # Name of PSF parameters
-        self.parnames = ['delta','theta','x0','y0','PA'] + \
+        self.parnames = ['delta','theta','x0','y0','xy'] + \
                         ['e%d' % i for i in range(self.ellDeg+1)] + \
                         ['a%d' % i for i in range(self.alphaDeg+1)] + \
                         ['i%02d' % (i+1) for i in range(self.nslice)]
@@ -1031,7 +1039,7 @@ class ExposurePSF:
         y0 = yc - delta*self.ADRcoeffs*N.cos(theta)
 
         # Other params
-        PA          = self.param[4]
+        xy          = self.param[4]
         ellCoeffs   = self.param[5:6+self.ellDeg]
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
@@ -1065,7 +1073,7 @@ class ExposurePSF:
         dx = self.x - x0
         dy = self.y - y0
         # CAUTION: ell & PA are not the true ellipticity and position angle!
-        r2 = dx**2 + ell*dy**2 + 2*PA*dx*dy
+        r2 = dx**2 + ell*dy**2 + 2*xy*dx*dy
         gaussian = N.exp(-0.5*r2/sigma**2)
         moffat = (1 + r2/alpha**2)**(-beta)
 
@@ -1101,7 +1109,7 @@ class ExposurePSF:
         y0 = yc - delta*self.ADRcoeffs*costheta
 
         # Other params
-        PA = self.param[4]
+        xy = self.param[4]
         ellCoeffs   = self.param[5:6+self.ellDeg]
         alphaCoeffs = self.param[6+self.ellDeg:self.npar_cor]
 
@@ -1135,7 +1143,7 @@ class ExposurePSF:
         dx = self.x - x0
         dy = self.y - y0
         dy2 = dy**2
-        r2 = dx**2 + ell*dy2 + 2*PA*dx*dy
+        r2 = dx**2 + ell*dy2 + 2*xy*dx*dy
         sigma2 = sigma**2
         gaussian = N.exp(-0.5*r2/sigma2)
         alpha2 = alpha**2
@@ -1147,11 +1155,11 @@ class ExposurePSF:
         j1 = eta/sigma2
         j2 = 2*beta/ea/alpha2
         tmp = gaussian*j1 + moffat*j2
-        grad[2] = tmp*(    dx + PA*dy)  # dPSF/dx0
-        grad[3] = tmp*(ell*dy + PA*dx)  # dPSF/dy0
+        grad[2] = tmp*(    dx + xy*dy)  # dPSF/dx0
+        grad[3] = tmp*(ell*dy + xy*dx)  # dPSF/dy0
         grad[0] =       self.ADRcoeffs*(sintheta*grad[2] - costheta*grad[3])
         grad[1] = delta*self.ADRcoeffs*(sintheta*grad[3] + costheta*grad[2])
-        grad[4] = -tmp   * dx*dy        # dPSF/dPA
+        grad[4] = -tmp   * dx*dy        # dPSF/dxy
         for i in xrange(self.ellDeg + 1): # dPSF/dei
             grad[5+i] = -tmp/2 * dy2 * self.lrel**i
         dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
@@ -1342,14 +1350,13 @@ class Hyper_PSF3D_PL(object):
         if self.X not in ('B','R'):
             raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
 
-        self.predict_ADR(inhdr, verbose=verbose) # ADR parameters
-        self.predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
+        self._predict_ADR(inhdr, verbose=verbose) # ADR parameters
+        self._predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
 
-    def predict_ADR(self, inhdr, verbose=False):
-        """Predict ADR parameters delta,theta and prediction errors
-        ddelta,dtheta, for use in hyper-term computation. 1st-order
-        corrections and model dispersions were obtained from faint
-        standard star ad-hoc analysis (`adr.py` and `runaway.py`)."""
+
+    @classmethod
+    def predict_adr_params(cls, inhdr):
+        """Predict ADR parameters delta and theta."""
 
         # 0th-order estimates
         delta0 = N.tan(N.arccos(1./inhdr['AIRMASS']))
@@ -1358,37 +1365,54 @@ class Hyper_PSF3D_PL(object):
         # 1st-order corrections from ad-hoc linear regressions
         sinpar = N.sin(theta0)
         cospar = N.cos(theta0)
-        if self.X=='B':                 # Blue
+        X = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
+        if X=='B':                      # Blue
             ddelta1 = -0.00734 * sinpar + 0.00766
             dtheta1 = -0.554   * cospar + 3.027 # [deg]
-            # Final model dispersion
+        elif X=='R':                    # Red
+            ddelta1 = +0.04674 * sinpar + 0.00075
+            dtheta1 = +3.078   * cospar + 4.447 # [deg]
+        else:
+            raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
+
+        # Final predictions
+        delta = delta0 + ddelta1
+        theta = theta0 + dtheta1/TA.RAD2DEG # [rad]
+
+        return delta,theta
+
+
+    def _predict_ADR(self, inhdr, verbose=False):
+        """Predict ADR parameters delta,theta and prediction errors
+        ddelta,dtheta, for use in hyper-term computation. 1st-order
+        corrections and model dispersions were obtained from faint
+        standard star ad-hoc analysis (`adr.py` and `runaway.py`)."""
+
+        self.delta,self.theta = self.predict_adr_params(inhdr)
+
+        # Final model dispersion
+        if self.X=='B':                 # Blue
             self.ddelta = 0.0173
             self.dtheta = 1.651         # [deg]
         else:                           # Red
-            ddelta1 = +0.04674 * sinpar + 0.00075
-            dtheta1 = +3.078   * cospar + 4.447 # [deg]
             self.ddelta = 0.0122
             self.dtheta = 1.453         # [deg]
-        dtheta1 /= TA.RAD2DEG           # [rad]
         self.dtheta /= TA.RAD2DEG       # [rad]
-
-        # Final predictions
-        self.delta = delta0 + ddelta1
-        self.theta = theta0 + dtheta1
 
         if verbose:
             print "ADR parameter predictions:"
-            print "  0th-order:  δ=% .2f,  θ=%+.2f°" % \
-                  (delta0, theta0*TA.RAD2DEG)
-            print "  1st-order: dδ=%+.2f, dθ=%+.2f°" % \
-                  (ddelta1, dtheta1*TA.RAD2DEG)
+            print "  Header:     δ=% .2f,  θ=%+.2f°" % \
+                  (N.tan(N.arccos(1./inhdr['AIRMASS'])),
+                   inhdr['PARANG'] / TA.RAD2DEG)
             print "  Parameters: δ=% .2f,  θ=%+.2f°" % \
                   (self.delta, self.theta*TA.RAD2DEG)
             print "  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
                   (self.ddelta, self.dtheta*TA.RAD2DEG)
 
-    @staticmethod
-    def predict_alpha_coeffs(seeing, channel):
+    @classmethod
+    def predict_alpha_coeffs(cls, seeing, channel):
+        """Predict power-law expansion alpha coefficients from seeing
+        for given channel."""
 
         if channel=='B':
             coeffs = N.array([
@@ -1405,7 +1429,23 @@ class Hyper_PSF3D_PL(object):
 
         return coeffs
 
-    def predict_PL(self, seeing, verbose=False):
+    @classmethod
+    def predict_alpha(cls, seeing, lbda, channel=None):
+        """Predict alpha from `seeing` at wavelength `lbda` for
+        `channel` (automatic setting if `None`)."""
+
+        if channel is None:
+            channel = 'B' if lbda < 5150 else 'R'
+
+        coeffs = cls.predict_alpha_coeffs(seeing, channel)
+        alpha = powerLawEval(coeffs, lbda/LbdaRef)
+        # Adjust prediction with linear regression in wavelength
+        dalpha = -2.35e-05*lbda + 0.156 # Up to 0.1 correction
+        
+        return alpha-dalpha             # Total prediction
+
+
+    def _predict_PL(self, seeing, verbose=False):
         """Predict ADR parameters power-law parameters {p_i} and
         prediction precision matrix cov^{-1}({p_i}), for use in
         hyper-term computation. 1st-order corrections and model
@@ -1471,13 +1511,13 @@ class Hyper_PSF3D_PL(object):
     def __str__(self):
 
         s = "PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
-        s += "  ADR: delta=%.2f +/- %.2f\n" % (self.delta, self.ddelta)
-        s += "  ADR: theta=%+.2f +/- %.2fdeg\n" % \
+        s += "  ADR: delta=% 6.2f +/- %.2f\n" % (self.delta, self.ddelta)
+        s += "  ADR: theta=%+6.2f +/- %.2f deg\n" % \
              (self.theta*TA.RAD2DEG, self.dtheta*TA.RAD2DEG)
         dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
-        s += "  PL:  p0=%.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
-        s += "  PL:  p1=%.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
-        s += "  PL:  p2=%.3f +/- %.3f" % (self.plpars[2], dplpars[2])
+        s += "  PL:     p0=%+.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
+        s += "  PL:     p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
+        s += "  PL:     p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
 
         return s
     

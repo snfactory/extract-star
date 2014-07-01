@@ -1,3 +1,8 @@
+2014-07-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (fit_metaslices): on the way to implement
+	seeing prior in meta-slice 2D-fit, WORK IN PROGRESS.
+
 2014-06-27  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: option '--supernova'
