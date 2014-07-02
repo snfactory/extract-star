@@ -811,7 +811,7 @@ class model:
         if param is None:
             param = self.flatparam
         print "%2s  %15s  %15s  %15s" % \
-              ("#", "Finite diff.","Objgrad","Rel. diff.")
+              ("##", "Finite diff.","Objgrad","Rel. diff.")
         grad = self.objgrad(param)
         approx = approx_deriv(self.objfun, param, order=3, eps=eps)
         for n in range(N.size(param)):
@@ -934,7 +934,7 @@ class model:
                   'Chi2' if self.chi2fit else 'RSS',
                   self.khi2*self.dof, self.dof)
             if params:
-                s += "\n     %s--Guess--  ---Fit--- +/- --Error--  --Note--" % \
+                s += "\n##  %s--Guess--  ---Fit---  --Error--  --Note--" % \
                      ('Name'.center(10,'-')+'  ' if names else '')
                 covpar = self.param_error()
                 dpars = N.sqrt(covpar.diagonal()) # StdErr on parameters
@@ -947,12 +947,11 @@ class model:
                         name = '%10s  ' % names[i]
                     else:
                         name = ''
-                    #s += "#%02d: %s%8.4g +/- %8.4f" % (i+1,name,p,dp)
-                    s += "\n#%02d  %s%9s  %s" % \
-                         (i+1,name, str_magn(ip),
-                          '%9s +/- %9s' % str_magn(p,dp))
+                    s += "\n%02d  %s%9s  %s" % \
+                         (i+1,name, str_magn(ip, dp)[0],
+                          '%9s  %9s' % str_magn(p, dp))
                     if not (pmin,pmax)==(None,None) and pmin==pmax:
-                        s += '  fixed'               # Fixed parameters
+                        s += '  fixed'                 # Fixed parameters
                     elif pmin is not None and p==pmin: # Hit minimal bound
                         s += '  <<<' 
                     elif pmax is not None and p==pmax: # Hit maximal bound

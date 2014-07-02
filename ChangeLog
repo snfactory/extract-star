@@ -1,3 +1,8 @@
+2014-07-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (Hyper_PSF2D_PL): prior on seeing for
+	meta-slice.
+
 2014-07-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (fit_metaslices): on the way to implement

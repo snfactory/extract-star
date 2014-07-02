@@ -101,7 +101,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
     xc,yc = None,None                   # Position guess
     alpha = None                        # Alpha guess
-    if cube.lstart < 5000.:             # Blue cube
+    channel = 'B' if cube.lstart < 5000. else 'R'
+    if channel=='B':                    # Blue cube
         loop = range(cube.nslice)[::-1] # Blueward loop
     else:                               # Red cube
         loop = range(cube.nslice)       # Redward loop
@@ -110,7 +111,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     if seeingprior:
         if not psf_fn.model.endswith('powerlaw'):
             raise NotImplementedError
-        print "WARNING: Seeing prior: %.2f\" NOT YET IMPLEMENTED" % seeingprior
+        print "  Seeing prior: %.2f\"" % seeingprior
     
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -179,7 +180,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
               [0, 0],                   # theta (unfitted)
               [-10, 10],                # xc
               [-10, 10],                # yc
-              [None, None],             # Position angle parameter
+              [None, None],             # xy parameter
               [0, None],                # Ellipticity parameter > 0
               [0.1, 10],                # alpha > 0
               [0, None]]                # Intensity > 0
@@ -210,14 +211,17 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             cube_star.var = None # Will be handled by pySNIFS_fit.model
 
         # Hyper-term on alpha from seeing prior
+        hyper = {}
         if seeingprior:
-            alpha = Hyper_PSF3D_PL.predict_alpha(seeingprior, cube.lbda[i])
-            print "DEBUG DEBUG DEBUG Predicted alpha:", alpha
+            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingprior, channel)
+            print hterm
+            hyper = {psf_fn.name: hterm}
 
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
-                                       myfunc={psf_fn.name: psf_fn})
+                                       myfunc={psf_fn.name: psf_fn},
+                                       hyper=hyper)
 
         if verbosity >= 3:
             print "Gradient checks:"    # Includes hyper-term if any
@@ -227,6 +231,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
 
         print model_star.facts(params=(verbosity >= 2), names=parnames)
+        if seeingprior:
+            print "  Hyper-term: h=%f" % hterm.comp(model_star.fitpar)
 
         # Restore true chi2 (not reduced one), ie. chi2 =
         # ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
@@ -744,7 +750,7 @@ def read_psf_param(hdr, lrange=()):
 
     x0 = hdr['ES_XC']           # Reference position [spx]
     y0 = hdr['ES_YC']
-    xy = hdr['ES_PA']           # Position angle parameter
+    xy = hdr['ES_PA']           # xy parameter
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
@@ -1020,7 +1026,7 @@ class ExposurePSF:
         - param[0:7+n+m]: parameters of the PSF shape
         - param[0,1]: Atmospheric dispersion power and parall. angle [rad]
         - param[2,3]: X,Y position at reference wavelength
-        - param[4]: Position angle parameter
+        - param[4]: xy parameter
         - param[5:6+n]: Ellipticity param. expansion (n+1: # of coeffs)
         - param[6+n:7+n+m]: Moffat scale alpha expansion (m+1: # of coeffs)
         - param[7+m+n:]: Intensity parameters (one for each slice in the cube)
@@ -1338,10 +1344,10 @@ class Hyper_PSF3D_PL(object):
 
     def __init__(self, psf_ctes, inhdr, seeing, hyper=1., verbose=False):
 
-        alphaDeg = int(psf_ctes[2])     # Alpha expansion degree
+        alphaDeg = psf_ctes[2]          # Alpha expansion degree
+        ellDeg = psf_ctes[3]            # Ellipticity expansion degree
         if alphaDeg != 2:
             raise NotImplementedError("Hyper-term trained for alphaDeg=2 only")
-        ellDeg   = int(psf_ctes[3])     # Ellipticity expansion degree
         self.alphaSlice = slice(6+ellDeg, 7+ellDeg+alphaDeg)
 
         self.hyper = hyper              # Global hyper-scaling
@@ -1350,9 +1356,9 @@ class Hyper_PSF3D_PL(object):
         if self.X not in ('B','R'):
             raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
 
+        # Compute predictions and associated accuracy
         self._predict_ADR(inhdr, verbose=verbose) # ADR parameters
         self._predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
-
 
     @classmethod
     def predict_adr_params(cls, inhdr):
@@ -1381,9 +1387,28 @@ class Hyper_PSF3D_PL(object):
 
         return delta,theta
 
+    @classmethod
+    def predict_alpha_coeffs(cls, seeing, channel):
+        """Predict power-law expansion alpha coefficients from seeing
+        for given channel."""
+
+        if channel=='B':
+            coeffs = N.array([
+                -0.134  * seeing + 0.572,  # p0
+                -0.1339 * seeing - 0.0913, # p1
+                +3.474  * seeing - 1.388]) # p2
+        elif channel=='R':
+            coeffs = N.array([
+                -0.0777 * seeing + 0.1741, # p0
+                -0.0202 * seeing - 0.3434, # p1
+                +3.400  * seeing - 1.352]) # p2
+        else:
+            raise KeyError("Unknown channel '%s'" % channel)
+
+        return coeffs
 
     def _predict_ADR(self, inhdr, verbose=False):
-        """Predict ADR parameters delta,theta and prediction errors
+        """Predict ADR parameters delta,theta and prediction accuracy
         ddelta,dtheta, for use in hyper-term computation. 1st-order
         corrections and model dispersions were obtained from faint
         standard star ad-hoc analysis (`adr.py` and `runaway.py`)."""
@@ -1408,42 +1433,6 @@ class Hyper_PSF3D_PL(object):
                   (self.delta, self.theta*TA.RAD2DEG)
             print "  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
                   (self.ddelta, self.dtheta*TA.RAD2DEG)
-
-    @classmethod
-    def predict_alpha_coeffs(cls, seeing, channel):
-        """Predict power-law expansion alpha coefficients from seeing
-        for given channel."""
-
-        if channel=='B':
-            coeffs = N.array([
-                -0.134  * seeing + 0.572,  # p0
-                -0.1339 * seeing - 0.0913, # p1
-                +3.474  * seeing - 1.388]) # p2
-        elif channel=='R':
-            coeffs = N.array([
-                -0.0777 * seeing + 0.1741, # p0
-                -0.0202 * seeing - 0.3434, # p1
-                +3.400  * seeing - 1.352]) # p2
-        else:
-            raise KeyError("Unknown channel '%s'" % channel)
-
-        return coeffs
-
-    @classmethod
-    def predict_alpha(cls, seeing, lbda, channel=None):
-        """Predict alpha from `seeing` at wavelength `lbda` for
-        `channel` (automatic setting if `None`)."""
-
-        if channel is None:
-            channel = 'B' if lbda < 5150 else 'R'
-
-        coeffs = cls.predict_alpha_coeffs(seeing, channel)
-        alpha = powerLawEval(coeffs, lbda/LbdaRef)
-        # Adjust prediction with linear regression in wavelength
-        dalpha = -2.35e-05*lbda + 0.156 # Up to 0.1 correction
-        
-        return alpha-dalpha             # Total prediction
-
 
     def _predict_PL(self, seeing, verbose=False):
         """Predict ADR parameters power-law parameters {p_i} and
@@ -1479,7 +1468,7 @@ class Hyper_PSF3D_PL(object):
         
         - param[0,1]: ADR power (delta) and parallactic angle (theta[rad])
         - param[2,3]: X,Y position at reference wavelength
-        - param[4]: Position angle parameter
+        - param[4]: xy parameter
         - param[5:6+n]: Ellipticity param. expansion (n+1: # of coeffs)
         - param[6+n:7+n+m]: Moffat scale alpha expansion (m+1: # of coeffs)
         """
@@ -1519,5 +1508,59 @@ class Hyper_PSF3D_PL(object):
         s += "  PL:     p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
         s += "  PL:     p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
 
+        return s
+    
+class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
+
+    def __init__(self, lbda, seeing, channel, hyper=1., verbose=False):
+
+        # Mimic PSF constantes and input header
+        psf_ctes = [None, None, 2, 0]
+        inhdr = {'CHANNEL':channel,
+                 'AIRMASS':1.,
+                 'PARANG':0.}
+
+        Hyper_PSF3D_PL.__init__(self, psf_ctes, inhdr, seeing,
+                                hyper=hyper, verbose=False)
+
+        self.alpha = self.predict_alpha(lbda)
+        self.dalpha = 0.15              # Relaxed achromatic accuracy
+
+    def predict_alpha(self, lbda):
+        """Predict alpha at wavelength `lbda`."""
+
+        alpha = powerLawEval(self.plpars, lbda/LbdaRef)
+        # Adjust prediction with linear regression in wavelength
+        dalpha = -2.35e-05*lbda + 0.156 # Up to 0.1 correction
+        
+        return alpha-dalpha             # Total prediction
+
+    def comp(self, param):
+        """Input parameters, notably:
+        
+        - param[0,1]: ADR delta and theta (kept fixed to 0)
+        - param[2,3]: X,Y position at reference wavelength
+        - param[4]: xy parameter
+        - param[5]: Ellipticity parameter
+        - param[6]: Moffat scale alpha
+        - param[7]: Pount-source intensity
+        """
+
+        return self.hyper*((param[6] - self.alpha)/self.dalpha)**2
+
+    def deriv(self, param):
+
+        jac = N.zeros(len(param))
+        jac[6] = 2*(param[6] - self.alpha)/self.dalpha**2
+
+        return self.hyper*jac           # (npar,)
+
+    def __str__(self):
+
+        s = "PSF2D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
+        s += "  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)" % \
+             (self.alpha, self.dalpha,
+              Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)
+        
         return s
     
