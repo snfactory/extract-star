@@ -13,6 +13,7 @@ __author__ = "Y. Copin, C. Buton, E. Pecontal"
 __version__ = '$Id$'
 
 import re
+import itertools                        # product
 import numpy as N
 import scipy.linalg as SL               # More complete than numpy.linalg
 import scipy.optimize as SO
@@ -214,7 +215,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         hyper = {}
         if seeingprior:
             hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingprior, channel)
-            print hterm
+            print_msg(str(hterm), 2, verbosity)
             hyper = {psf_fn.name: hterm}
 
         # Instantiate the model class and fit current slice
@@ -230,9 +231,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         #model_star.fit(maxfun=400, msge=(verbosity >= 4))
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
 
-        print model_star.facts(params=(verbosity >= 2), names=parnames)
+        print_msg(model_star.facts(params=(verbosity >= 2), names=parnames),
+                  2, verbosity)
         if seeingprior:
-            print "  Hyper-term: h=%f" % hterm.comp(model_star.fitpar)
+            print_msg("  Hyper-term: h=%f" % hterm.comp(model_star.fitpar),
+                      2, verbosity)
 
         # Restore true chi2 (not reduced one), ie. chi2 =
         # ((cube_star.data-model_star.evalfit())**2/cube_star.var).sum()
@@ -952,7 +955,7 @@ def flatAndPA(cy2, c2xy):
 
 class ExposurePSF:
     """
-    Empirical PSF3D function used by the `model` class.
+    Empirical PSF-3D function used by the `model` class.
 
     Note that the so-called `PA` or `xy` parameter is *not* the PA of
     the adjusted ellipse, but half the x*y coefficient. Similarly,
@@ -960,6 +963,8 @@ class ExposurePSF:
     ell*y2 + 2*xy*x*y + ... = 0.  See `quadEllipse`/`flatAndPA` for
     conversion routines.
     """
+
+    subsampling = 1                     # No subsampling by default
 
     def __init__(self, psf_ctes, cube, coords=None):
         """Initiating the class.
@@ -972,7 +977,7 @@ class ExposurePSF:
         self.spxSize  = psf_ctes[0]     # Spaxel size [arcsec]
         self.lmid = psf_ctes[1]         # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
-        self.ellDeg   = int(psf_ctes[3]) # Ellip polynomial degree
+        self.ellDeg   = int(psf_ctes[3]) # y**2 (aka 'Ell') polynomial degree
 
         self.npar_cor = 7 + self.ellDeg + self.alphaDeg # PSF parameters
         self.npar_ind = 1               # Intensity parameters per slice
@@ -985,6 +990,7 @@ class ExposurePSF:
                         ['a%d' % i for i in range(self.alphaDeg+1)] + \
                         ['i%02d' % (i+1) for i in range(self.nslice)]
 
+        # Spaxel coordinates [spx]
         if coords is None:
             self.nlens = cube.nlens
             self.x = N.resize(cube.x, (self.nslice,self.nlens)) # nslice,nlens
@@ -1016,6 +1022,10 @@ class ExposurePSF:
         self.ADRcoeffs = ( self.nRef - 
                            TA.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
                            TA.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
+
+        # Sub-sampling grid: decompose the spaxels into n×n sub-spaxels
+        eps = N.linspace(-0.5, +0.5, self.subsampling*2 + 1)[1::2]
+        self.subgrid = tuple(itertools.product(eps,eps)) # Offsets from center
 
     def comp(self, param, normed=False):
         """
@@ -1075,16 +1085,19 @@ class ExposurePSF:
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
 
-        # Gaussian + Moffat
-        dx = self.x - x0
-        dy = self.y - y0
-        # CAUTION: ell & PA are not the true ellipticity and position angle!
-        r2 = dx**2 + ell*dy**2 + 2*xy*dx*dy
-        gaussian = N.exp(-0.5*r2/sigma**2)
-        moffat = (1 + r2/alpha**2)**(-beta)
+        val = 0.
+        for epsx,epsy in self.subgrid:
+            # Gaussian + Moffat
+            dx = self.x - x0 + epsx     # Center of sub-spaxel
+            dy = self.y - y0 + epsy
+            # CAUTION: ell & PA are not the true ellipticity and position angle!
+            r2 = dx**2 + ell*dy**2 + 2*xy*dx*dy
+            gaussian = N.exp(-0.5*r2/sigma**2)
+            moffat = (1 + r2/alpha**2)**(-beta)
+            # Function
+            val += moffat + eta*gaussian
 
-        # Function
-        val = self.param[self.npar_cor:,N.newaxis] * (moffat + eta*gaussian)
+        val *= self.param[self.npar_cor:,N.newaxis] / self.subsampling**2
 
         # The 3D psf model is not normalized to 1 in integral. The result must
         # be renormalized by (2*eta*sigma**2 + alpha**2/(beta-1)) *
@@ -1145,46 +1158,53 @@ class ExposurePSF:
         beta  = b0 + b1*alpha
         eta   = e0 + e1*alpha
 
-        # Gaussian + Moffat
-        dx = self.x - x0
-        dy = self.y - y0
-        dy2 = dy**2
-        r2 = dx**2 + ell*dy2 + 2*xy*dx*dy
-        sigma2 = sigma**2
-        gaussian = N.exp(-0.5*r2/sigma2)
-        alpha2 = alpha**2
-        ea = 1 + r2/alpha2
-        moffat = ea**(-beta)
+        totgrad = N.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
+        for epsx,epsy in self.subgrid:
+            # Gaussian + Moffat
+            dx = self.x - x0 + epsx
+            dy = self.y - y0 + epsy
+            dy2 = dy**2
+            r2 = dx**2 + ell*dy2 + 2*xy*dx*dy
+            sigma2 = sigma**2
+            gaussian = N.exp(-0.5*r2/sigma2)
+            alpha2 = alpha**2
+            ea = 1 + r2/alpha2
+            moffat = ea**(-beta)
 
-        # Derivatives
-        grad = N.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
-        j1 = eta/sigma2
-        j2 = 2*beta/ea/alpha2
-        tmp = gaussian*j1 + moffat*j2
-        grad[2] = tmp*(    dx + xy*dy)  # dPSF/dx0
-        grad[3] = tmp*(ell*dy + xy*dx)  # dPSF/dy0
-        grad[0] =       self.ADRcoeffs*(sintheta*grad[2] - costheta*grad[3])
-        grad[1] = delta*self.ADRcoeffs*(sintheta*grad[3] + costheta*grad[2])
-        grad[4] = -tmp   * dx*dy        # dPSF/dxy
-        for i in xrange(self.ellDeg + 1): # dPSF/dei
-            grad[5+i] = -tmp/2 * dy2 * self.lrel**i
-        dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
-                 moffat * ( -b1*N.log(ea) + r2*j2/alpha ) # dPSF/dalpha
-        if not self.model.endswith('powerlaw'):
-            for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
-                grad[6+self.ellDeg+i] = dalpha * self.lrel**i
-        else:
-            lrel = self.l/LbdaRef
-            imax = 6+self.ellDeg+self.alphaDeg
-            grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel-1)
-            if self.alphaDeg:
-                grad[imax-1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
-                for i in range(imax-2, imax-self.alphaDeg-1, -1):
-                    grad[i] = grad[i+1] * (lrel-1)  # dPSF/dai, i=<0,alphaDeg>
-        grad[:self.npar_cor] *= self.param[N.newaxis,self.npar_cor:,N.newaxis]
-        grad[self.npar_cor] = moffat + eta*gaussian # dPSF/dI
+            # Derivatives
+            grad = N.zeros((self.npar_cor+self.npar_ind,)+self.x.shape,'d')
+            j1 = eta/sigma2
+            j2 = 2*beta/ea/alpha2
+            tmp = gaussian*j1 + moffat*j2
+            grad[2] = tmp*(    dx + xy*dy)  # dPSF/dx0
+            grad[3] = tmp*(ell*dy + xy*dx)  # dPSF/dy0
+            grad[0] =       self.ADRcoeffs*(sintheta*grad[2] - costheta*grad[3])
+            grad[1] = delta*self.ADRcoeffs*(sintheta*grad[3] + costheta*grad[2])
+            grad[4] = -tmp   * dx*dy        # dPSF/dxy
+            for i in xrange(self.ellDeg + 1): # dPSF/dei
+                grad[5+i] = -tmp/2 * dy2 * self.lrel**i
+            dalpha = gaussian * ( e1 + s1*r2*j1/sigma ) + \
+                     moffat * ( -b1*N.log(ea) + r2*j2/alpha ) # dPSF/dalpha
+            if not self.model.endswith('powerlaw'):
+                for i in xrange(self.alphaDeg + 1): # dPSF/dai, i=<0,alphaDeg>
+                    grad[6+self.ellDeg+i] = dalpha * self.lrel**i
+            else:
+                lrel = self.l/LbdaRef
+                imax = 6+self.ellDeg+self.alphaDeg
+                grad[imax] = dalpha * lrel**N.polyval(alphaCoeffs[:-1], lrel-1)
+                if self.alphaDeg:
+                    grad[imax-1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
+                    for i in range(imax-2, imax-self.alphaDeg-1, -1):
+                        grad[i] = grad[i+1] * (lrel-1) # dPSF/dai, i=0..alphaDeg
+            grad[self.npar_cor] = moffat + eta*gaussian # dPSF/dI
 
-        return grad
+            totgrad += grad
+            
+        totgrad[:self.npar_cor] *= self.param[N.newaxis,
+                                              self.npar_cor:,N.newaxis]
+        totgrad /= self.subsampling**2
+
+        return totgrad
 
     def _HWHM_fn(self, r, alphaCoeffs, lbda):
         """Half-width at half maximum function (=0 at HWHM)."""
@@ -1263,6 +1283,7 @@ class Long_ExposurePSF(ExposurePSF):
     eta0   = 1.04
     eta1   = 0.00
 
+
 class Short_ExposurePSF(ExposurePSF):
     """Classic PSF model (achromatic correlations) for short
     exposures."""
@@ -1293,6 +1314,7 @@ class LongBlue_ExposurePSF(ExposurePSF):
     eta0   = [ 0.544,-0.090, 0.039] # e00,e01,e02
     eta1   = [ 0.223, 0.060,-0.020] # e10,e11,e12
 
+
 class LongRed_ExposurePSF(ExposurePSF):
     """PSF model with chromatic correlations (2nd order Chebychev
     polynomial) for long, red exposures."""
@@ -1308,6 +1330,7 @@ class LongRed_ExposurePSF(ExposurePSF):
     eta0   = [ 1.366,-0.184,-0.126] # e00,e01,e02
     eta1   = [-0.134, 0.121, 0.054] # e10,e11,e12
 
+
 class ShortBlue_ExposurePSF(ExposurePSF):
     """PSF model with chromatic correlations (2nd order Chebychev
     polynomial) for short, blue exposures."""
@@ -1322,6 +1345,7 @@ class ShortBlue_ExposurePSF(ExposurePSF):
     sigma1 = [ 0.176, 0.016, 0.000] # s10,s11,s12
     eta0   = [ 0.499, 0.080, 0.061] # e00,e01,e02
     eta1   = [ 0.316,-0.015,-0.050] # e10,e11,e12
+
 
 class ShortRed_ExposurePSF(ExposurePSF):
     """PSF model with chromatic correlations (2nd order Chebychev
@@ -1500,13 +1524,13 @@ class Hyper_PSF3D_PL(object):
     def __str__(self):
 
         s = "PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
-        s += "  ADR: delta=% 6.2f +/- %.2f\n" % (self.delta, self.ddelta)
-        s += "  ADR: theta=%+6.2f +/- %.2f deg\n" % \
+        s += "  ADR: delta=% 7.2f +/- %.2f\n" % (self.delta, self.ddelta)
+        s += "  ADR: theta=%+7.2f +/- %.2f deg\n" % \
              (self.theta*TA.RAD2DEG, self.dtheta*TA.RAD2DEG)
         dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
-        s += "  PL:     p0=%+.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
-        s += "  PL:     p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
-        s += "  PL:     p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
+        s += "  PL: p0=%+.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
+        s += "  PL: p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
+        s += "  PL: p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
 
         return s
     

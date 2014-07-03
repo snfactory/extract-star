@@ -54,7 +54,8 @@ PSF parameter keywords
 - ES_Axx: alpha coefficient
 - ES_METH: extraction method (psf|optimal|[sub]aperture)
 - ES_PSF: PSF name and model ('[short|long], classic[-powerlaw]' or
-  '[long|short] [blue|red],chromatic')
+  '[long|short] [blue|red], chromatic')
+- ES_SUB: PSF sub-sampling factor
 - ES_APRAD: aperture radius (>0: arcsec, <0: seeing sigma)
 - ES_TFLUX: integrated flux of extracted point-source spectrum
 - ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
@@ -298,7 +299,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     logfile.close()
 
 
-def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
+def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
     """Fill header *hdr* with PSF fit-related keywords."""
 
     # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
@@ -306,6 +307,9 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
     print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" % 
               (LbdaRef,x0,y0), 1)
+
+    # '[short|long], classic[-powerlaw]' or '[long|short] [blue|red], chromatic'
+    psfname = ', '.join((psf.name, psf.model)) 
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
     # to lr~ = lbda/LbdaRef - 1 = a + b*lr
@@ -315,7 +319,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
         c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
     else:
         c_ell = param[5:6+opts.ellDeg]
-    if opts.alphaDeg and 'powerlaw' not in psfname:
+    if opts.alphaDeg and not psfname.endswith('powerlaw'):
         c_alp = libES.polyConvert(
             param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg], trans=(a,b))
     else:
@@ -341,6 +345,7 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
 
     hdr['ES_METH'] = (opts.method, 'Extraction method')
     hdr['ES_PSF'] = (psfname, 'PSF model name')
+    hdr['ES_SUB'] = (psf.subsampling, 'PSF subsampling')
     if opts.method.endswith('aperture'):
         hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [" or sigma]')
 
@@ -349,10 +354,10 @@ def fill_header(hdr, psfname, param, adr, cube, opts, chi2, seeing, fluxes):
     if opts.skyDeg >= 0:
         hdr['ES_SFLUX'] = (sflux, 'Total sky flux')
 
-    hdr['SEEING'] = (seeing, 'Seeing @lbdaRef ["] (extract_star)')
+    hdr['SEEING'] = (seeing, 'Estimated seeing @lbdaRef ["] (extract_star)')
 
     if opts.supernova:
-        hdr['ES_SNMOD'] = (opts.supernova, 'Supernova mode')
+        hdr['ES_SNMOD'] = (opts.seeingprior, 'Supernova mode (seeing prior)')
     if opts.psf3Dconstraints:
         for i,constraint in enumerate(opts.psf3Dconstraints):
             hdr['ES_BND%d' % (i+1)] = (constraint, "Constraint on 3D-PSF")
@@ -438,6 +443,9 @@ if __name__ == "__main__":
                       help="PSF model " \
                       "(classic[-powerlaw]|chromatic) [%default]",
                       default='classic')
+    parser.add_option("--subsampling", type='int',
+                      help="Spaxel subsampling [%default]",
+                      default=3)
 
     # Extraction method and parameters
     parser.add_option("-m", "--method",
@@ -575,8 +583,12 @@ if __name__ == "__main__":
     else:
         parser.error("Invalid PSF model '%s'" % opts.psf)
 
-    print "  Object: %s, Airmass: %.2f, Efftime: %.1fs, PSF: %s" % \
-          (objname, airmass, efftime, ', '.join((psfFn.model, psfFn.name)))
+    # Sub-sampling
+    psfFn.subsampling = opts.subsampling
+
+    print "  Object: %s, Airmass: %.2f, Efftime: %.1fs, PSF: '%s', sub x%d" % \
+          (objname, airmass, efftime,
+           ', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
     # Test channel and set default output name
     if channel not in ('B','R'):
@@ -782,7 +794,7 @@ if __name__ == "__main__":
     hyper = {}
     if opts.supernova:
         hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, opts.seeingprior, hyper=1.)
-        print hterm
+        print_msg(str(hterm), 1)
         hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
     # Instantiate the model and perform the 3D-fit (fmin_tnc)
@@ -827,7 +839,7 @@ if __name__ == "__main__":
         print_msg("  Fit result [Background]: %s" % 
                   fitpar[npar_psf+nmeta:], 3)
     if opts.supernova:
-        print "  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf])
+        print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
     print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
               (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
@@ -930,8 +942,7 @@ if __name__ == "__main__":
     else:
         sflux = 0                   # Not stored anyway
 
-    fill_header(inhdr, ', '.join((psfFn.name, psfFn.model)),
-                fitpar[:npar_psf], adr, meta_cube, opts,
+    fill_header(inhdr, psfFn, fitpar[:npar_psf], adr, meta_cube, opts,
                 chi2, seeing, (tflux,sflux))
 
     # Save star spectrum =====================================================
