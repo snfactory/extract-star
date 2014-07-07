@@ -22,7 +22,8 @@ from pySNIFS import SNIFS_cube
 
 import ToolBox.Atmosphere as TA
 
-LbdaRef = 5000.     # Use constant ref. for easy comparison
+LbdaRef = 5000.               # Use constant ref. wavelength for easy comparison
+SpxSize = SNIFS_cube.spxSize  # Spaxel size in arcsec
 
 def print_msg(str, limit, verb=0):
     """Print message 'str' if verbosity level (typically
@@ -30,27 +31,6 @@ def print_msg(str, limit, verb=0):
 
     if verb >= limit:
         print str
-
-def get_slices_lrange(cube, nmeta=12):
-    """
-    Get wavelength range from meta-sliced cube, because
-    pySNIFS.SNIFS_cube manners are just too obfuscated.
-
-    :param cube: pySNIFS.SNIFS_cube instance
-    :param nmeta: number of meta-slices
-    :return: (lstart, lend) of sliced cube.
-    """
-
-    from ToolBox.Arrays import metaslice
-
-    # Should be the same definition as in extract_star
-    slices = metaslice(cube.nslice, nmeta, trim=10)
-    try:
-        slice_cube = SNIFS_cube(e3d_file=cube.e3d_file, slices=slices)
-    except (ValueError, AttributeError,):
-        slice_cube = SNIFS_cube(fits3d_file=cube.fits3d_file, slices=slices)
-        
-    return slice_cube.lstart, slice_cube.lend
 
 # PSF fitting ==============================
 
@@ -96,11 +76,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
              (cube_sky.j < nsky) | (cube_sky.j >= 15-nsky)
 
     print_msg("  Set initial guess from 2D-Gaussian + Cte fit", 2, verbosity)
-    parnames = ['delta=0', 'theta=0', 'x0', 'y0', 'xy', 'y2', 'alpha', 'I'] + \
+    parnames = ['delta=0', 'theta=0', 'xc', 'yc', 'xy', 'y2', 'alpha', 'I'] + \
                [ 'B%02d' % j for j in range(npar_sky) ]
     print_msg("  Adjusted parameters: %s" % ','.join(parnames), 2, verbosity)
 
-    xc,yc = None,None                   # Position guess
+    xc,yc = None,None                   # Position guess at lmid
     alpha = None                        # Alpha guess
     channel = 'B' if cube.lstart < 5000. else 'R'
     if channel=='B':                    # Blue cube
@@ -160,7 +140,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         model_gauss = pySNIFS_fit.model(data=cube_sky,
                                         func=['gaus2D','poly2D;0'],
                                         param=[[xc,yc,1,1,imax],[0]],
-                                        bounds=[ [[-7.5,7.5]]*2 + # x0,y0
+                                        bounds=[ [[-7.5,7.5]]*2 + # xc,yc
                                                  [[0.1,5]]*2 +    # sx,sy
                                                  [[0,None]],      # intensity
                                                  [[None,None]] ]) # background
@@ -281,14 +261,6 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         params[i]  = model_star.fitpar
         dparams[i] = dpar
         chi2s[i]   = model_star.khi2
-        # if chi2fit:
-        #     print_msg("  Chi2 fit [%d, chi2/dof=%.2f/%d]: %s" % 
-        #               (model_star.status, model_star.khi2, model_star.dof,
-        #                model_star.fitpar), 1, verbosity)
-        # else:
-        #     print_msg("  LSQ fit [%d, RSS/dof=%.2f/%d]: %s" % 
-        #               (model_star.status, model_star.khi2, model_star.dof,
-        #                model_star.fitpar), 1, verbosity)
 
     return params,chi2s,dparams
 
@@ -470,31 +442,31 @@ def extract_specs(cube, psf, skyDeg=0,
     aperRad = radius / spxSize
     print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius,aperRad),
               1, verbosity)
-    # Aperture center after ADR offset [spx] (nslice)
-    xc = psf_param[2] + psf_param[0]*model.ADRcoeffs[:,0]*N.cos(psf_param[1])
-    yc = psf_param[3] + psf_param[0]*model.ADRcoeffs[:,0]*N.sin(psf_param[1])
+    # Aperture center after ADR offset from lmid [spx] (nslice,)
+    x0 = psf_param[2] + psf_param[0]*N.cos(psf_param[1])*model.ADRcoeffs[:,0]
+    y0 = psf_param[3] - psf_param[0]*N.sin(psf_param[1])*model.ADRcoeffs[:,0]
     # Radial distance from center [spx] (nslice,nlens)
-    r = N.hypot((model.x.T - xc).T, (model.y.T - yc).T)
+    r = N.hypot((model.x.T - x0).T, (model.y.T - y0).T)
     # Circular aperture (nslice,nlens)
     # Use r<aperRad[:,N.newaxis] if radius is a (nslice,) vec.
     frac = (r < aperRad).astype('float')
 
     if method == 'subaperture':
         # Fractions accounting for subspaxels (a bit slow)
-        newfrac = subaperture(xc, yc, aperRad, 4)
+        newfrac = subaperture(x0, y0, aperRad, 4)
         # Remove bad spaxels since subaperture returns the full spaxel grid
         w = (~N.isnan(cube.slice2d(0).ravel())).nonzero()[0]
         frac = newfrac[:,w]
 
     # Check if aperture hits the FoV edges
-    hit = ((xc - aperRad) < -7.5) | ((xc + aperRad) > 7.5) | \
-          ((yc - aperRad) < -7.5) | ((yc + aperRad) > 7.5)
+    hit = ((x0 - aperRad) < -7.5) | ((x0 + aperRad) > 7.5) | \
+          ((y0 - aperRad) < -7.5) | ((y0 + aperRad) > 7.5)
     if hit.any():
         # Find the closest edge
-        ld = (xc - aperRad + 7.5).min() # Dist. to left edge (<0 if outside)
-        rd =-(xc + aperRad - 7.5).max() # Dist. to right edge
-        bd = (yc - aperRad + 7.5).min() # Dist. to bottom edge
-        td =-(yc + aperRad - 7.5).max() # Dist. to top edge
+        ld = (x0 - aperRad + 7.5).min() # Dist. to left edge (<0 if outside)
+        rd =-(x0 + aperRad - 7.5).max() # Dist. to right edge
+        bd = (y0 - aperRad + 7.5).min() # Dist. to bottom edge
+        td =-(y0 + aperRad - 7.5).max() # Dist. to top edge
         cd = -min(ld,rd,bd,td)          # Should be positive
         ns = int(cd) + 1                # Additional spaxels
         print "WARNING: Aperture (r=%.2f spx) hits FoV edges by %.2f spx" % \
@@ -538,7 +510,7 @@ def extract_specs(cube, psf, skyDeg=0,
             subData[:,j[0]] = origData[:,i]
             subVar[:,j[0]]  = origVar[:,i]
 
-        r = N.hypot((extModel.x.T - xc).T, (extModel.y.T - yc).T)
+        r = N.hypot((extModel.x.T - x0).T, (extModel.y.T - y0).T)
         frac = (r < aperRad).astype('float')
 
     if method.endswith('aperture'):
@@ -591,7 +563,7 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
     :param xc: aperture X center
     :param yc: aperture Y center
     :param rc: aperture radius
-    :param f: resampling factor (power of 2)
+    :param f: resampling factor (e.g. 3 for 2**3-resampling)
     :param nspaxel: spaxel grid side
     :return: spaxel flux fraction on original 15x15 grid
     """
@@ -599,7 +571,7 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
     from ToolBox.Arrays import rebin
     
     # Resample spaxel center positions, originally [-7:7]
-    f = 2.**f
+    f = 2**f
     epsilon = 0.5 / f
     border = nspaxel / 2.
     r = N.linspace(-border + epsilon, border - epsilon, nspaxel*f)
@@ -657,7 +629,7 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
     return pressure,temp
 
 
-def read_psf_name(hdr):
+def read_psf(hdr):
     """Return PSF class as read (or guessed) from header."""
 
     assert hdr['ES_METH']=='psf', \
@@ -683,28 +655,28 @@ def read_psf_name(hdr):
     # Convert PSF name (e.g. 'short red') to PSF class name
     # ('ShortRed_ExposurePSF')
     fnname = ''.join(map(str.capitalize,psfname.split())) + '_ExposurePSF'
-    print "PSF name/model: %s/%s [%s]" % (psfname, psfmodel, fnname)
 
     psffn = eval(fnname)
     if psfmodel.endswith('powerlaw'):
         psffn.model = psffn.model+'-powerlaw'
 
+    try:
+        subsampling = hdr['ES_SUB']
+    except KeyError:
+        subsampling = 1
+    psffn.subsampling = subsampling
+
+    print "PSF name/model: %s/%s [%s], sub x%d" % \
+          (psfname, psfmodel, fnname, subsampling)
+
     return psffn
 
 
-def read_psf_ctes(hdr, lrange=()):
-    """Read PSF constants [lMid,alphaDeg,ellDeg] from header."""
+def read_psf_ctes(hdr):
+    """Read PSF constants [lmid,alphaDeg,ellDeg] from header."""
 
-    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
-           'ES_LMIN/ES_LMAX not found and lrange not set'
-
-    # This reproduces exactly the PSF parameters used by
-    # extract_specs(full_cube...)
-    if lrange:
-        lmin, lmax = lrange
-    else:
-        lmin = hdr['ES_LMIN']
-        lmax = hdr['ES_LMAX']
+    lmin = hdr['ES_LMIN']
+    lmax = hdr['ES_LMAX']
     lmid = (lmin+lmax)/2.
 
     # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
@@ -720,54 +692,46 @@ def read_psf_ctes(hdr, lrange=()):
     return [lmid,adeg,edeg]
 
 
-def read_psf_param(hdr, lrange=()):
+def read_psf_param(hdr):
     """Read (7+ellDeg+alphaDeg) PSF parameters from header:
-    delta,theta,x0,y0,xy,e0,...en,a0,...an."""
-
-    assert ('ES_LMIN' in hdr and 'ES_LMAX' in hdr) or lrange, \
-           'ES_LMIN/ES_LMAX not found and lrange not set'
+    delta,theta,xc,yc,xy,e0,...en,a0,...an."""
 
     # Chromatic expansion coefficients
     c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) ]
     c_alp = [ v for k,v in hdr.items() if re.match('ES_A\d+$',k) ]
 
-    if lrange:
-        lmin, lmax = lrange
-    else:
-        lmin = hdr['ES_LMIN']
-        lmax = hdr['ES_LMAX']
+    lmin = hdr['ES_LMIN']
+    lmax = hdr['ES_LMAX']
+    lmid = (lmin+lmax)/2.       # Middle wavelength [A]
     lref = hdr['ES_LREF']       # Reference wavelength [A]
-
-    psfname = hdr['ES_PSF']
 
     # Convert public polynomial coeffs from lr~ = lambda/LbdaRef - 1 =
     # a+b*lr back to internal lr = (2*lambda -
     # (lmin+lmax))/(lmax-lmin)
-    a = (lmin+lmax) / (2*lref) - 1
-    b = (lmax-lmin) / (2*lref)
+    a = (lmin+lmax) / (2.*lref) - 1
+    b = (lmax-lmin) / (2.*lref)
     ecoeffs = polyConvert(c_ell, trans=(a,b), backward=True).tolist()
-    if 'powerlaw' not in psfname:
+    if 'powerlaw' not in hdr['ES_PSF']:
         acoeffs = polyConvert(c_alp, trans=(a,b), backward=True).tolist()
     else:                       # Not needed for powerlaw expansion
         acoeffs = c_alp
 
-    x0 = hdr['ES_XC']           # Reference position [spx]
-    y0 = hdr['ES_YC']
-    xy = hdr['ES_PA']           # xy parameter
+    xref = hdr['ES_XC']  # Reference position [spx] at ref. wavelength
+    yref = hdr['ES_YC']
+    xy   = hdr['ES_PA']  # xy parameter
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)
     pressure,temp = read_PT(hdr)
     airmass = hdr['ES_AIRM']    # Effective airmass
     parang = hdr['ES_PARAN']    # Effective parallactic angle [deg]
-    adr = TA.ADR(pressure, temp, lref=(lmin+lmax)/2,
-                 airmass=airmass, parangle=parang)
-    x0,y0 = adr.refract(x0, y0, lref, unit=0.43, backward=True) # [spx]
+    adr = TA.ADR(pressure, temp, lref=lmid, airmass=airmass, parangle=parang)
+    xmid,ymid = adr.refract(xref,yref,lref, unit=SpxSize, backward=True) # [spx]
 
-    print "PSF parameters: airmass=%.3f, parangle=%.1fdeg, " \
-          "refpos=%.2fx%.2f spx @%.2f A" % (airmass,parang,x0,y0,(lmin+lmax)/2)
+    print "PSF parameters: airmass=%.3f, parangle=%.1f deg, " \
+          "refpos=%.2fx%.2f spx @%.2f A" % (airmass,parang,xmid,ymid,lmid)
 
-    return [adr.delta,adr.theta,x0,y0,xy] + ecoeffs + acoeffs
+    return [adr.delta,adr.theta,xmid,ymid,xy] + ecoeffs + acoeffs
 
 # Polynomial utilities ======================================================
 
@@ -974,8 +938,8 @@ class ExposurePSF:
         cube:     Input cube. This is a `SNIFS_cube` object.
         coords:   if not None, should be (x,y).
         """
-        self.spxSize  = psf_ctes[0]     # Spaxel size [arcsec]
-        self.lmid = psf_ctes[1]         # Reference wavelength [AA]
+        self.spxSize  = psf_ctes[0]      # Spaxel size [arcsec]
+        self.lmid     = psf_ctes[1]      # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2]) # Alpha polynomial degree
         self.ellDeg   = int(psf_ctes[3]) # y**2 (aka 'Ell') polynomial degree
 
@@ -985,7 +949,7 @@ class ExposurePSF:
         self.npar = self.npar_cor + self.npar_ind*self.nslice
 
         # Name of PSF parameters
-        self.parnames = ['delta','theta','x0','y0','xy'] + \
+        self.parnames = ['delta','theta','xc','yc','xy'] + \
                         ['e%d' % i for i in range(self.ellDeg+1)] + \
                         ['a%d' % i for i in range(self.alphaDeg+1)] + \
                         ['i%02d' % (i+1) for i in range(self.nslice)]
@@ -1018,10 +982,10 @@ class ExposurePSF:
             pressure,temp = read_PT(cube.e3d_data_header)
         else:
             pressure,temp = read_PT(None)   # Get default values for P and T
-        self.nRef = TA.atmosphericIndex(self.lmid, P=pressure, T=temp)
-        self.ADRcoeffs = ( self.nRef - 
+        self.nmid = TA.atmosphericIndex(self.lmid, P=pressure, T=temp)
+        self.ADRcoeffs = ( self.nmid - 
                            TA.atmosphericIndex(self.l, P=pressure, T=temp) ) * \
-                           TA.RAD2ARC / self.spxSize # l > l_ref <=> coeff > 0
+                           TA.RAD2ARC / self.spxSize # l > lmid <=> coeff > 0
 
         # Sub-sampling grid: decompose the spaxels into n×n sub-spaxels
         eps = N.linspace(-0.5, +0.5, self.subsampling*2 + 1)[1::2]
@@ -1049,10 +1013,11 @@ class ExposurePSF:
         # ADR params
         delta = self.param[0]
         theta = self.param[1]
-        xc    = self.param[2]
+        xc    = self.param[2]           # Position at lmid
         yc    = self.param[3]
-        x0 = xc + delta*self.ADRcoeffs*N.sin(theta) # nslice,nlens
-        y0 = yc - delta*self.ADRcoeffs*N.cos(theta)
+        # Position at current wavelength
+        x0 = xc + delta*N.sin(theta)*self.ADRcoeffs # nslice,nlens
+        y0 = yc - delta*N.cos(theta)*self.ADRcoeffs
 
         # Other params
         xy          = self.param[4]
@@ -1124,8 +1089,8 @@ class ExposurePSF:
         yc    = self.param[3]
         costheta = N.cos(theta)
         sintheta = N.sin(theta)
-        x0 = xc + delta*self.ADRcoeffs*sintheta
-        y0 = yc - delta*self.ADRcoeffs*costheta
+        x0 = xc + delta*sintheta*self.ADRcoeffs # nslice,nlens
+        y0 = yc - delta*costheta*self.ADRcoeffs
 
         # Other params
         xy = self.param[4]
@@ -1176,8 +1141,8 @@ class ExposurePSF:
             j1 = eta/sigma2
             j2 = 2*beta/ea/alpha2
             tmp = gaussian*j1 + moffat*j2
-            grad[2] = tmp*(    dx + xy*dy)  # dPSF/dx0
-            grad[3] = tmp*(ell*dy + xy*dx)  # dPSF/dy0
+            grad[2] = tmp*(    dx + xy*dy)  # dPSF/dxc
+            grad[3] = tmp*(ell*dy + xy*dx)  # dPSF/dyc
             grad[0] =       self.ADRcoeffs*(sintheta*grad[2] - costheta*grad[3])
             grad[1] = delta*self.ADRcoeffs*(sintheta*grad[3] + costheta*grad[2])
             grad[4] = -tmp   * dx*dy        # dPSF/dxy
@@ -1267,7 +1232,7 @@ class ExposurePSF:
         # Compute FWHM from radial profile [spx]
         seeing = 2 * SO.fsolve(func=hwhm, x0=1., args=(alphaCoeffs,lbda))
 
-        return N.squeeze(seeing)*0.43   # Spx → arcsec
+        return N.squeeze(seeing)*SpxSize # Spx → arcsec
 
 
 class Long_ExposurePSF(ExposurePSF):

@@ -1,7 +1,11 @@
+2014-07-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (get_slices_lrange): function removed. 
+
 2014-07-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
-	* apps/extract_star/extract_star.py: new option '--subsampling 3'
-	to sub-sample the PSF.
+	* apps/extract_star/extract_star.py: new option '--subsampling' to
+	sub-sample the PSF (default to x3).
 
 2014-07-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
@@ -186,8 +190,8 @@
 
 2012-02-02  Rui Pereira  <rui.pereira@in2p3.fr>
 
-	* apps/extract_star/subtract_psf.py: added --sky option.
-	* apps/extract_star/extract_fixed_psf.py: added --skyDeg option.
+	* apps/extract_star/subtract_psf.py: added '--sky' option.
+	* apps/extract_star/extract_fixed_psf.py: added '--skyDeg' option.
 
 2012-02-01  Rui Pereira  <rui.pereira@in2p3.fr>
 

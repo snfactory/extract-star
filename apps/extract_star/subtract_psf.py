@@ -19,8 +19,6 @@ from pySnurp import Spectrum
 import pySNIFS
 import libExtractStar as libES
 
-SpxSize = 0.43      # Spaxel size in arcsec (check SNIFS_cube.spxSize)
-
 if __name__ == '__main__':
 
     import optparse
@@ -83,7 +81,7 @@ if __name__ == '__main__':
            "Incompatible spectrum and reference cube"
 
     # Read PSF function name and parameters from spectrum header
-    psf_fn = libES.read_psf_name(spec._hdr)
+    psf_fn = libES.read_psf(spec._hdr)
     psf_ctes = [cube.spxSize]+libES.read_psf_ctes(spec._hdr) # [lref,aDeg,eDeg]
     psf_param = libES.read_psf_param(spec._hdr)
 
@@ -107,8 +105,8 @@ if __name__ == '__main__':
                 raise NotImplementedError(
                     'skyDeg>0 subtraction is not implemented')
             # from arcsec^-2 into spaxels^-1
-            cube.data -= sky.y.reshape(-1,1) * SpxSize**2
-            cube.var  += sky.v.reshape(-1,1) * SpxSize**4
+            cube.data -= sky.y.reshape(-1,1) * libES.SpxSize**2
+            cube.var  += sky.v.reshape(-1,1) * libES.SpxSize**4
 
         print "Saving point-source subtracted %s cube %s" % (cubetype, opts.out)
         cube.writeto(opts.out)

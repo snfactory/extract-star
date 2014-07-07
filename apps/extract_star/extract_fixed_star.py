@@ -65,17 +65,17 @@ if __name__ == '__main__':
         (cube.nslice,cube.lstart,cube.lstep), \
         "Incompatible spectrum and cube"
 
-    lrange = 'ES_LMIN' not in spec._hdr and libES.get_slices_lrange(cube) or ()
     # Read PSF function name and parameters from spectrum header
-    psf_fn = libES.read_psf_name(spec._hdr)
-    psf_ctes = [cube.spxSize] + libES.read_psf_ctes(spec._hdr, lrange) # [lref,aDeg,eDeg]
-    psf_param = libES.read_psf_param(spec._hdr, lrange)
+    psf_fn = libES.read_psf(spec._hdr)
+    psf_ctes = [cube.spxSize]+libES.read_psf_ctes(spec._hdr) # [lref,aDeg,eDeg]
+    psf_param = libES.read_psf_param(spec._hdr)
 
-    # Compute aperture radius
+    # Compute aperture radius [arcsec]
     if opts.method == 'psf':
         radius = None
-    else:
-        radius = opts.radius < 0 and -opts.radius*spec.readKey('SEEING')/2.355 or opts.radius # [sigma] or [arcsec]
+    else: 
+        radius = opts.radius if opts.radius > 0 \
+                 else -opts.radius*spec.readKey('SEEING')/2.355
 
     lbda,spec,var = libES.extract_specs(cube, (psf_fn, psf_ctes, psf_param),
                                         skyDeg=opts.skyDeg, method=opts.method,

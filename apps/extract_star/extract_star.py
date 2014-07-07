@@ -47,10 +47,9 @@ PSF parameter keywords
 - ES_AIRM: Effective airmass, from ADR fit
 - ES_PARAN: Effective parallactic angle [deg], from ADR fit
 - ES_[X|Y]C: Point-source position [spx] at reference wavelength
-- ES_PA: XY coefficient (related to position angle)
-- ES_LMIN: wavelength of first meta-slice
-- ES_LMAX: wavelength of last meta-slice
-- ES_Exx: Y2 coefficients (related to flattening)
+- ES_PA: XY coefficient (position angle)
+- ES_L[MIN|MAX]: wavelength of first/last meta-slice
+- ES_Exx: Y2 coefficients (flattening)
 - ES_Axx: alpha coefficient
 - ES_METH: extraction method (psf|optimal|[sub]aperture)
 - ES_PSF: PSF name and model ('[short|long], classic[-powerlaw]' or
@@ -302,19 +301,19 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
 def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
     """Fill header *hdr* with PSF fit-related keywords."""
 
-    # Convert reference position from lref=(lmin+lmax)/2 to LbdaRef
+    # Convert reference position from lmid = (lmin+lmax)/2 to LbdaRef
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
-    x0,y0 = adr.refract(param[2],param[3], LbdaRef, unit=cube.spxSize)
-    print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" % 
-              (LbdaRef,x0,y0), 1)
+    xref,yref = adr.refract(param[2], param[3], LbdaRef, unit=cube.spxSize)
+    print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" %
+              (LbdaRef,xref,yref), 1)
 
     # '[short|long], classic[-powerlaw]' or '[long|short] [blue|red], chromatic'
     psfname = ', '.join((psf.name, psf.model)) 
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
     # to lr~ = lbda/LbdaRef - 1 = a + b*lr
-    a = (lmin+lmax) / (2*LbdaRef) - 1
-    b = (lmax-lmin) / (2*LbdaRef)
+    a = (lmin+lmax) / (2.*LbdaRef) - 1
+    b = (lmax-lmin) / (2.*LbdaRef)
     if opts.ellDeg:                     # Beyond a simple constant
         c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
     else:
@@ -332,8 +331,8 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
     hdr['ES_CHI2'] = (chi2, 'Chi2|RSS of 3D-fit')
     hdr['ES_AIRM'] = (adr.get_airmass(), 'Effective airmass')
     hdr['ES_PARAN'] = (adr.get_parangle(), 'Effective parangle [deg]')
-    hdr['ES_XC'] = (x0, 'xc @lbdaRef [spx]')
-    hdr['ES_YC'] = (y0, 'yc @lbdaRef [spx]')
+    hdr['ES_XC'] = (xref, 'xc @lbdaRef [spx]')
+    hdr['ES_YC'] = (yref, 'yc @lbdaRef [spx]')
     hdr['ES_PA'] = (param[4], 'XY coeff.')
     hdr['ES_LMIN'] = (lmin, 'Meta-slices minimum lambda')
     hdr['ES_LMAX'] = (lmax, 'Meta-slices maximum lambda')
@@ -611,9 +610,9 @@ if __name__ == "__main__":
     spxSize = meta_cube.spxSize
     nmeta = meta_cube.nslice
 
-    print_msg("  Meta-slices before selection: "
-              "%d from %.2f to %.2f by %.2f A" % 
-              (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
+    print_msg(
+        "  Meta-slices before selection: %d from %.2f to %.2f by %.2f A" % 
+        (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
 
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
@@ -675,27 +674,23 @@ if __name__ == "__main__":
     delta0 = adr.delta           # ADR power = tan(zenithal distance)
     theta0 = adr.theta           # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)
-    xref,yref = adr.refract(
+    xmid,ymid = adr.refract(     # Back-propagate positions to lmid wavelength
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
-    xref = N.atleast_1d(xref) # Some dimension could squeezed in adr.refract
-    yref = N.atleast_1d(yref)
+    xmid = N.atleast_1d(xmid)    # Some dimensions could squeezed in adr.refract
+    ymid = N.atleast_1d(ymid)
     valid = chi2s > 0                   # Discard unfitted slices
-    xref0 = N.median(xref[valid])       # Robust to outliers
-    yref0 = N.median(yref[valid])
-    r = N.hypot(xref - xref0, yref - yref0)
-    rmax = 5*N.median(r[valid])         # Robust to outliers
+    xmid0 = N.median(xmid[valid])       # Robust to outliers
+    ymid0 = N.median(ymid[valid])
+    r = N.hypot(xmid - xmid0, ymid - ymid0)
+    rmax = 4.4478*N.median(r[valid])    # Robust to outliers 3*1.4826
     good = valid & (r <= rmax)          # Valid fit and reasonable position
     bad  = valid & (r > rmax)           # Valid fit but discarded position
     if bad.any():
         print "WARNING: %d metaslices discarded after ADR selection" % \
               (len(N.nonzero(bad)))
     print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" % 
-              (len(xref[good]),len(xref),rmax,xref0,yref0), 1)
-    xc,yc = xref[good].mean(), yref[good].mean()
-    # We could use a weighted average, but does not make much of a difference
-    # dx,dy = dparams[:,2],dparams[:,3]
-    # xc = N.average(xref[good], weights=1/dx[good]**2)
-    # yc = N.average(yref[good], weights=1/dy[good]**2)
+              (len(xmid[good]),len(xmid),rmax,xmid0,ymid0), 1)
+    xc,yc = xmid[good].mean(), ymid[good].mean() # Position at lmid
 
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
@@ -706,7 +701,7 @@ if __name__ == "__main__":
             raise ValueError('Not enough points for alpha initial guess')
 
     print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
-              (lmid,xc,yc), 1)
+              (lmid, xc, yc), 1)
     print_msg("  ADR guess: delta=%.2f, theta=%.1f deg" % 
               (delta0, theta0*TA.RAD2DEG), 1)
 
@@ -742,16 +737,16 @@ if __name__ == "__main__":
         # the remaining of the code.
         b1 = [[delta0, delta0],         # delta
               [theta0, theta0],         # theta [rad]
-              [xc, xc],                 # x0
-              [yc, yc],                 # y0
+              [xc, xc],                 # xc (position at lmid)
+              [yc, yc],                 # yc
               [xy, xy]]                 # xy
         for coeff in p1[5:6+ellDeg]+p1[6+ellDeg:npar_psf]:
             b1 += [[coeff,coeff]]       # ell and alpha coeff.
     else:
         b1 = [[None, None],             # delta
               [None, None],             # theta
-              [None, None],             # x0
-              [None, None],             # y0
+              [None, None],             # xc
+              [None, None],             # yc
               [None, None]]             # xy
         b1 += [[0, None]] + [[None, None]]*ellDeg # ell0 > 0
         if not opts.psf.endswith('powerlaw'):
@@ -1184,10 +1179,10 @@ if __name__ == "__main__":
 
         print_msg("Producing ADR plot %s..." % plot4, 1)
 
-        xguess = xc + delta0*psf_model.ADRcoeffs[:,0]*N.sin(theta0)
-        yguess = yc - delta0*psf_model.ADRcoeffs[:,0]*N.cos(theta0)
-        xfit = fitpar[2] + fitpar[0]*psf_model.ADRcoeffs[:,0]*N.sin(fitpar[1])
-        yfit = fitpar[3] - fitpar[0]*psf_model.ADRcoeffs[:,0]*N.cos(fitpar[1])
+        xguess = xc + delta0*N.sin(theta0)*psf_model.ADRcoeffs[:,0]
+        yguess = yc - delta0*N.cos(theta0)*psf_model.ADRcoeffs[:,0]
+        xfit = fitpar[2] + fitpar[0]*N.sin(fitpar[1])*psf_model.ADRcoeffs[:,0]
+        yfit = fitpar[3] - fitpar[0]*N.cos(fitpar[1])*psf_model.ADRcoeffs[:,0]
 
         fig4 = P.figure()
 
@@ -1237,16 +1232,16 @@ if __name__ == "__main__":
                      c=meta_cube.lbda[good],
                      cmap=M.cm.jet, zorder=3)
         # Plot position selection process
-        ax4c.plot(xref[good],yref[good], marker='.',
+        ax4c.plot(xmid[good], ymid[good], marker='.',
                   mfc=blue, mec=blue, ls='None') # Selected ref. positions
-        ax4c.plot(xref[bad],yref[bad], marker='.',
+        ax4c.plot(xmid[bad], ymid[bad], marker='.',
                   mfc=red, mec=red, ls='None')   # Discarded ref. positions
-        ax4c.plot((xref0,xc),(yref0,yc),'k-')
+        ax4c.plot((xmid0, xc), (ymid0, yc), 'k-')
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
         ax4c.plot(xfit, yfit, green)     # Adjusted ADR
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,),(yc,),'k+')
-        ax4c.add_patch(M.patches.Circle((xref0,yref0),radius=rmax,
+        ax4c.add_patch(M.patches.Circle((xmid0,ymid0),radius=rmax,
                                                  ec='0.8',fc='None'))
         ax4c.add_patch(M.patches.Rectangle((-7.5,-7.5),15,15,
                                                  ec='0.8',lw=2,fc='None')) # FoV
