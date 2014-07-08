@@ -1,6 +1,11 @@
+2014-07-08  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: option '-R/--rangePerSlice'
+	replaced by '-R/--rangePerCube'.
+
 2014-07-07  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
-	* lib/libExtractStar.py (get_slices_lrange): function removed. 
+	* lib/libExtractStar.py (get_slices_lrange): function removed.
 
 2014-07-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 

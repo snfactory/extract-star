@@ -16,12 +16,12 @@ parser = optparse.OptionParser(version=__version__)
 
 parser.add_option("-N", "--nmeta", type='int',
                   help="Number of meta-slices [%default].",
-                  default=12)
+                  default=6)
 parser.add_option("-r", "--range", type='string',
                   help="Flux range in percentile [%default].",
                   default='3,97')
-parser.add_option("-R", "--rangePerSlice", action='store_true',
-                  help="Compute flux range per slice.",
+parser.add_option("-R", "--rangePerCube", action='store_true',
+                  help="Compute flux range for complete cube.",
                   default=False)
 parser.add_option("-S", "--spatialStats", action='store_true',
                   help="Compute spatial statistics.",
@@ -73,8 +73,9 @@ for n,inname in enumerate(args):
     except ValueError:                  # Try to read a 3D FITS cube
         fcube = pySNIFS.SNIFS_cube(fits3d_file=inname)
         isE3D = False
-    print "%s: %d spaxels, %d slices [%.0f-%.0f A]" % \
-        (basename, fcube.nlens, fcube.nslice, fcube.lstart, fcube.lend)
+    objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
+    print "%s [%s]: %d spaxels, %d slices [%.0f-%.0f A]" % \
+        (basename, objname, fcube.nlens, fcube.nslice, fcube.lstart, fcube.lend)
     if fcube.var is None:
         print "WARNING: input cube has no variance"
 
@@ -110,7 +111,6 @@ for n,inname in enumerate(args):
     else:
         fig.subplots_adjust(bottom=0.05)
 
-    objname = fcube.e3d_data_header.get("OBJECT", 'unknown')
     efftime = fcube.e3d_data_header.get("EFFTIME", N.NaN)
     airmass = fcube.e3d_data_header.get("AIRMASS", N.NaN)
     if opts.title:
@@ -125,7 +125,7 @@ for n,inname in enumerate(args):
     extent = (cube.x.min()-0.5,cube.x.max()+0.5,
               cube.y.min()-0.5,cube.y.max()+0.5)
 
-    if not opts.rangePerSlice:
+    if opts.rangePerCube:
         if opts.variance:
             if cube.var is None:
                 parser.error("Cube %s has no variance" % basename)
@@ -157,7 +157,7 @@ for n,inname in enumerate(args):
                   fcube.lbda[ibounds[i]],fcube.lbda[ibounds[i+1]-1],
                   m,s,s/m*100]]
 
-        if opts.rangePerSlice:
+        if not opts.rangePerCube:
             if cube.var is not None:
                 var = cube.slice2d(i, coord='p', var=True)
                 vmin,vmax = N.percentile(data[N.isfinite(var)], (fmin,fmax))
@@ -174,8 +174,7 @@ for n,inname in enumerate(args):
         if opts.spatialStats:
             lbl += "\nRMS=%.2f%%" % (s/m*100)
         ax.text(0.1,0.1, lbl, 
-                fontsize='small', horizontalalignment='left', 
-                transform=ax.transAxes)
+                fontsize='small', ha='left', transform=ax.transAxes)
         ax.axis(extent)
 
         # Axis
@@ -194,7 +193,7 @@ for n,inname in enumerate(args):
                         size='x-small', ha='center', va='center')
 
     # Colorbar
-    if not opts.rangePerSlice:
+    if opts.rangePerCube:
         cax = fig.add_axes([0.92,0.25,0.02,0.7])
         cbar = fig.colorbar(im, cax, orientation='vertical')
         P.setp(cbar.ax.get_yticklabels(), fontsize='small')

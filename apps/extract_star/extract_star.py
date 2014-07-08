@@ -96,7 +96,6 @@ import libExtractStar as libES
 import ToolBox.Atmosphere as TA
 from ToolBox.Arrays import metaslice
 from ToolBox.Misc import make_method, warning2stdout
-from ToolBox import MPL
 
 import warnings
 warnings.showwarning = warning2stdout   # Redirect warnings to stdout
@@ -106,13 +105,6 @@ warnings.filterwarnings("ignore", "Overwriting existing file")
 N.set_printoptions(linewidth=999)       # X-wide lines
 
 LbdaRef = libES.LbdaRef
-
-# Non-default colors
-blue   = MPL.blue
-red    = MPL.red
-green  = MPL.green
-orange = MPL.orange
-purple = MPL.purple
 
 # MLA tilt: MLA vertical is rotated by ~5° wrt. north: theta_MLA =
 # theta_DTCS + 5°
@@ -984,7 +976,7 @@ if __name__ == "__main__":
 
         import matplotlib as M
         backends = {'png':'Agg','eps':'PS','pdf':'PDF','svg':'SVG'}
-        if opts.graph.lower() in backends:
+        try:
             M.use(backends[opts.graph.lower()])
             basename = os.path.splitext(opts.out)[0]
             plot1 = os.path.extsep.join((basename+"_plt" , opts.graph))
@@ -995,10 +987,18 @@ if __name__ == "__main__":
             plot6 = os.path.extsep.join((basename+"_fit5", opts.graph))
             plot7 = os.path.extsep.join((basename+"_fit6", opts.graph))
             plot8 = os.path.extsep.join((basename+"_fit7", opts.graph))
-        else:
+        except KeyError:
             opts.graph = 'pylab'
             plot1 = plot2 = plot3 = plot4 = plot5 = plot6 = plot7 = plot8 = ''
         import matplotlib.pyplot as P
+
+        # Non-default colors
+        from ToolBox import MPL
+        blue   = MPL.blue
+        red    = MPL.red
+        green  = MPL.green
+        orange = MPL.orange
+        purple = MPL.purple
 
         # Plot of the star and sky spectra -----------------------------------
 
