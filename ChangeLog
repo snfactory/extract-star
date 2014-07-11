@@ -1,3 +1,8 @@
+2014-07-11  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (Hyper_PSF3D_PL, Hyper_PSF2D_PL): add
+	priors on shape parameters (xy and y2).
+
 2014-07-08  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/plot_slices.py: option '-R/--rangePerSlice'

@@ -47,7 +47,7 @@ PSF parameter keywords
 - ES_AIRM: Effective airmass, from ADR fit
 - ES_PARAN: Effective parallactic angle [deg], from ADR fit
 - ES_[X|Y]C: Point-source position [spx] at reference wavelength
-- ES_PA: XY coefficient (position angle)
+- ES_XY: XY coefficient (position angle)
 - ES_L[MIN|MAX]: wavelength of first/last meta-slice
 - ES_Exx: Y2 coefficients (flattening)
 - ES_Axx: alpha coefficient
@@ -309,7 +309,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
     if opts.ellDeg:                     # Beyond a simple constant
         c_ell = libES.polyConvert(param[5:6+opts.ellDeg], trans=(a,b))
     else:
-        c_ell = param[5:6+opts.ellDeg]
+        c_ell = param[5:6]              # Simple constant
     if opts.alphaDeg and not psfname.endswith('powerlaw'):
         c_alp = libES.polyConvert(
             param[6+opts.ellDeg:7+opts.ellDeg+opts.alphaDeg], trans=(a,b))
@@ -325,7 +325,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
     hdr['ES_PARAN'] = (adr.get_parangle(), 'Effective parangle [deg]')
     hdr['ES_XC'] = (xref, 'xc @lbdaRef [spx]')
     hdr['ES_YC'] = (yref, 'yc @lbdaRef [spx]')
-    hdr['ES_PA'] = (param[4], 'XY coeff.')
+    hdr['ES_XY'] = (param[4], 'XY coeff.')
     hdr['ES_LMIN'] = (lmin, 'Meta-slices minimum lambda')
     hdr['ES_LMAX'] = (lmax, 'Meta-slices maximum lambda')
 
@@ -507,6 +507,8 @@ if __name__ == "__main__":
                 "Supernova mode requires a seeing prior (--seeingprior).")
         if not opts.psf.endswith('powerlaw'):
             parser.error("Supernova mode implemented for 'powerlaw' PSF only.")
+        if opts.alphaDeg!=2 or opts.ellDeg!=0:
+            parser.error("Supernova mode requires '--alphaDeg 2 --ellDeg 0'.")
 
     # Input datacube ===========================================================
 
@@ -626,7 +628,7 @@ if __name__ == "__main__":
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
         seeingprior=opts.seeingprior if opts.supernova else None,
-        verbosity=opts.verbosity)
+        airmass=airmass, verbosity=opts.verbosity)
     print_msg("", 1)
 
     params = params.T                      # (nparam,nslice)
@@ -687,7 +689,7 @@ if __name__ == "__main__":
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nmeta)
-        if len(xc_vec[good]) <= ellDeg+1:
+        if len(xc_vec[good]) <= ellDeg+1 and not opts.supernova:
             raise ValueError('Not enough points for ellipticity initial guess')
         if len(xc_vec[good]) <= alphaDeg+1 and not opts.supernova:
             raise ValueError('Not enough points for alpha initial guess')
@@ -698,9 +700,15 @@ if __name__ == "__main__":
               (delta0, theta0*TA.RAD2DEG), 1)
 
     # 2) Other parameters
-    xy = N.median(xy_vec[good])
-    # Polynomial-fit with 3-MAD clipping
-    polEll = pySNIFS.fit_poly(ell_vec[good], 3, ellDeg, lbda_rel[good])
+    if opts.supernova:
+        # Supernova mode: predict shape parameters
+        xy = 0.                         # Safe bet
+        guessEllCoeffs = [libES.Hyper_PSF3D_PL.predict_y2_param(inhdr)]
+    else:
+        xy = N.median(xy_vec[good])
+        # Polynomial-fit with 3-MAD clipping
+        polEll = pySNIFS.fit_poly(ell_vec[good], 3, ellDeg, lbda_rel[good])
+        guessEllCoeffs = polEll.coeffs[::-1]
     if not opts.psf.endswith('powerlaw'): # Polynomial expansion
         # Polynomial-fit with 3-MAD clipping
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
@@ -717,7 +725,7 @@ if __name__ == "__main__":
     # Filling in the guess parameter arrays (px) and bounds arrays (bx)
     p1     = [None]*(npar_psf+nmeta)
     p1[:5] = [delta0, theta0, xc, yc, xy]
-    p1[5:6+ellDeg]        = polEll.coeffs[::-1]
+    p1[5:6+ellDeg]        = guessEllCoeffs
     p1[6+ellDeg:npar_psf] = guessAlphaCoeffs
     p1[npar_psf:npar_psf+nmeta] = int_vec.tolist() # Intensities
 
@@ -844,6 +852,8 @@ if __name__ == "__main__":
         raise ValueError('Unphysical seeing (%.2f")' % seeing)
     if not 1. < adr.get_airmass() < 4.:
         raise ValueError('Unphysical airmass (%.3f)' % adr.get_airmass())
+    if not 0.4 < seeing < 4.:
+        raise ValueError('Unphysical seeing (%.2f")' % seeing)
 
     # Test positivity of alpha and ellipticity. At some point, maybe
     # it would be necessary to force positivity in the fit
@@ -857,9 +867,12 @@ if __name__ == "__main__":
         raise ValueError("Alpha is negative (%.2f) at %.0f A" % 
                          (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
     fit_ell = libES.polyEval(fitpar[5:6+ellDeg], lbda_rel)
-    if fit_ell.min() < 0:
-        raise ValueError("Ellipticity is negative (%.2f) at %.0f A" % 
+    if fit_ell.min() < 0.2:
+        raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
                          (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
+    if fit_ell.max() > 0.5:
+        raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
+                         (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
 
     # Computing final spectra for object and background ======================
 
@@ -1262,7 +1275,7 @@ if __name__ == "__main__":
 
         print_msg("Producing model parameter plot %s..." % plot6, 1)
 
-        guessEll = N.polyval(polEll.coeffs,   lbda_rel)
+        guessEll = libES.polyEval(guessEllCoeffs, lbda_rel)
         if not opts.psf.endswith('powerlaw'):
             guessAlpha = libES.polyEval(guessAlphaCoeffs, lbda_rel)
         else:
@@ -1346,7 +1359,7 @@ if __name__ == "__main__":
         ax6b.text(0.97, 0.3,
                   'Guess: %s' % (', '.join(
                       [ 'e%d=%.2f' % (i,e)
-                        for i,e in enumerate(polEll.coeffs[::-1]) ]) ),
+                        for i,e in enumerate(guessEllCoeffs) ]) ),
                   transform=ax6b.transAxes, fontsize='small', ha='right')
         ax6b.text(0.97, 0.1,
                   'Fit: %s' % (', '.join(

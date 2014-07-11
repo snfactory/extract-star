@@ -36,7 +36,7 @@ def print_msg(str, limit, verb=0):
 # PSF fitting ==============================
 
 def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
-                   seeingprior=None, verbosity=1):
+                   seeingprior=None, airmass=1., verbosity=1):
     """Adjust PSF parameters on each (meta)slices of (meta)*cube*
     using PSF *psf_fn* and a background of polynomial degree
     *skyDeg*. Add a prior on seeing if any."""
@@ -162,8 +162,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
               [0, 0],                   # theta (unfitted)
               [-10, 10],                # xc
               [-10, 10],                # yc
-              [None, None],             # xy parameter
-              [0, None],                # Ellipticity parameter > 0
+              [-0.6, +0.6],             # xy parameter
+              [0.2, 5],                 # Ellipticity parameter > 0
               [0.1, 10],                # alpha > 0
               [0, None]]                # Intensity > 0
 
@@ -195,7 +195,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Hyper-term on alpha from seeing prior
         hyper = {}
         if seeingprior:
-            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingprior, channel)
+            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingprior, airmass, channel)
             print_msg(str(hterm), 2, verbosity)
             hyper = {psf_fn.name: hterm}
 
@@ -1338,6 +1338,8 @@ class Hyper_PSF3D_PL(object):
         ellDeg = psf_ctes[3]            # Ellipticity expansion degree
         if alphaDeg != 2:
             raise NotImplementedError("Hyper-term trained for alphaDeg=2 only")
+        if ellDeg != 0:
+            raise NotImplementedError("Hyper-term trained for ellDeg=0 only")
         self.alphaSlice = slice(6+ellDeg, 7+ellDeg+alphaDeg)
 
         self.hyper = hyper              # Global hyper-scaling
@@ -1349,6 +1351,7 @@ class Hyper_PSF3D_PL(object):
         # Compute predictions and associated accuracy
         self._predict_ADR(inhdr, verbose=verbose) # ADR parameters
         self._predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
+        self._predict_shape(inhdr, verbose=verbose) # Shape (xy & y2) params
 
     @classmethod
     def predict_adr_params(cls, inhdr):
@@ -1396,6 +1399,22 @@ class Hyper_PSF3D_PL(object):
             raise KeyError("Unknown channel '%s'" % channel)
 
         return coeffs
+
+    @classmethod
+    def predict_y2_param(cls, inhdr):
+        """Predict shape parameter y2."""
+
+        # Ad-hoc linear regressions
+        airmass = inhdr['AIRMASS']
+        X = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
+        if X=='B':                      # Blue
+            y2 = -0.323 * airmass + 1.730
+        elif X=='R':                    # Red
+            y2 = -0.442 * airmass + 1.934
+        else:
+            raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
+
+        return y2
 
     def _predict_ADR(self, inhdr, verbose=False):
         """Predict ADR parameters delta,theta and prediction accuracy
@@ -1453,6 +1472,29 @@ class Hyper_PSF3D_PL(object):
             print "  ~dParams:  dp0=% .3f dp1=% .3f dp2=% .3f" % \
                   tuple(self.plicov.diagonal()**-0.5)
 
+    def _predict_shape(self, inhdr, verbose=False):
+        """Predict shape parameters y2,xy and prediction accuracy
+        dy2,dxy, for use in hyper-term computation. 1st-order
+        corrections and model dispersions were obtained from faint
+        standard star ad-hoc analysis (`runaway.py`)."""
+
+        self.y2 = self.predict_y2_param(inhdr)
+        self.xy = 0.                    # Pure dispersion
+
+        # Final model dispersion
+        if self.X=='B':                 # Blue
+            self.dy2 = 0.221
+            self.dxy = 0.041
+        else:                           # Red
+            self.dy2 = 0.269
+            self.dxy = 0.050
+
+        if verbose:
+            print "Shape parameter predictions:"
+            print "  Airmass:       %+.2f" % inhdr['AIRMASS']
+            print "  Parameters: y²=% .3f,  xy=% .3f" % (self.y2, self.xy)
+            print "  dParam:    Δy²=% .3f, Δxy=% .3f" % (self.dy2, self.dxy)
+
     def comp(self, param):
         """Input parameters, same as `ExposurePSF.comp`, notably:
         
@@ -1466,26 +1508,31 @@ class Hyper_PSF3D_PL(object):
         # Term from ADR parameters
         hadr = ( (param[0]-self.delta)/self.ddelta )**2 + \
                ( (param[1]-self.theta)/self.dtheta )**2
-        
+        # Term from shape parameters
+        hsha = ( (param[4]-self.xy)/self.dxy )**2 + \
+               ( (param[5]-self.y2)/self.dy2 )**2        
         # Term from PL parameters
         dalpha = param[self.alphaSlice] - self.plpars
         # Faster than dalpha.dot(self.plicov).dot(dalpha)
         hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
 
-        return self.hyper*(hadr + hpl)  # Scalar ()
+        return self.hyper*(hadr + hsha + hpl)  # Scalar ()
 
     def deriv(self, param):
 
-        jac = N.zeros(len(param))
+        hjac = N.zeros(len(param))      # Half jacobian
 
         # ADR parameter jacobian
-        jac[0] = 2*(param[0]-self.delta)/self.ddelta**2
-        jac[1] = 2*(param[1]-self.theta)/self.dtheta**2
+        hjac[0] = (param[0]-self.delta)/self.ddelta**2
+        hjac[1] = (param[1]-self.theta)/self.dtheta**2
+        # Shape parameter jacobian
+        hjac[4] = (param[4]-self.xy)/self.dxy**2
+        hjac[5] = (param[5]-self.y2)/self.dy2**2
         # PL-expansion parameter jacobian
-        jac[self.alphaSlice] = 2*N.dot(
+        hjac[self.alphaSlice] = N.dot(
             self.plicov, param[self.alphaSlice] - self.plpars)
 
-        return self.hyper*jac           # (npar,)
+        return self.hyper*2*hjac        # (npar,)
 
     def __str__(self):
 
@@ -1496,18 +1543,20 @@ class Hyper_PSF3D_PL(object):
         dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
         s += "  PL: p0=%+.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
         s += "  PL: p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
-        s += "  PL: p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
+        s += "  PL: p2=%+.3f +/- %.3f\n" % (self.plpars[2], dplpars[2])
+        s += "  Shape: xy=% 5.3f +/- %.3f\n" % (self.xy, self.dxy)
+        s += "  Shape: y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
 
         return s
     
 class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
 
-    def __init__(self, lbda, seeing, channel, hyper=1., verbose=False):
+    def __init__(self, lbda, seeing, airmass, channel, hyper=1., verbose=False):
 
         # Mimic PSF constantes and input header
         psf_ctes = [None, None, 2, 0]
         inhdr = {'CHANNEL':channel,
-                 'AIRMASS':1.,
+                 'AIRMASS':airmass,
                  'PARANG':0.}
 
         Hyper_PSF3D_PL.__init__(self, psf_ctes, inhdr, seeing,
@@ -1536,21 +1585,29 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         - param[7]: Pount-source intensity
         """
 
-        return self.hyper*((param[6] - self.alpha)/self.dalpha)**2
+        return self.hyper*(
+            ((param[4] - self.xy)/self.dxy)**2 +
+            ((param[5] - self.y2)/self.dy2)**2 +
+            ((param[6] - self.alpha)/self.dalpha)**2
+            )
 
     def deriv(self, param):
 
-        jac = N.zeros(len(param))
-        jac[6] = 2*(param[6] - self.alpha)/self.dalpha**2
+        hjac = N.zeros(len(param))      # Half jacobian
+        hjac[4] = (param[4] - self.xy)/self.dxy**2
+        hjac[5] = (param[5] - self.y2)/self.dy2**2
+        hjac[6] = (param[6] - self.alpha)/self.dalpha**2
 
-        return self.hyper*jac           # (npar,)
+        return self.hyper*2*hjac        # (npar,)
 
     def __str__(self):
 
         s = "PSF2D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
-        s += "  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)" % \
+        s += "  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)\n" % \
              (self.alpha, self.dalpha,
               Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)
+        s += "  Pred. xy:   %+.3f +/- %.3f\n" % (self.xy, self.dxy)
+        s += "  Pred. y2:   %+.3f +/- %.3f" % (self.y2, self.dy2)
         
         return s
     
