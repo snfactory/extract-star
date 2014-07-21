@@ -176,7 +176,7 @@ def write_fits(self, filename=None, header=None):
 
     return hduList                      # For further handling if needed
 
-@make_method(pySNIFS.cube)
+@make_method(pySNIFS.SNIFS_cube)
 def flag_nans(cube, varflag=0, name='cube'):
     """Flag non-finite values (NaN or Inf) in `cube.data|var` in with
     `varflag` in `cube.var`."""
