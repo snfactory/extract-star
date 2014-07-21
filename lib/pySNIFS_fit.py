@@ -959,9 +959,9 @@ class model:
 
         return s
 
-    def param_cov(self, param=None):
+    def param_cov(self, param=None, hyper=True):
         """Adjusted parameter covariance matrix computed from
-        approximated hessian (not including hyper-term if any).
+        approximated hessian (including or not hyper-term if any).
 
         Hessian is 2nd-order derivative matrix, numerically estimated
         from 1st-order derivative vector. Non-fitted elements (lb=ub)
@@ -971,8 +971,7 @@ class model:
         if param is None:
             param = self.fitpar
 
-        # Do not take into account hyper-term
-        objgrad = lambda param: self.objgrad(param=param, hyper=False)
+        objgrad = lambda param: self.objgrad(param=param, hyper=hyper)
         hess = approx_deriv(objgrad, param) # Hessian approximation
         # Unfixed parameters
         free = ~N.array([ pmin==pmax!=None for pmin,pmax in self.bounds ])

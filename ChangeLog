@@ -1,3 +1,17 @@
+2014-07-21  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (flag_nans): flag-out
+	non-finite data or variance values in cubes.
+
+	* lib/libExtractStar.py (fit_metaslices): use central spaxels only
+	to roughly guess point-source position (some DDT-cubes have nasty
+	NaN's in the external parts).
+
+2014-07-15  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/plot_slices.py: option '-s/--spec l1,l2,...'
+	can now plot individual spectra.
+
 2014-07-11  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (Hyper_PSF3D_PL, Hyper_PSF2D_PL): add

@@ -99,19 +99,20 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Fill-in the meta-slice
         print_msg("Meta-slice #%d/%d, %.0f A:" % (i+1,cube.nslice,cube.lbda[i]),
                   2, verbosity)
+        # Single-slice cubes
         cube_star.lbda = N.array([cube.lbda[i]])
         cube_star.data = cube.data[i, N.newaxis]
-        cube_star.var  = cube.var[i,  N.newaxis]
+        cube_star.var  =  cube.var[i, N.newaxis]
         cube_sky.data  = cube.data[i, N.newaxis].copy() # Will be modified
-        cube_sky.var   = cube.var[i,  N.newaxis].copy()
+        cube_sky.var   =  cube.var[i, N.newaxis].copy()
 
         # Sky median estimate from FoV edge spx
-        skyLev = N.median(cube_sky.data.T[skySpx].squeeze())
+        skyLev = N.median(cube_sky.data[:,skySpx], axis=None)
 
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels
             # of a given cube slice.
-            cube_sky.var.T[~skySpx] = 0 # Discard central spaxels
+            cube_sky.var[:,~skySpx] = 0 # Discard central spaxels
             if not chi2fit:
                 cube_sky.var[cube_sky.var > 0] = 1 # Least-square
             model_sky = pySNIFS_fit.model(data=cube_sky,
@@ -126,12 +127,13 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()                    # Intensity
         if (xc,yc)==(None,None):                # No previous estimate
-            xc = N.average(cube.x, weights=medstar) # Flux-weighted centroid
-            yc = N.average(cube.y, weights=medstar)
+            # Flux-weighted centroid on central part
+            xc = N.average(cube.x[~skySpx], weights=medstar[~skySpx])
+            yc = N.average(cube.y[~skySpx], weights=medstar[~skySpx])
             if not (-7 < xc < 7 and -7 < yc < 7):
                 xc,yc = 0.,0.
 
-        cube_sky.data -= skyLev
+        cube_sky.data -= skyLev         # Subtract background level
         if chi2fit:
             cube_sky.var = cube.var[i, N.newaxis] # Reset to cube.var for chi2
         else:
@@ -142,10 +144,13 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                                         func=['gaus2D','poly2D;0'],
                                         param=[[xc,yc,1,1,imax],[0]],
                                         bounds=[ [[-7.5,7.5]]*2 + # xc,yc
-                                                 [[0.1,5]]*2 +    # sx,sy
-                                                 [[0,None]],      # intensity
+                                                 [[0.4,4]]*2 +    # sx,sy
+                                                 [[0,5*imax]],    # intensity
                                                  [[None,None]] ]) # background
         model_gauss.minimize(verbose=(verbosity >= 3), tol=1e-4)
+        facts = model_gauss.facts(params=verbosity >= 3,
+                                  names=['xc','yc','sx','sy','I','B'])
+        print_msg(facts, 2, verbosity)
 
         if model_gauss.success:
             xc,yc = model_gauss.fitpar[:2] # Update centroid position
@@ -205,7 +210,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                                        myfunc={psf_fn.name: psf_fn},
                                        hyper=hyper)
 
-        if verbosity >= 3:
+        if verbosity >= 4:
             print "Gradient checks:"    # Includes hyper-term if any
             model_star.check_grad()
 
@@ -213,7 +218,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
 
         print_msg(model_star.facts(params=(verbosity >= 2), names=parnames),
-                  2, verbosity)
+                  1, verbosity)
         if seeingprior:
             print_msg("  Hyper-term: h=%f" % hterm.comp(model_star.fitpar),
                       2, verbosity)
@@ -285,10 +290,13 @@ def extract_specs(cube, psf, skyDeg=0,
     assert skyDeg >= -1, \
            "skyDeg=%d is invalid (should be >=-1)" % skyDeg
 
-    if (cube.var>1e20).any():
+    if (N.isnan(cube.var).any()):
+        print "WARNING: discarding NaN variances in extract_specs"
+        cube.var[N.isnan(cube.var)] = 0
+    if (cube.var > 1e20).any():
         print "WARNING: discarding infinite variances in extract_specs"
         cube.var[cube.var>1e20] = 0
-    if (cube.var<0).any():              # There should be none anymore
+    if (cube.var < 0).any():              # There should be none anymore
         print "WARNING: discarding negative variances in extract_specs"
         cube.var[cube.var<0] = 0
 
@@ -905,8 +913,8 @@ def quadEllipse(a,b,c,d,f,g):
     return x0,y0,ap,bp,phi
 
 def flatAndPA(cy2, c2xy):
-    """Return flattening q=b/a and position angle PA [deg] for ellipse defined
-    by x**2 + cy2*y**2 + 2*c2xy*x*y = 1.
+    """Return flattening q=b/a and position angle PA [deg] for ellipse
+    defined by x**2 + cy2*y**2 + 2*c2xy*x*y = 1.
     """
 
     x0,y0,a,b,phi = quadEllipse(1,c2xy,cy2,0,0,-1)

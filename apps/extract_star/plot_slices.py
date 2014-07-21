@@ -32,9 +32,8 @@ parser.add_option("-g", "--graph", type="string",
 parser.add_option("-V", "--variance", action='store_true',
                   help="Plot variance rather than signal.",
                   default=False)
-parser.add_option("-s", "--spec", type='choice',
-                  choices=['mean','stack','none'],
-                  help="Plotted spectra (mean|stack|none) [%default]",
+parser.add_option("-s", "--spec", type='string',
+                  help="Plotted spectra (mean|stack|none|l1[,l2]) [%default]",
                   default='mean')
 parser.add_option("-T", "--title", type="string",
                   help="Plot title")
@@ -49,6 +48,13 @@ try:
     assert 0<=fmin<100 and 0<fmax<=100 and fmin<fmax
 except (ValueError,AssertionError,):
     parser.error("invalid option '-r/--range %s'" % opts.range)
+
+nos = []
+if opts.spec not in ['mean','stack','none']:
+    try:
+        nos = [ int(no) for no in opts.spec.split(',') ]
+    except ValueError:
+        parser.error("Invalid option '-s/--spec %s'" % opts.spec)
 
 # Matplolib backend
 import matplotlib as M
@@ -122,8 +128,8 @@ for n,inname in enumerate(args):
 
     ncol = int(N.floor(N.sqrt(cube.nslice)))
     nrow = int(N.ceil(cube.nslice/float(ncol)))
-    extent = (cube.x.min()-0.5,cube.x.max()+0.5,
-              cube.y.min()-0.5,cube.y.max()+0.5)
+    extent = (cube.x.min()-0.5, cube.x.max()+0.5,
+              cube.y.min()-0.5, cube.y.max()+0.5)
 
     if opts.rangePerCube:
         if opts.variance:
@@ -154,8 +160,8 @@ for n,inname in enumerate(args):
         gdata = data[N.isfinite(data)] # Non-NaN values
         m,s = gdata.mean(),gdata.std()
         rows += [[i+1, cube.lbda[i],
-                  fcube.lbda[ibounds[i]],fcube.lbda[ibounds[i+1]-1],
-                  m,s,s/m*100]]
+                  fcube.lbda[ibounds[i]], fcube.lbda[ibounds[i+1]-1],
+                  m, s, s/m*100]]
 
         if not opts.rangePerCube:
             if cube.var is not None:
@@ -166,14 +172,14 @@ for n,inname in enumerate(args):
 
         im = ax.imshow(data,
                        origin='lower', extent=extent, interpolation='nearest',
-                       vmin=vmin, vmax=vmax, cmap=M.cm.jet)
+                       vmin=vmin, vmax=vmax)
 
         lbl = u"%.0f Å [%.0f-%.0f]" % (cube.lbda[i],
                                        fcube.lbda[ibounds[i]],
                                        fcube.lbda[ibounds[i+1]-1])
         if opts.spatialStats:
             lbl += "\nRMS=%.2f%%" % (s/m*100)
-        ax.text(0.1,0.1, lbl, 
+        ax.text(0.1, 0.1, lbl, 
                 fontsize='small', ha='left', transform=ax.transAxes)
         ax.axis(extent)
 
@@ -189,7 +195,7 @@ for n,inname in enumerate(args):
 
         if opts.label and (i==0):
             for no,ii,jj in zip(cube.no,cube.i,cube.j):
-                ax.text(ii-7,jj-7,str(no),
+                ax.text(ii-7, jj-7, str(no),
                         size='x-small', ha='center', va='center')
 
     # Colorbar
@@ -203,39 +209,63 @@ for n,inname in enumerate(args):
         ax2 = fig.add_axes([0.07,0.06,0.88,0.15])
 
         if opts.spec == 'stack':        # Stacked spectra
-            if fcube.var is not None:
-                vmin,vmax = N.percentile(fcube.data[N.isfinite(fcube.var)],
-                                         (fmin,fmax))
+            extent = (fcube.lstart-fcube.lstep/2, fcube.lend+fcube.lstep/2,
+                      0.5, fcube.nlens+0.5)
+            if opts.variance:
+                vmin,vmax = N.percentile(fcube.var, (fmin,fmax))
+                ax2.imshow(fcube.var.T, vmin=vmin, vmax=vmax, extent=extent)
             else:
-                vmin,vmax = N.percentile(fcube.data, (fmin,fmax))
-            ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax,
-                       extent=(fcube.lstart,fcube.lend,0,fcube.nlens-1))
+                if fcube.var is not None:
+                    vmin,vmax = N.percentile(fcube.data[N.isfinite(fcube.var)],
+                                             (fmin,fmax))
+                else:
+                    vmin,vmax = N.percentile(fcube.data, (fmin,fmax))
+                ax2.imshow(fcube.data.T, vmin=vmin, vmax=vmax, extent=extent)
             ax2.set_aspect('auto', adjustable='box')
             ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
             ax2.set_ylabel("Spx #", fontsize='small')
             P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
                    fontsize='x-small')
 
-        elif opts.spec == 'mean':       # Mean spectrum
-            spec = fcube.data.mean(axis=1)
-            ax2.plot(fcube.lbda, spec, 'b-')
-
-            if fcube.var is not None:
-                dspec = N.sqrt(fcube.var.sum(axis=1)/fcube.nlens**2)
-                ax2.errorband(fcube.lbda, spec, dspec,
-                              fc='b', ec='b', alpha=0.3)
-                ax2.errorbar(cube.lbda, cube.data.mean(axis=1),
-                             yerr=N.sqrt(cube.var.sum(axis=1))/cube.nlens,
-                             fmt='go')
-            else:
-                ax2.plot(cube.lbda, cube.data.mean(axis=1), 'go')
-
-            ax2.set_xlim(fcube.lstart,fcube.lend)
+        else:
+            if opts.spec == 'mean':     # Mean spectrum
+                if not opts.variance:
+                    specs = [ fcube.data.mean(axis=1) ]
+                    if fcube.var is not None:
+                        dspecs = [ N.sqrt(fcube.var.sum(axis=1))/fcube.nlens ]
+                        ax2.errorbar(
+                            cube.lbda, cube.data.mean(axis=1),
+                            yerr=N.sqrt(cube.var.sum(axis=1))/cube.nlens,
+                            fmt='ko')
+                    else:
+                        dspecs = [ None ]
+                        ax2.plot(cube.lbda, cube.data.mean(axis=1), 'ko')
+                else:
+                    specs = [ fcube.var.mean(axis=1) ]
+                    dspecs = [ None ]
+                fxlabel = "Mean variance" if opts.variance else "Mean flux"
+                nos = [ -1 ]
+            else:                       # Individual spectra
+                if not opts.variance:
+                    specs = [ fcube.spec(no=no) for no in nos ]
+                    if fcube.var is not None:
+                        dspecs = [
+                            N.sqrt(fcube.spec(no=no, var=True)) for no in nos ]
+                    else:
+                        dspecs = [ None for no in nos ]
+                else:
+                    specs = [ fcube.spec(no=no, var=True) for no in nos ]
+                    dspecs = [ None for no in nos ]
+                fxlabel = "Variance" if opts.variance else "Flux"
+            for no,spec,dspec in zip(nos,specs,dspecs):
+                l, = ax2.plot(fcube.lbda, spec,
+                              label='#%d' % no if no>=0 else '_')
+                if dspec is not None:
+                    col = l.get_color()
+                    ax2.errorband(fcube.lbda, spec, dspec,
+                                  fc=col, ec=col, alpha=0.3)
+            ax2.set_xlim(fcube.lstart, fcube.lend)
             ax2.set_xlabel(u"Wavelength [Å]", fontsize='small')
-            if opts.variance:
-                fxlabel = "Mean variance"
-            else:
-                fxlabel = "Mean flux"
             fxunits = fcube.e3d_data_header.get("FLXUNITS", 'none given')
             if fxunits.lower() != 'none given':
                 fxlabel += " [%s]" % fxunits
@@ -244,6 +274,7 @@ for n,inname in enumerate(args):
             ax2.set_ylabel(fxlabel, fontsize='small')
             P.setp(ax2.get_xticklabels()+ax2.get_yticklabels(),
                    fontsize='x-small')
+            ax2.legend(loc='best', fontsize='small')
 
         # Metaslice boundaries
         for i in ibounds[:-1]:
@@ -255,7 +286,7 @@ for n,inname in enumerate(args):
         print "Saving plot in", figname
         fig.savefig(figname)
 
-print rst_table(rows,fmt,hdr)
+print rst_table(rows, fmt, hdr)
 
 if not backend:
     P.show()

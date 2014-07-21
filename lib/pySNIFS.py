@@ -597,6 +597,8 @@ class SNIFS_cube:
             
         elif fits3d_file is not None:
             
+            self.from_e3d_file = False
+
             fits3d_cube = pyfits.open(fits3d_file, ignore_missing_end=True)
             # Get keywords from primary header
             gen_header = dict(fits3d_cube[0].header.items())
@@ -762,10 +764,9 @@ class SNIFS_cube:
                     raise ValueError("Coord. flag should be 'p' or 'w'")
 
             if n1 >= 0 and n2 <= num.shape(self.data)[0]:
+                slice_2D = num.zeros((nx,ny),num.float32)
                 if NAN:
-                    slice_2D = num.zeros((nx,ny),num.float32) * num.nan
-                else:
-                    slice_2D = num.zeros((nx,ny),num.float32)
+                    slice_2D *= num.nan
                 i = num.array(self.i)
                 j = num.array(self.j)
                 if var:
@@ -794,10 +795,9 @@ class SNIFS_cube:
                     lbda = self.lstart+num.arange(imax-imin)*self.lstep
                     tck = I.splrep(weight.x,weight.data,s=0)
                     w = I.splev(lbda,tck)
+                    slice_2D = num.zeros((nx,ny),num.float32)
                     if NAN:
-                        slice_2D = num.zeros((nx,ny),num.float32) * num.nan
-                    else:
-                        slice_2D = num.zeros((nx,ny),num.float32)
+                        slice_2D *= num.nan
                     i = num.array(self.i)
                     j = num.array(self.j)
                     if var:

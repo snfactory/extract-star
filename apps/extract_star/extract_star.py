@@ -176,6 +176,18 @@ def write_fits(self, filename=None, header=None):
 
     return hduList                      # For further handling if needed
 
+@make_method(pySNIFS.cube)
+def flag_nans(cube, varflag=0, name='cube'):
+    """Flag non-finite values (NaN or Inf) in `cube.data|var` in with
+    `varflag` in `cube.var`."""
+
+    for label,arr in (('data',cube.data), ('variance',cube.var)):
+        bad = ~N.isfinite(arr)
+        if bad.any():
+            print "WARNING: %s %s contains %d NaNs/%d Inf values." % \
+                  (name, label, len(arr[N.isnan(arr)]), len(arr[N.isinf(arr)]))
+        cube.var[bad] = varflag
+
 
 def create_2Dlog(opts, cube, params, dparams, chi2):
     """Dump an informative text log about the PSF (metaslice) 2D-fit."""
@@ -525,6 +537,7 @@ if __name__ == "__main__":
         inhdr = F.getheader(opts.input, 0) # Primary extension
         full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
         isE3D = False
+    full_cube.flag_nans(name='input cube')
     step = full_cube.lstep
 
     print_msg("Cube %s [%s]: %d slices [%.2f-%.2f], %d spaxels" % 
@@ -599,6 +612,7 @@ if __name__ == "__main__":
         meta_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
     else:
         meta_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input, slices=slices)
+    meta_cube.flag_nans(name='meta-cube')
     meta_cube.x = meta_cube.i - 7       # From I,J to spx coords
     meta_cube.y = meta_cube.j - 7
     spxSize = meta_cube.spxSize
@@ -682,6 +696,9 @@ if __name__ == "__main__":
     if bad.any():
         print "WARNING: %d metaslices discarded after ADR selection" % \
               (len(N.nonzero(bad)))
+    if not good.any():
+        raise ValueError('No position initial guess')
+
     print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" % 
               (len(xmid[good]),len(xmid),rmax,xmid0,ymid0), 1)
     xc,yc = xmid[good].mean(), ymid[good].mean() # Position at lmid
@@ -797,7 +814,7 @@ if __name__ == "__main__":
                                    param=param, bounds=bounds,
                                    myfunc={psfFn.name: psfFn},
                                    hyper=hyper)
-    if opts.verbosity >= 3:
+    if opts.verbosity >= 4:
         print "Gradient checks:"        # Include hyper-terms if any
         data_model.check_grad()
 
@@ -852,8 +869,6 @@ if __name__ == "__main__":
         raise ValueError('Unphysical seeing (%.2f")' % seeing)
     if not 1. < adr.get_airmass() < 4.:
         raise ValueError('Unphysical airmass (%.3f)' % adr.get_airmass())
-    if not 0.4 < seeing < 4.:
-        raise ValueError('Unphysical seeing (%.2f")' % seeing)
 
     # Test positivity of alpha and ellipticity. At some point, maybe
     # it would be necessary to force positivity in the fit
@@ -870,7 +885,7 @@ if __name__ == "__main__":
     if fit_ell.min() < 0.2:
         raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
                          (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
-    if fit_ell.max() > 0.5:
+    if fit_ell.max() > 5.:
         raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
                          (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
 
@@ -1078,7 +1093,8 @@ if __name__ == "__main__":
             fit = mod[i,:]
             ax = fig2.add_subplot(nrow, ncol, i+1)
             ax.plot(sno, data, color=blue, ls='-')  # Signal
-            ax.errorband(sno, data, N.sqrt(meta_cube.var[i,:]), color=blue)
+            if meta_cube.var is not None:
+                ax.errorband(sno, data, N.sqrt(meta_cube.var[i,:]), color=blue)
             ax.plot(sno, fit,  color=red, ls='-')   # Model
             if skyDeg >= 0 and sky_spec.data.any():
                 ax.plot(sno, psf2[i,:], color=green, ls='-')  # PSF alone
@@ -1406,6 +1422,7 @@ if __name__ == "__main__":
             rbins = N.sort(r)[::binsize] # Bin limits, starting from min(r)
             ibins = N.digitize(r, rbins) # WARNING: ibins(min(r)) = 1
             ib = N.arange(len(rbins))+1  # Bin indices
+            ib = [ iib for iib in ib if r[ibins==iib].any() ]
             rb = N.array([ r[ibins==iib].mean() for iib in ib ]) # Mean radius
             if weighted:
                 fb = N.array([ N.average(f[ibins==iib], weights=r[ibins==iib])
