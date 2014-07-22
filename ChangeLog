@@ -1,3 +1,8 @@
+2014-07-22  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: default PSF model is now
+	'classic-powerlaw'; test on position of SN.
+
 2014-07-21  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (flag_nans): flag-out

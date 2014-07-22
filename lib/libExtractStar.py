@@ -130,7 +130,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             # Flux-weighted centroid on central part
             xc = N.average(cube.x[~skySpx], weights=medstar[~skySpx])
             yc = N.average(cube.y[~skySpx], weights=medstar[~skySpx])
-            if not (-7 < xc < 7 and -7 < yc < 7):
+            if not (-7+nsky < xc < 7-nsky and -7+nsky < yc < 7-nsky):
                 xc,yc = 0.,0.
 
         cube_sky.data -= skyLev         # Subtract background level
@@ -143,7 +143,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         model_gauss = pySNIFS_fit.model(data=cube_sky,
                                         func=['gaus2D','poly2D;0'],
                                         param=[[xc,yc,1,1,imax],[0]],
-                                        bounds=[ [[-7.5,7.5]]*2 + # xc,yc
+                                        bounds=[ [[-7,+7]]*2 +    # xc,yc
                                                  [[0.4,4]]*2 +    # sx,sy
                                                  [[0,5*imax]],    # intensity
                                                  [[None,None]] ]) # background

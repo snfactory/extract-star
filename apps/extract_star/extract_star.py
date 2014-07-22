@@ -445,7 +445,7 @@ if __name__ == "__main__":
                       choices=('classic','classic-powerlaw','chromatic'),
                       help="PSF model " \
                       "(classic[-powerlaw]|chromatic) [%default]",
-                      default='classic')
+                      default='classic-powerlaw')
     parser.add_option("--subsampling", type='int',
                       help="Spaxel subsampling [%default]",
                       default=3)
@@ -854,7 +854,7 @@ if __name__ == "__main__":
         print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
     print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
-              (lmid,fitpar[2],dfitpar[2],fitpar[3],dfitpar[3]), 1)
+              (lmid, fitpar[2], dfitpar[2], fitpar[3], dfitpar[3]), 1)
     print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
               (fitpar[0], dfitpar[0],
                fitpar[1]*TA.RAD2DEG, dfitpar[1]*TA.RAD2DEG), 1)
@@ -865,14 +865,15 @@ if __name__ == "__main__":
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
     print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef,seeing)
 
+    # Test position of point-source
+    if opts.supernova and not ( -7 < fitpar[2] < +7 and -7 < fitpar[3] < +7 ):
+        raise ValueError('Supernova located outside the FoV')
+    # Test seeing and airmass
     if not 0.4 < seeing < 4.:
         raise ValueError('Unphysical seeing (%.2f")' % seeing)
     if not 1. < adr.get_airmass() < 4.:
         raise ValueError('Unphysical airmass (%.3f)' % adr.get_airmass())
-
-    # Test positivity of alpha and ellipticity. At some point, maybe
-    # it would be necessary to force positivity in the fit
-    # (e.g. fmin_cobyla).
+    # Test positivity of alpha and ellipticity
     if not opts.psf.endswith('powerlaw'):
         fit_alpha = libES.polyEval(fitpar[6+ellDeg:npar_psf], lbda_rel)
     else:
