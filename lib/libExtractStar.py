@@ -36,7 +36,7 @@ def print_msg(str, limit, verb=0):
 # PSF fitting ==============================
 
 def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
-                   seeingprior=None, airmass=1., verbosity=1):
+                   scalePriors=0., seeingPrior=None, airmass=1., verbosity=1):
     """Adjust PSF parameters on each (meta)slices of (meta)*cube*
     using PSF *psf_fn* and a background of polynomial degree
     *skyDeg*. Add a prior on seeing if any."""
@@ -90,10 +90,10 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         loop = range(cube.nslice)       # Redward loop
 
     # Hyper-term on alpha from seeing prior
-    if seeingprior:
+    if scalePriors and seeingPrior:
         if not psf_fn.model.endswith('powerlaw'):
             raise NotImplementedError
-        print "  Seeing prior: %.2f\"" % seeingprior
+        print "  Seeing prior: %.2f\"" % seeingPrior
     
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -199,8 +199,9 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         # Hyper-term on alpha from seeing prior
         hyper = {}
-        if seeingprior:
-            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingprior, airmass, channel)
+        if seeingPrior:
+            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingPrior, airmass, channel,
+                                   scale=scalePriors)
             print_msg(str(hterm), 2, verbosity)
             hyper = {psf_fn.name: hterm}
 
@@ -219,7 +220,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         print_msg(model_star.facts(params=(verbosity >= 2), names=parnames),
                   1, verbosity)
-        if seeingprior:
+        if scalePriors and seeingPrior:
             print_msg("  Hyper-term: h=%f" % hterm.comp(model_star.fitpar),
                       2, verbosity)
 
@@ -742,6 +743,37 @@ def read_psf_param(hdr):
 
     return [adr.delta,adr.theta,xmid,ymid,xy] + ecoeffs + acoeffs
 
+
+def estimate_zdpar(inhdr):
+    """Estimate zenithal distance [deg] and parallactic angle [deg] from
+    header."""
+
+    from ToolBox.Astro import Coords
+    ha,dec = Coords.altaz2hadec(inhdr['ALTITUDE'], inhdr['AZIMUTH'],
+                                phi=inhdr['LATITUDE'], deg=True)
+    zd,parangle = Coords.hadec2zdpar(ha, dec,
+                                     phi=inhdr['LATITUDE'], deg=True)
+
+    return zd,parangle          # [deg]
+
+
+def read_DDTpos(inhdr, adr=None):
+    """Read DDT-estimated position from DDT[X|Y]P keywords, and
+    back-propagated them to reference wavelength using ADR."""
+
+    try:
+        xddt = inhdr['DDTXP']   # Predicted position [spx]
+        yddt = inhdr['DDTYP']
+        lddt = inhdr['DDTLREF'] # Ref. wavelength [A]
+    except KeyError:            # No DDT prediction in header
+        return None
+
+    if adr:
+        xddt,yddt = adr.refract(   # Back-propagate positions to ref. wavelength
+            xddt, yddt, lddt, backward=True, unit=spxSize)
+
+    return xddt,yddt
+
 # Polynomial utilities ======================================================
 
 def polyEval(coeffs, x):
@@ -758,6 +790,7 @@ def polyEval(coeffs, x):
 
     return y
 
+
 def polyConvMatrix(n, trans=(0,1)):
     """Return the upper triangular matrix (i,k) * b**k * a**(i-k), that
     converts polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
@@ -771,6 +804,7 @@ def polyConvMatrix(n, trans=(0,1)):
         for c in range(r,n):
             m[r,c] = comb(c,r) * b**r * a**(c-r)
     return m
+
 
 def polyConvert(coeffs, trans=(0,1), backward=False):
     """Converts polynomial coeffs for x (P = a0 + a1*x + a2*x**2 + ...) in
@@ -788,6 +822,7 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
         a = -float(a)/float(b)
         b = 1/float(b)
     return N.dot(polyConvMatrix(len(coeffs), (a,b)),coeffs)
+
 
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
@@ -813,6 +848,7 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
                              "for degree %d" % (y[good].size,deg))
     return coeffs
 
+
 def chebNorm(x, xmin, xmax):
     """Normalization [xmin,xmax] to [-1,1]"""
 
@@ -822,6 +858,7 @@ def chebNorm(x, xmin, xmax):
         return N.zeros_like(x)
     else:
         raise ValueError("Invalid Chebychev normalization.")
+
 
 def chebEval(pars, nx, chebpolys=[]):
     """Orthogonal Chebychev polynomial expansion, x should be already
@@ -835,6 +872,7 @@ def chebEval(pars, nx, chebpolys=[]):
 
     return N.sum( [ par*cheb(nx) for par,cheb in zip(pars,chebpolys) ], axis=0)
 
+
 def powerLawEval(coeffs, x):
     """Evaluate (curved) power-law:
     coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*(x-1) + ...)
@@ -843,6 +881,7 @@ def powerLawEval(coeffs, x):
     """
 
     return coeffs[-1] * x**N.polyval(coeffs[:-1], x-1)
+
 
 def powerLawJac(coeffs, x):
 
@@ -854,6 +893,7 @@ def powerLawJac(coeffs, x):
         jac[i] = jac[i+1] * (x-1)
 
     return jac                          # M×N
+
 
 def powerLawFit(x, y, deg=2, guess=None):
 
@@ -911,6 +951,7 @@ def quadEllipse(a,b,c,d,f,g):
         phi += N.pi/2
 
     return x0,y0,ap,bp,phi
+
 
 def flatAndPA(cy2, c2xy):
     """Return flattening q=b/a and position angle PA [deg] for ellipse
@@ -1338,9 +1379,12 @@ class ShortRed_ExposurePSF(ExposurePSF):
 
 
 class Hyper_PSF3D_PL(object):
-    """Hyper-term to be added to 3D-PSF fit, power-law chromaticity."""
+    """Hyper-term to be added to 3D-PSF fit: priors on ADR parameters,
+    alpha power-law chromatic expansion, PSF shape parameters and
+    point-source position."""
 
-    def __init__(self, psf_ctes, inhdr, seeing, hyper=1., verbose=False):
+    def __init__(self, psf_ctes, inhdr, seeing, 
+                 position=None, scale=1., verbose=False):
 
         alphaDeg = psf_ctes[2]          # Alpha expansion degree
         ellDeg = psf_ctes[3]            # Ellipticity expansion degree
@@ -1350,16 +1394,17 @@ class Hyper_PSF3D_PL(object):
             raise NotImplementedError("Hyper-term trained for ellDeg=0 only")
         self.alphaSlice = slice(6+ellDeg, 7+ellDeg+alphaDeg)
 
-        self.hyper = hyper              # Global hyper-scaling
-
         self.X = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
         if self.X not in ('B','R'):
             raise KeyError("Unknown channel '%s'" % inhdr['CHANNEL'])
+
+        self.scale = scale              # Global hyper-scaling
 
         # Compute predictions and associated accuracy
         self._predict_ADR(inhdr, verbose=verbose) # ADR parameters
         self._predict_PL(seeing, verbose=verbose) # Power-law expansion coeffs
         self._predict_shape(inhdr, verbose=verbose) # Shape (xy & y2) params
+        self._predict_pos(position, verbose=verbose) # Position at ref. wavelength
 
     @classmethod
     def predict_adr_params(cls, inhdr):
@@ -1503,6 +1548,20 @@ class Hyper_PSF3D_PL(object):
             print "  Parameters: y²=% .3f,  xy=% .3f" % (self.y2, self.xy)
             print "  dParam:    Δy²=% .3f, Δxy=% .3f" % (self.dy2, self.dxy)
 
+    def _predict_pos(self, position, accuracy=0.25, verbose=False):
+        """
+        Predict position (x,y) and prediction accuracy (dx,dy) at
+        reference wavelength, for use in hyper-term computation.
+        """
+
+        self.position = position             # None or (x,y)
+        self.dposition = (accuracy,accuracy) # [spx]
+
+        if verbose and self.position:
+            print "Position predictions:"
+            print "  Parameters: x=% .3f,  y=% .3f" % self.position
+            print "  dParam:    Δx=% .3f, Δy=% .3f" % self.dposition
+
     def comp(self, param):
         """Input parameters, same as `ExposurePSF.comp`, notably:
         
@@ -1523,8 +1582,14 @@ class Hyper_PSF3D_PL(object):
         dalpha = param[self.alphaSlice] - self.plpars
         # Faster than dalpha.dot(self.plicov).dot(dalpha)
         hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
+        # Term from position parameters
+        if self.position is not None:
+            hpos = ( (param[2]-self.position[0])/self.dposition[0] )**2 + \
+                   ( (param[3]-self.position[1])/self.dposition[1] )**2
+        else:
+            hpos = 0.
 
-        return self.hyper*(hadr + hsha + hpl)  # Scalar ()
+        return self.scale*(hadr + hsha + hpl + hpos)  # Scalar ()
 
     def deriv(self, param):
 
@@ -1539,27 +1604,38 @@ class Hyper_PSF3D_PL(object):
         # PL-expansion parameter jacobian
         hjac[self.alphaSlice] = N.dot(
             self.plicov, param[self.alphaSlice] - self.plpars)
+        # Position jacobian
+        hjac[2] = (param[2]-self.position[0])/self.dposition[0]**2
+        hjac[3] = (param[3]-self.position[1])/self.dposition[1]**2
 
-        return self.hyper*2*hjac        # (npar,)
+        return self.scale*2*hjac        # (npar,)
 
     def __str__(self):
 
-        s = "PSF3D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
-        s += "  ADR: delta=% 7.2f +/- %.2f\n" % (self.delta, self.ddelta)
-        s += "  ADR: theta=%+7.2f +/- %.2f deg\n" % \
+        s = "PSF3D_PL hyper-term: hyper-scale=%.2f" % self.scale
+        s += "\n  ADR: delta=% 7.2f +/- %.2f" % (self.delta, self.ddelta)
+        s += "\n       theta=%+7.2f +/- %.2f deg" % \
              (self.theta*TA.RAD2DEG, self.dtheta*TA.RAD2DEG)
         dplpars = self.plicov.diagonal()**-0.5 # Approximate variance
-        s += "  PL: p0=%+.3f +/- %.3f\n" % (self.plpars[0], dplpars[0])
-        s += "  PL: p1=%+.3f +/- %.3f\n" % (self.plpars[1], dplpars[1])
-        s += "  PL: p2=%+.3f +/- %.3f\n" % (self.plpars[2], dplpars[2])
-        s += "  Shape: xy=% 5.3f +/- %.3f\n" % (self.xy, self.dxy)
-        s += "  Shape: y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
+        s += "\n  PL: p0=%+.3f +/- %.3f" % (self.plpars[0], dplpars[0])
+        s += "\n      p1=%+.3f +/- %.3f" % (self.plpars[1], dplpars[1])
+        s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
+        s += "\n  Shape: xy=% 5.3f +/- %.3f" % (self.xy, self.dxy)
+        s += "\n         y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
+        if self.position is not None:
+            s += "\n  Position: x=% 5.3f +/- %.3f" % \
+                 (self.position[0], self.dposition[0])
+            s += "\n            y=% 5.3f +/- %.3f" % \
+                 (self.position[1], self.dposition[1])
 
         return s
+
     
 class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
+    """Hyper-term to be added to 2D-PSF fit: priors on alpha (seeing), xy
+    and y2 shape terms."""
 
-    def __init__(self, lbda, seeing, airmass, channel, hyper=1., verbose=False):
+    def __init__(self, lbda, seeing, airmass, channel, scale=1., verbose=False):
 
         # Mimic PSF constantes and input header
         psf_ctes = [None, None, 2, 0]
@@ -1568,7 +1644,7 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
                  'PARANG':0.}
 
         Hyper_PSF3D_PL.__init__(self, psf_ctes, inhdr, seeing,
-                                hyper=hyper, verbose=False)
+                                scale=scale, verbose=False)
 
         self.alpha = self.predict_alpha(lbda)
         self.dalpha = 0.15              # Relaxed achromatic accuracy
@@ -1593,7 +1669,7 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         - param[7]: Pount-source intensity
         """
 
-        return self.hyper*(
+        return self.scale*(
             ((param[4] - self.xy)/self.dxy)**2 +
             ((param[5] - self.y2)/self.dy2)**2 +
             ((param[6] - self.alpha)/self.dalpha)**2
@@ -1606,11 +1682,11 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         hjac[5] = (param[5] - self.y2)/self.dy2**2
         hjac[6] = (param[6] - self.alpha)/self.dalpha**2
 
-        return self.hyper*2*hjac        # (npar,)
+        return self.scale*2*hjac        # (npar,)
 
     def __str__(self):
 
-        s = "PSF2D_PL hyper-term: hyper-scale=%.2f\n" % self.hyper
+        s = "PSF2D_PL hyper-term: hyper-scale=%.2f\n" % self.scale
         s += "  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)\n" % \
              (self.alpha, self.dalpha,
               Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)

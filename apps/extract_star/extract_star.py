@@ -59,7 +59,8 @@ PSF parameter keywords
 - ES_TFLUX: integrated flux of extracted point-source spectrum
 - ES_SFLUX: integrated flux of sky spectrum [per square-arcsec]
 - SEEING: estimated seeing FWHM [\"] at reference wavelength
-- ES_SNMOD: supernova mode
+- ES_PRIOR: PSF prior hyper-scale (aka 'supernova mode')
+- ES_SPRIO: Seing prior [arcsec]
 - ES_BNDx: constraints on 3D-PSF parameters
 
 The chromatic evolution of Y2-coefficient can be computed from ES_Exx
@@ -218,15 +219,15 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
     fmt = '%6.0f  ' + '  '.join(["%10.4g"]*((8+npar_sky)*2+1)) + '\n'
 
     for n in xrange(cube.nslice):
-        list2D  = [cube.lbda[n],
-                   delta[n], dparams[n][0],
-                   theta[n], dparams[n][1],
-                   xc[n]   , dparams[n][2],
-                   yc[n]   , dparams[n][3],
-                   xy[n]   , dparams[n][4],
-                   ell[n]  , dparams[n][5],
-                   alpha[n], dparams[n][6],
-                   intensity[n], dparams[n][-npar_sky-1]]
+        list2D = [cube.lbda[n],
+                  delta[n], dparams[n][0],
+                  theta[n], dparams[n][1],
+                  xc[n]   , dparams[n][2],
+                  yc[n]   , dparams[n][3],
+                  xy[n]   , dparams[n][4],
+                  ell[n]  , dparams[n][5],
+                  alpha[n], dparams[n][6],
+                  intensity[n], dparams[n][-npar_sky-1]]
         if npar_sky:
             tmp = N.transpose((sky[:,n],dparams[n][-npar_sky:]))
             list2D += tmp.flatten().tolist()
@@ -359,8 +360,9 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, fluxes):
 
     hdr['SEEING'] = (seeing, 'Estimated seeing @lbdaRef ["] (extract_star)')
 
-    if opts.supernova:
-        hdr['ES_SNMOD'] = (opts.seeingprior, 'Supernova mode (seeing prior)')
+    if opts.usePriors:
+        hdr['ES_PRIOR'] = (opts.usePriors, 'PSF prior hyper-scale')
+        hdr['ES_SPRIO'] = (opts.seeingPrior, 'Seeing prior [arcsec]')
     if opts.psf3Dconstraints:
         for i,constraint in enumerate(opts.psf3Dconstraints):
             hdr['ES_BND%d' % (i+1)] = (constraint, "Constraint on 3D-PSF")
@@ -407,8 +409,6 @@ if __name__ == "__main__":
 
     # Options ================================================================
 
-    methods = ('psf','aperture','subaperture','optimal')
-
     usage = "[%prog] [options] incube.fits"
 
     parser = optparse.OptionParser(usage, version=__version__)
@@ -420,12 +420,7 @@ if __name__ == "__main__":
     parser.add_option("-s", "--sky", type="string",
                       help="Output sky spectrum")
 
-    # Covariance management
-    parser.add_option("-V", "--covariance", action='store_true',
-                      help="Compute and store covariance matrix in extension",
-                      default=False)
-
-    # Parameters
+    # PSF parameters
     parser.add_option("-S", "--skyDeg", type="int",
                       help="Sky polynomial background degree [%default]",
                       default=0)
@@ -436,21 +431,21 @@ if __name__ == "__main__":
                       help="Ellipticity polynomial degree [%default]",
                       default=0)
 
-    parser.add_option("-N", "--nmeta", type='int',
-                      help="Number of meta-slices [%default]",
-                      default=12)
-
     # PSF model
     parser.add_option("--psf",
                       choices=('classic','classic-powerlaw','chromatic'),
                       help="PSF model " \
                       "(classic[-powerlaw]|chromatic) [%default]",
                       default='classic-powerlaw')
+
+    # Extraction method and parameters
+    parser.add_option("-N", "--nmeta", type='int',
+                      help="Number of chromatic meta-slices [%default]",
+                      default=12)
     parser.add_option("--subsampling", type='int',
                       help="Spaxel subsampling [%default]",
                       default=3)
 
-    # Extraction method and parameters
     parser.add_option("-m", "--method",
                       choices=('psf','optimal','aperture','subaperture'),
                       help="Extraction method " \
@@ -466,32 +461,41 @@ if __name__ == "__main__":
                       default=True)
 
     # Plotting
-    parser.add_option("-g", "--graph", type="string",
-                      help="Graphic output format (eps,pdf,png,pylab)")
+    parser.add_option("-g", "--graph", 
+                      choices=('png','eps','pdf','svg','pylab'),
+                      help="Graphic output format (png,eps,pdf,svg,pylab)")
     parser.add_option("-p", "--plot", action='store_true',
                       help="Plot flag (='-g pylab')")
-    parser.add_option("-v", "--verbosity", type="int",
-                      help="Verbosity level (<0: quiet) [%default]",
-                      default=0)
 
-    # Debug logs
-    parser.add_option("-f", "--file", type="string", dest="log2D",
-                      help="2D adjustment logfile name")
-    parser.add_option("-F", "--File", type="string", dest="log3D",
-                      help="3D adjustment logfile name")
+    # Covariance management
+    parser.add_option("-V", "--covariance", action='store_true',
+                      help="Compute and store covariance matrix in extension",
+                      default=False)
+
+    # Priors
+    parser.add_option("--scalePriors", type="float",
+                      help="PSF prior hyper-scale " \
+                      "(req. powerlaw-PSF and seeing prior) [%default]",
+                      default=0.)
+    parser.add_option("--seeingPrior", type="float",
+                      help="Seeing prior (from Exposure.Seeing) [\"]")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
                       help="Do not perform final 3D-fit")
-    parser.add_option("--supernova", action='store_true',
-                      help="SN mode (add hyper-terms; " \
-                      "requires powerlaw-PSF and seeing prior)")
-    parser.add_option("--seeingprior", type="float",
-                      help="Seeing prior (Exposure.Seeing) [\"]")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes")
     parser.add_option("--psf3Dconstraints", type='string', action='append',
                       help="Constraints on PSF parameters (n:val,[val])")
+
+    # Debug options
+    parser.add_option("-v", "--verbosity", type="int",
+                      help="Verbosity level (<0: quiet) [%default]",
+                      default=0)
+    parser.add_option("-f", "--file", type="string", dest="log2D",
+                      help="2D adjustment logfile name")
+    parser.add_option("-F", "--File", type="string", dest="log3D",
+                      help="3D adjustment logfile name")
 
     opts,args = parser.parse_args()
     if not opts.input:
@@ -513,14 +517,16 @@ if __name__ == "__main__":
     if opts.verbosity <= 0:
         N.seterr(all='ignore')
 
-    if opts.supernova:
-        if not opts.seeingprior:
+    if opts.scalePriors:
+        if opts.scalePriors < 0:
+            parser.error("Prior scale (--scalePriors) must be positive.")
+        if not opts.seeingPrior:
             parser.error(
-                "Supernova mode requires a seeing prior (--seeingprior).")
+                "Priors (--scalePriors > 0) requires a seeing prior (--seeingPrior).")
         if not opts.psf.endswith('powerlaw'):
-            parser.error("Supernova mode implemented for 'powerlaw' PSF only.")
+            parser.error("Priors implemented for 'powerlaw' PSF only.")
         if opts.alphaDeg!=2 or opts.ellDeg!=0:
-            parser.error("Supernova mode requires '--alphaDeg 2 --ellDeg 0'.")
+            parser.error("Priors mode requires '--alphaDeg 2 --ellDeg 0'.")
 
     # Input datacube ===========================================================
 
@@ -551,13 +557,8 @@ if __name__ == "__main__":
     try:
         parangle = inhdr['PARANG']        # Sky parallactic angle [deg]
     except KeyError:                      # Not in original headers
-        from ToolBox.Astro import Coords
-        ha,dec = Coords.altaz2hadec(inhdr['ALTITUDE'], inhdr['AZIMUTH'],
-                                    phi=inhdr['LATITUDE'], deg=True)
-        zd,parangle = Coords.hadec2zdpar(ha, dec,
-                                         phi=inhdr['LATITUDE'], deg=True)
-        print "WARNING: Computing PARANG from ALTITUDE, AZIMUTH and LATITUDE."
-        inhdr['PARANG'] = parangle
+        print "WARNING: Computing PARANG from header ALTITUDE, AZIMUTH and LATITUDE."
+        _,inhdr['PARANG'] = libES.estimate_zdpar(inhdr) # [deg]
 
     channel = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
     pressure,temp = libES.read_PT(inhdr)  # Include validity tests and defaults
@@ -641,7 +642,8 @@ if __name__ == "__main__":
           ('chi2' if opts.chi2fit else 'least-squares')
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
-        seeingprior=opts.seeingprior if opts.supernova else None,
+        scalePriors=opts.scalePriors, 
+        seeingPrior=opts.seeingPrior if opts.scalePriors else None,
         airmass=airmass, verbosity=opts.verbosity)
     print_msg("", 1)
 
@@ -670,10 +672,8 @@ if __name__ == "__main__":
     lbda_rel = libES.chebNorm(
         meta_cube.lbda, meta_cube.lstart, meta_cube.lend) # in [-1,1]
 
-    # 1) Reference position
-    # Convert meta-slice centroids to position at ref. lbda, and clip around
-    # median position, using effective parangle including MLA tilt
-    if opts.supernova:
+    # 0) ADR parameters
+    if opts.scalePriors:
         delta,theta = libES.Hyper_PSF3D_PL.predict_adr_params(inhdr)
         adr = TA.ADR(pressure, temp, lref=lmid, delta=delta, theta=theta)
     else:
@@ -682,14 +682,18 @@ if __name__ == "__main__":
     delta0 = adr.delta           # ADR power = tan(zenithal distance)
     theta0 = adr.theta           # ADR angle = parallactic angle [rad]
     print_msg(str(adr), 1)
-    xmid,ymid = adr.refract(     # Back-propagate positions to lmid wavelength
+
+    # 1) Reference position
+    # Convert meta-slice centroids to position at ref. lbda, and clip around
+    # median position, using effective parangle including MLA tilt
+    xmids,ymids = adr.refract(   # Back-propagate positions to lmid wavelength
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
-    xmid = N.atleast_1d(xmid)    # Some dimensions could squeezed in adr.refract
-    ymid = N.atleast_1d(ymid)
+    xmids = N.atleast_1d(xmids)  # Some dimensions could be squeezed in adr.refract
+    ymids = N.atleast_1d(ymids)
     valid = chi2s > 0                   # Discard unfitted slices
-    xmid0 = N.median(xmid[valid])       # Robust to outliers
-    ymid0 = N.median(ymid[valid])
-    r = N.hypot(xmid - xmid0, ymid - ymid0)
+    xmid = N.median(xmids[valid])       # Robust to outliers
+    ymid = N.median(ymids[valid])
+    r = N.hypot(xmids - xmid, ymids - ymid)
     rmax = 4.4478*N.median(r[valid])    # Robust to outliers 3*1.4826
     good = valid & (r <= rmax)          # Valid fit and reasonable position
     bad  = valid & (r > rmax)           # Valid fit but discarded position
@@ -700,15 +704,15 @@ if __name__ == "__main__":
         raise ValueError('No position initial guess')
 
     print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" % 
-              (len(xmid[good]),len(xmid),rmax,xmid0,ymid0), 1)
-    xc,yc = xmid[good].mean(), ymid[good].mean() # Position at lmid
+              (len(xmids[good]),len(xmids),rmax,xmid,ymid), 1)
+    xc,yc = xmids[good].mean(), ymids[good].mean() # Position at lmid
 
     if not good.all():                   # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]),nmeta)
-        if len(xc_vec[good]) <= ellDeg+1 and not opts.supernova:
+        if len(xc_vec[good]) <= ellDeg+1 and not opts.scalePriors:
             raise ValueError('Not enough points for ellipticity initial guess')
-        if len(xc_vec[good]) <= alphaDeg+1 and not opts.supernova:
+        if len(xc_vec[good]) <= alphaDeg+1 and not opts.scalePriors:
             raise ValueError('Not enough points for alpha initial guess')
 
     print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
@@ -717,8 +721,8 @@ if __name__ == "__main__":
               (delta0, theta0*TA.RAD2DEG), 1)
 
     # 2) Other parameters
-    if opts.supernova:
-        # Supernova mode: predict shape parameters
+    if opts.scalePriors:
+        # Use priors: predict shape parameters
         xy = 0.                         # Safe bet
         guessEllCoeffs = [libES.Hyper_PSF3D_PL.predict_y2_param(inhdr)]
     else:
@@ -731,10 +735,10 @@ if __name__ == "__main__":
         polAlpha = pySNIFS.fit_poly(alpha_vec[good],3,alphaDeg,lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
     else:                                 # Power-law expansion
-        if opts.supernova:
-            # Supernova mode: predict parameters from seeing prior
+        if opts.scalePriors:
+            # Use PSF priors: predict parameters from seeing prior
             guessAlphaCoeffs = libES.Hyper_PSF3D_PL.predict_alpha_coeffs(
-                opts.seeingprior, channel)
+                opts.seeingPrior, channel)
         else:
             guessAlphaCoeffs = libES.powerLawFit(
                 meta_cube.lbda[good]/LbdaRef, alpha_vec[good], alphaDeg)
@@ -804,8 +808,9 @@ if __name__ == "__main__":
 
     # Hyper-term
     hyper = {}
-    if opts.supernova:
-        hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, opts.seeingprior, hyper=1.)
+    if opts.scalePriors:
+        hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, 
+                                     opts.seeingPrior, scale=opts.scalePriors)
         print_msg(str(hterm), 1)
         hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
@@ -850,7 +855,7 @@ if __name__ == "__main__":
     if skyDeg >= 0:
         print_msg("  Fit result [Background]: %s" % 
                   fitpar[npar_psf+nmeta:], 3)
-    if opts.supernova:
+    if opts.scalePriors:
         print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
     print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
@@ -866,9 +871,10 @@ if __name__ == "__main__":
     print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef,seeing)
 
     # Test position of point-source
-    if opts.supernova and not ( -7 < fitpar[2] < +7 and -7 < fitpar[3] < +7 ):
-        raise ValueError('Supernova located outside the FoV')
+    if opts.scalePriors and not ( -7 < fitpar[2] < +7 and -7 < fitpar[3] < +7 ):
+        raise ValueError('Point-source located outside the FoV')
     # Test seeing and airmass
+    raise NotImplementedError   # Affiner les criteres de convergence en cas de prior
     if not 0.4 < seeing < 4.:
         raise ValueError('Unphysical seeing (%.2f")' % seeing)
     if not 1. < adr.get_airmass() < 4.:
@@ -1208,7 +1214,7 @@ if __name__ == "__main__":
         # Plot of the star center of gravity and adjusted center -------------
 
         print_msg("Producing ADR plot %s..." % plot4, 1)
-
+        # Guessed and adjusted position at current wavelength
         xguess = xc + delta0*N.sin(theta0)*psf_model.ADRcoeffs[:,0]
         yguess = yc - delta0*N.cos(theta0)*psf_model.ADRcoeffs[:,0]
         xfit = fitpar[2] + fitpar[0]*N.sin(fitpar[1])*psf_model.ADRcoeffs[:,0]
@@ -1262,17 +1268,17 @@ if __name__ == "__main__":
                      c=meta_cube.lbda[good],
                      cmap=M.cm.jet, zorder=3)
         # Plot position selection process
-        ax4c.plot(xmid[good], ymid[good], marker='.',
+        ax4c.plot(xmids[good], ymids[good], marker='.',
                   mfc=blue, mec=blue, ls='None') # Selected ref. positions
-        ax4c.plot(xmid[bad], ymid[bad], marker='.',
+        ax4c.plot(xmids[bad], ymids[bad], marker='.',
                   mfc=red, mec=red, ls='None')   # Discarded ref. positions
-        ax4c.plot((xmid0, xc), (ymid0, yc), 'k-')
+        ax4c.plot((xmid, xc), (ymid, yc), 'k-')
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
         ax4c.plot(xfit, yfit, green)     # Adjusted ADR
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,),(yc,),'k+')
-        ax4c.add_patch(M.patches.Circle((xmid0,ymid0),radius=rmax,
-                                                 ec='0.8',fc='None'))
+        ax4c.add_patch(M.patches.Circle((xmid,ymid),radius=rmax,
+                                        ec='0.8',fc='None'))
         ax4c.add_patch(M.patches.Rectangle((-7.5,-7.5),15,15,
                                                  ec='0.8',lw=2,fc='None')) # FoV
         ax4c.text(0.97, 0.85,
