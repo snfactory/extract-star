@@ -36,10 +36,13 @@ def print_msg(str, limit, verb=0):
 # PSF fitting ==============================
 
 def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
-                   scalePriors=0., seeingPrior=None, airmass=1., verbosity=1):
-    """Adjust PSF parameters on each (meta)slices of (meta)*cube*
-    using PSF *psf_fn* and a background of polynomial degree
-    *skyDeg*. Add a prior on seeing if any."""
+                   scalePriors=0., seeingPrior=None, posPrior=None,
+                   airmass=1., verbosity=1):
+    """
+    Adjust PSF parameters on each (meta)slices of (meta)*cube* using
+    PSF *psf_fn* and a background of polynomial degree *skyDeg*. Add
+    priors on seeing and position if any.
+    """
 
     from scipy.ndimage.filters import median_filter
     import pySNIFS_fit
@@ -126,7 +129,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Rough guess parameters for the current slice
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()                    # Intensity
-        if (xc,yc)==(None,None):                # No previous estimate
+        if posPrior:                            # Use prior on position 
+            # Note the prior on position (formally at ADR
+            # reference wavelength lmid) is not differentially
+            # refracted to current wavelength
+            xc,yc = posPrior
+        elif (xc,yc)==(None,None):              # No prior nor previous estimate
             # Flux-weighted centroid on central part
             xc = N.average(cube.x[~skySpx], weights=medstar[~skySpx])
             yc = N.average(cube.y[~skySpx], weights=medstar[~skySpx])
@@ -197,11 +205,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         if not chi2fit:
             cube_star.var = None # Will be handled by pySNIFS_fit.model
 
-        # Hyper-term on alpha from seeing prior
+        # Hyper-term on alpha from seeing and position prior
         hyper = {}
         if seeingPrior:
             hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingPrior, airmass, channel,
-                                   scale=scalePriors)
+                                   position=posPrior, scale=scalePriors)
             print_msg(str(hterm), 2, verbosity)
             hyper = {psf_fn.name: hterm}
 
@@ -757,9 +765,9 @@ def estimate_zdpar(inhdr):
     return zd,parangle          # [deg]
 
 
-def read_DDTpos(inhdr, adr=None):
+def read_DDTpos(inhdr, adr):
     """Read DDT-estimated position from DDT[X|Y]P keywords, and
-    back-propagated them to reference wavelength using ADR."""
+    back-propagated them to ADR reference wavelength."""
 
     try:
         xddt = inhdr['DDTXP']   # Predicted position [spx]
@@ -768,9 +776,8 @@ def read_DDTpos(inhdr, adr=None):
     except KeyError:            # No DDT prediction in header
         return None
 
-    if adr:
-        xddt,yddt = adr.refract(   # Back-propagate positions to ref. wavelength
-            xddt, yddt, lddt, backward=True, unit=spxSize)
+    xddt,yddt = adr.refract(   # Back-propagate positions to ref. wavelength
+        xddt, yddt, lddt, backward=True, unit=SpxSize)
 
     return xddt,yddt
 
@@ -1582,8 +1589,8 @@ class Hyper_PSF3D_PL(object):
         dalpha = param[self.alphaSlice] - self.plpars
         # Faster than dalpha.dot(self.plicov).dot(dalpha)
         hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
-        # Term from position parameters
-        if self.position is not None:
+        # Term from position 
+        if self.position:
             hpos = ( (param[2]-self.position[0])/self.dposition[0] )**2 + \
                    ( (param[3]-self.position[1])/self.dposition[1] )**2
         else:
@@ -1596,17 +1603,18 @@ class Hyper_PSF3D_PL(object):
         hjac = N.zeros(len(param))      # Half jacobian
 
         # ADR parameter jacobian
-        hjac[0] = (param[0]-self.delta)/self.ddelta**2
-        hjac[1] = (param[1]-self.theta)/self.dtheta**2
+        hjac[0] = (param[0] - self.delta)/self.ddelta**2
+        hjac[1] = (param[1] - self.theta)/self.dtheta**2
         # Shape parameter jacobian
-        hjac[4] = (param[4]-self.xy)/self.dxy**2
-        hjac[5] = (param[5]-self.y2)/self.dy2**2
+        hjac[4] = (param[4] - self.xy)/self.dxy**2
+        hjac[5] = (param[5] - self.y2)/self.dy2**2
         # PL-expansion parameter jacobian
         hjac[self.alphaSlice] = N.dot(
             self.plicov, param[self.alphaSlice] - self.plpars)
         # Position jacobian
-        hjac[2] = (param[2]-self.position[0])/self.dposition[0]**2
-        hjac[3] = (param[3]-self.position[1])/self.dposition[1]**2
+        if self.position:
+            hjac[2] = (param[2] - self.position[0])/self.dposition[0]**2
+            hjac[3] = (param[3] - self.position[1])/self.dposition[1]**2
 
         return self.scale*2*hjac        # (npar,)
 
@@ -1622,7 +1630,7 @@ class Hyper_PSF3D_PL(object):
         s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
         s += "\n  Shape: xy=% 5.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n         y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
-        if self.position is not None:
+        if self.position:
             s += "\n  Position: x=% 5.3f +/- %.3f" % \
                  (self.position[0], self.dposition[0])
             s += "\n            y=% 5.3f +/- %.3f" % \
@@ -1635,7 +1643,10 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
     """Hyper-term to be added to 2D-PSF fit: priors on alpha (seeing), xy
     and y2 shape terms."""
 
-    def __init__(self, lbda, seeing, airmass, channel, scale=1., verbose=False):
+    dalpha = 0.15               # Relaxed achromatic accuracy
+
+    def __init__(self, lbda, seeing, airmass, channel, 
+                 position=None, scale=1., verbose=False):
 
         # Mimic PSF constantes and input header
         psf_ctes = [None, None, 2, 0]
@@ -1644,10 +1655,9 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
                  'PARANG':0.}
 
         Hyper_PSF3D_PL.__init__(self, psf_ctes, inhdr, seeing,
-                                scale=scale, verbose=False)
+                                position=position, scale=scale, verbose=False)
 
         self.alpha = self.predict_alpha(lbda)
-        self.dalpha = 0.15              # Relaxed achromatic accuracy
 
     def predict_alpha(self, lbda):
         """Predict alpha at wavelength `lbda`."""
@@ -1669,11 +1679,17 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         - param[7]: Pount-source intensity
         """
 
-        return self.scale*(
-            ((param[4] - self.xy)/self.dxy)**2 +
-            ((param[5] - self.y2)/self.dy2)**2 +
-            ((param[6] - self.alpha)/self.dalpha)**2
-            )
+        # Terms from xy- and y2-parameters and from alpha
+        h = ( ((param[4] - self.xy)/self.dxy)**2 +
+              ((param[5] - self.y2)/self.dy2)**2 +
+              ((param[6] - self.alpha)/self.dalpha)**2
+          )
+        # Term from point-source position 
+        if self.position:
+            h += ( (param[2] - self.position[0])/self.dposition[0] )**2 + \
+                 ( (param[3] - self.position[1])/self.dposition[1] )**2
+
+        return self.scale*h
 
     def deriv(self, param):
 
@@ -1681,17 +1697,25 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         hjac[4] = (param[4] - self.xy)/self.dxy**2
         hjac[5] = (param[5] - self.y2)/self.dy2**2
         hjac[6] = (param[6] - self.alpha)/self.dalpha**2
+        if self.position:
+            hjac[2] = (param[2] - self.position[0])/self.dposition[0]**2
+            hjac[3] = (param[3] - self.position[1])/self.dposition[1]**2
 
         return self.scale*2*hjac        # (npar,)
 
     def __str__(self):
 
-        s = "PSF2D_PL hyper-term: hyper-scale=%.2f\n" % self.scale
-        s += "  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)\n" % \
+        s = "PSF2D_PL hyper-term: hyper-scale=%.2f" % self.scale
+        s += "\n  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)" % \
              (self.alpha, self.dalpha,
               Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)
-        s += "  Pred. xy:   %+.3f +/- %.3f\n" % (self.xy, self.dxy)
-        s += "  Pred. y2:   %+.3f +/- %.3f" % (self.y2, self.dy2)
-        
+        s += "\n  Pred. xy:   %+.3f +/- %.3f" % (self.xy, self.dxy)
+        s += "\n  Pred. y2:   %+.3f +/- %.3f" % (self.y2, self.dy2)
+        if self.position:
+            s += "\n  Pred. x:   %+.2f +/- %.2f" % (self.position[0], 
+                                                    self.dposition[0])
+            s += "\n  Pred. y:   %+.2f +/- %.2f" % (self.position[1], 
+                                                    self.dposition[1])
+
         return s
     

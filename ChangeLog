@@ -1,3 +1,12 @@
+2014-09-09  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: boolean option '--supernova'
+	replaced by option '--usePriors' setting the hyper-term scaling
+	factor (default 0: no priors, 1: standard priors); new option
+	'--useDDTPriors' to use priors on position from DDT[X|Y]P keywords
+	in 2D- and 3D-fits; pertinence of final fit parameters is tested
+	against priors if any.
+
 2014-07-22  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: default PSF model is now
