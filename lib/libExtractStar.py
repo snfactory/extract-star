@@ -129,7 +129,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Rough guess parameters for the current slice
         medstar = median_filter(cube_star.data[0], 3) - skyLev # (nspx,)
         imax = medstar.max()                    # Intensity
-        if posPrior:                            # Use prior on position 
+        if posPrior is not None:                # Use prior on position 
             # Note the prior on position (formally at ADR
             # reference wavelength lmid) is not differentially
             # refracted to current wavelength
@@ -765,21 +765,18 @@ def estimate_zdpar(inhdr):
     return zd,parangle          # [deg]
 
 
-def read_DDTpos(inhdr, adr):
-    """Read DDT-estimated position from DDT[X|Y]P keywords, and
-    back-propagated them to ADR reference wavelength."""
+def read_DDTpos(inhdr):
+    """
+    Read reference wavelength and DDT-estimated position from DDTLREF
+    and DDT[X|Y]P keywords. Will raise KeyError if keywords are not
+    available.
+    """
 
-    try:
-        xddt = inhdr['DDTXP']   # Predicted position [spx]
-        yddt = inhdr['DDTYP']
-        lddt = inhdr['DDTLREF'] # Ref. wavelength [A]
-    except KeyError:            # No DDT prediction in header
-        return None
+    lddt = inhdr['DDTLREF'] # Ref. wavelength [A]
+    xddt = inhdr['DDTXP']   # Predicted position [spx]
+    yddt = inhdr['DDTYP']
 
-    xddt,yddt = adr.refract(   # Back-propagate positions to ref. wavelength
-        xddt, yddt, lddt, backward=True, unit=SpxSize)
-
-    return xddt,yddt
+    return lddt,xddt,yddt
 
 # Polynomial utilities ======================================================
 
@@ -1390,6 +1387,8 @@ class Hyper_PSF3D_PL(object):
     alpha power-law chromatic expansion, PSF shape parameters and
     point-source position."""
 
+    positionAccuracy = 0.1     # Rather arbitrary DDT position accuracy [spx]
+
     def __init__(self, psf_ctes, inhdr, seeing, 
                  position=None, scale=1., verbose=False):
 
@@ -1415,7 +1414,11 @@ class Hyper_PSF3D_PL(object):
 
     @classmethod
     def predict_adr_params(cls, inhdr):
-        """Predict ADR parameters delta and theta."""
+        """
+        Predict ADR parameters delta and theta [rad] from header `inhdr`
+        including standard keywords `AIRMASS`, `PARANG` (parallactic
+        angle [deg]), and `CHANNEL`.
+        """
 
         # 0th-order estimates
         delta0 = N.tan(N.arccos(1./inhdr['AIRMASS']))
@@ -1555,16 +1558,16 @@ class Hyper_PSF3D_PL(object):
             print "  Parameters: y²=% .3f,  xy=% .3f" % (self.y2, self.xy)
             print "  dParam:    Δy²=% .3f, Δxy=% .3f" % (self.dy2, self.dxy)
 
-    def _predict_pos(self, position, accuracy=0.25, verbose=False):
+    def _predict_pos(self, position, verbose=False):
         """
         Predict position (x,y) and prediction accuracy (dx,dy) at
         reference wavelength, for use in hyper-term computation.
         """
 
         self.position = position             # None or (x,y)
-        self.dposition = (accuracy,accuracy) # [spx]
+        self.dposition = (self.positionAccuracy,self.positionAccuracy) # [spx]
 
-        if verbose and self.position:
+        if verbose and self.position is not None:
             print "Position predictions:"
             print "  Parameters: x=% .3f,  y=% .3f" % self.position
             print "  dParam:    Δx=% .3f, Δy=% .3f" % self.dposition
@@ -1590,7 +1593,7 @@ class Hyper_PSF3D_PL(object):
         # Faster than dalpha.dot(self.plicov).dot(dalpha)
         hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
         # Term from position 
-        if self.position:
+        if self.position is not None:
             hpos = ( (param[2]-self.position[0])/self.dposition[0] )**2 + \
                    ( (param[3]-self.position[1])/self.dposition[1] )**2
         else:
@@ -1612,7 +1615,7 @@ class Hyper_PSF3D_PL(object):
         hjac[self.alphaSlice] = N.dot(
             self.plicov, param[self.alphaSlice] - self.plpars)
         # Position jacobian
-        if self.position:
+        if self.position is not None:
             hjac[2] = (param[2] - self.position[0])/self.dposition[0]**2
             hjac[3] = (param[3] - self.position[1])/self.dposition[1]**2
 
@@ -1630,7 +1633,7 @@ class Hyper_PSF3D_PL(object):
         s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
         s += "\n  Shape: xy=% 5.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n         y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
-        if self.position:
+        if self.position is not None:
             s += "\n  Position: x=% 5.3f +/- %.3f" % \
                  (self.position[0], self.dposition[0])
             s += "\n            y=% 5.3f +/- %.3f" % \
@@ -1685,7 +1688,7 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
               ((param[6] - self.alpha)/self.dalpha)**2
           )
         # Term from point-source position 
-        if self.position:
+        if self.position is not None:
             h += ( (param[2] - self.position[0])/self.dposition[0] )**2 + \
                  ( (param[3] - self.position[1])/self.dposition[1] )**2
 
@@ -1697,7 +1700,7 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         hjac[4] = (param[4] - self.xy)/self.dxy**2
         hjac[5] = (param[5] - self.y2)/self.dy2**2
         hjac[6] = (param[6] - self.alpha)/self.dalpha**2
-        if self.position:
+        if self.position is not None:
             hjac[2] = (param[2] - self.position[0])/self.dposition[0]**2
             hjac[3] = (param[3] - self.position[1])/self.dposition[1]**2
 
@@ -1711,7 +1714,7 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
               Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)
         s += "\n  Pred. xy:   %+.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n  Pred. y2:   %+.3f +/- %.3f" % (self.y2, self.dy2)
-        if self.position:
+        if self.position is not None:
             s += "\n  Pred. x:   %+.2f +/- %.2f" % (self.position[0], 
                                                     self.dposition[0])
             s += "\n  Pred. y:   %+.2f +/- %.2f" % (self.position[1], 

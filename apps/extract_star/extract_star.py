@@ -311,7 +311,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, ddtpos, fluxes):
     lmin,lmax = cube.lstart,cube.lend   # 1st and last meta-slice wavelength
     xref,yref = adr.refract(param[2], param[3], LbdaRef, unit=cube.spxSize)
     print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" %
-              (LbdaRef,xref,yref), 1)
+              (LbdaRef,xref,yref), 0)
 
     # '[short|long], classic[-powerlaw]' or '[long|short] [blue|red], chromatic'
     psfname = ', '.join((psf.name, psf.model)) 
@@ -364,7 +364,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, ddtpos, fluxes):
     if opts.usePriors:
         hdr['ES_PRIOR'] = (opts.usePriors, 'PSF prior hyper-scale')
         hdr['ES_PRISE'] = (opts.seeingPrior, 'Seeing prior [arcsec]')
-        if ddtpos:
+        if ddtpos is not None:
             hdr['ES_PRIXY'] = (True, 'Use DDT[X|Y]P as priors on position')
     if opts.psf3Dconstraints:
         for i,constraint in enumerate(opts.psf3Dconstraints):
@@ -660,14 +660,20 @@ if __name__ == "__main__":
 
     # DDT-priors on position
     if opts.useDDTPriors:
-        ddtpos = libES.read_DDTpos(inhdr, adr)
-        if ddtpos is None:
+        try:
+            ddtlxy = libES.read_DDTpos(inhdr) # lref,x,y
+        except KeyError:
             parser.error(
                 "Input file has no DDT-related keywords needed by '--useDDTPriors'")
             #print "WARNING: cannot read DDT-related keywords"
+            #ddtpos = None
         else:
             print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" % 
-                      (lmid, ddtpos[0], ddtpos[1]), 0)
+                      ddtlxy, 0)
+            ddtpos = adr.refract(   # Back-propagate positions to ref. wavelength
+                ddtlxy[1], ddtlxy[2], ddtlxy[0], backward=True, unit=spxSize) # x,y
+            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" % 
+                      (lmid, ddtpos[0], ddtpos[1]), 1)
     else:
         ddtpos = None           # No predictions nor priors
 
@@ -844,7 +850,8 @@ if __name__ == "__main__":
     hyper = {}
     if opts.usePriors:
         hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, 
-                                     opts.seeingPrior, scale=opts.usePriors)
+                                     seeing=opts.seeingPrior, position=ddtpos,
+                                     scale=opts.usePriors)
         print_msg(str(hterm), 1)
         hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
@@ -888,17 +895,16 @@ if __name__ == "__main__":
     print_msg("  Fit result [Intensities]: %s" % 
               fitpar[npar_psf:npar_psf+nmeta], 3)
     if skyDeg >= 0:
-        print_msg("  Fit result [Background]: %s" % 
-                  fitpar[npar_psf+nmeta:], 3)
+        print_msg("  Fit result [Background]: %s" % fitpar[npar_psf+nmeta:], 3)
     if opts.usePriors:
         print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
     print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
               (lmid, fitpar[2], dfitpar[2], fitpar[3], dfitpar[3]), 1)
+    # Update ADR params
     print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
               (fitpar[0], dfitpar[0],
                fitpar[1]*TA.RAD2DEG, dfitpar[1]*TA.RAD2DEG), 1)
-    # Update ADR params
     adr.set_param(delta=fitpar[0], theta=fitpar[1]) 
     print "  Effective airmass: %.2f" % adr.get_airmass()
     # Estimated seeing (FWHM in arcsec)
@@ -918,28 +924,28 @@ if __name__ == "__main__":
     if opts.usePriors:          # Test against priors
         # Test position of point-source
         if opts.useDDTPriors:
-            if not N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) < 3:
+            if not N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) < 5:
                 raise ValueError(
-                    'Point-source %.2fx%.2f located more than 3 spx away '
+                    'Point-source %.2fx%.2f located more than 5 spx away '
                     'from DDT prediction %.2fx%.2f' % 
                     (fitpar[2],fitpar[3],ddtpos[0],ddtpos[1]))
         elif not ( abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7 ):
             raise ValueError('Point-source located outside the FoV')
         # Tests on seeing
-        if not abs(seeing - opts.seeingPrior) < 0.4:
+        if not 0.6 < seeing/opts.seeingPrior < 1.4:
             raise ValueError(
-                'Seeing (%.2f") more than 0.4" away from prediction (%.2f")' %
+                'Seeing (%.2f") more than 40%% away from prediction (%.2f")' %
                 (seeing, opts.seeingPrior))
         # Tests on ADR parameters
-        if not abs(adr.get_airmass() - adr.get_airmass(delta0)) < 0.2:
+        if not 0.8 < adr.get_airmass()/adr.get_airmass(delta0) < 1.2:
             raise ValueError(
-                'Airmass (%.2f) more than 0.2 away from prediction (%.2f)' %
+                'Airmass (%.2f) more than 20%% away from prediction (%.2f)' %
                 (adr.get_airmass(), adr.get_airmass(delta0)))
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi)%(2*N.pi) - N.pi
-        if not abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) < 10:
+        if not abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) < 20:
             raise ValueError(
-                'Parangle (%.0fdeg) more than 10deg away from prediction (%.0fdeg)' %
+                'Parangle (%.0fdeg) more than 20deg away from prediction (%.0fdeg)' %
                 (adr.get_parangle(), adr.get_parangle(theta0)))
     else:                       # Simpler tests on seeing and airmass
         if not 0.4 < seeing < 4.:
