@@ -1303,7 +1303,7 @@ if __name__ == "__main__":
                                 ylabel="Y center [spx]")
 
         ax4a.errorbar(meta_cube.lbda[good], xc_vec[good], yerr=dparams[good,2],
-                      fmt='none', ecolor=green)
+                      fmt=None, ecolor=green)
         ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
                      c=meta_cube.lbda[good],
                      cmap=M.cm.jet, zorder=3, label="Fit 2D")
@@ -1317,7 +1317,7 @@ if __name__ == "__main__":
         leg = ax4a.legend(loc='best', fontsize='small', frameon=False)
 
         ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
-                      fmt='none', ecolor=green)
+                      fmt=None, ecolor=green)
         ax4b.scatter(meta_cube.lbda[good], yc_vec[good], edgecolors='none',
                      c=meta_cube.lbda[good], cmap=M.cm.jet, zorder=3)
         if bad.any():
@@ -1330,7 +1330,7 @@ if __name__ == "__main__":
 
         ax4c.errorbar(xc_vec[valid], yc_vec[valid],
                       xerr=dparams[valid,2], yerr=dparams[valid,3],
-                      fmt='none', ecolor=green)
+                      fmt=None, ecolor=green)
         ax4c.scatter(xc_vec[good],yc_vec[good], edgecolors='none',
                      c=meta_cube.lbda[good],
                      cmap=M.cm.jet, zorder=3)
@@ -1647,7 +1647,7 @@ if __name__ == "__main__":
                        linestyles='dashed', cmap=M.cm.jet) # Fit
             ax.errorbar((xc_vec[i],), (yc_vec[i],),
                         xerr=(dparams[i,2],), yerr=(dparams[i,3],),
-                        fmt='none', ecolor=blue if good[i] else red)
+                        fmt=None, ecolor=blue if good[i] else red)
             ax.plot((xfit[i],),(yfit[i],), marker='*', color=green)
             if opts.method != 'psf':
                 ax.add_patch(M.patches.Circle((xfit[i],yfit[i]),

@@ -1,3 +1,8 @@
+2014-09-11  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: switch back to
+	`errorbar(fmt=None)` (deprecated in recent version of matplotlib).
+
 2014-09-09  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: boolean option '--supernova'
