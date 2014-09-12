@@ -1,5 +1,8 @@
 2014-09-11  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
+	* lib/libExtractStar.py (read_DDTpos): add sanity check (SN ought
+	to be located in FoV).
+
 	* apps/extract_star/extract_star.py: switch back to
 	`errorbar(fmt=None)` (deprecated in recent version of matplotlib).
 

@@ -776,6 +776,11 @@ def read_DDTpos(inhdr):
     xddt = inhdr['DDTXP']   # Predicted position [spx]
     yddt = inhdr['DDTYP']
 
+    # Some sanity check
+    if not (abs(xddt) < 7 and abs(yddt) < 7):
+        raise KeyError(
+            "Invalid DDT position: %.2f x %.2f is outside FoV" % (xddt,yddt))
+
     return lddt,xddt,yddt
 
 # Polynomial utilities ======================================================

@@ -1302,11 +1302,12 @@ if __name__ == "__main__":
                                 xlabel=u"Wavelength [Å]",
                                 ylabel="Y center [spx]")
 
-        ax4a.errorbar(meta_cube.lbda[good], xc_vec[good], yerr=dparams[good,2],
-                      fmt=None, ecolor=green)
-        ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
-                     c=meta_cube.lbda[good],
-                     cmap=M.cm.jet, zorder=3, label="Fit 2D")
+        if good.any():
+            ax4a.errorbar(meta_cube.lbda[good], xc_vec[good], yerr=dparams[good,2],
+                          fmt=None, ecolor=green)
+            ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
+                         c=meta_cube.lbda[good],
+                         cmap=M.cm.jet, zorder=3, label="Fit 2D")
         if bad.any():
             ax4a.plot(meta_cube.lbda[bad], xc_vec[bad],
                       mfc=red, mec=red, marker='.', ls='None', label='_')
@@ -1314,12 +1315,13 @@ if __name__ == "__main__":
         ax4a.plot(meta_cube.lbda, xfit, green, label="Fit 3D")
         P.setp(ax4a.get_xticklabels()+ax4a.get_yticklabels(),
                fontsize='xx-small')
-        leg = ax4a.legend(loc='best', fontsize='small', frameon=False)
+        ax4a.legend(loc='best', fontsize='small', frameon=False)
 
-        ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
-                      fmt=None, ecolor=green)
-        ax4b.scatter(meta_cube.lbda[good], yc_vec[good], edgecolors='none',
-                     c=meta_cube.lbda[good], cmap=M.cm.jet, zorder=3)
+        if good.any():
+            ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
+                          fmt=None, ecolor=green)
+            ax4b.scatter(meta_cube.lbda[good], yc_vec[good], edgecolors='none',
+                         c=meta_cube.lbda[good], cmap=M.cm.jet, zorder=3)
         if bad.any():
             ax4b.plot(meta_cube.lbda[bad], yc_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
@@ -1328,17 +1330,20 @@ if __name__ == "__main__":
         P.setp(ax4b.get_xticklabels()+ax4b.get_yticklabels(),
                fontsize='xx-small')
 
-        ax4c.errorbar(xc_vec[valid], yc_vec[valid],
-                      xerr=dparams[valid,2], yerr=dparams[valid,3],
-                      fmt=None, ecolor=green)
-        ax4c.scatter(xc_vec[good],yc_vec[good], edgecolors='none',
-                     c=meta_cube.lbda[good],
-                     cmap=M.cm.jet, zorder=3)
-        # Plot position selection process
-        ax4c.plot(xmids[good], ymids[good], marker='.',
-                  mfc=blue, mec=blue, ls='None') # Selected ref. positions
-        ax4c.plot(xmids[bad], ymids[bad], marker='.',
-                  mfc=red, mec=red, ls='None')   # Discarded ref. positions
+        if valid.any():
+            ax4c.errorbar(xc_vec[valid], yc_vec[valid],
+                          xerr=dparams[valid,2], yerr=dparams[valid,3],
+                          fmt=None, ecolor=green)
+        if good.any():
+            ax4c.scatter(xc_vec[good],yc_vec[good], edgecolors='none',
+                         c=meta_cube.lbda[good],
+                         cmap=M.cm.jet, zorder=3)
+            # Plot position selection process
+            ax4c.plot(xmids[good], ymids[good], marker='.',
+                      mfc=blue, mec=blue, ls='None') # Selected ref. positions
+        if bad.any():
+            ax4c.plot(xmids[bad], ymids[bad], marker='.',
+                      mfc=red, mec=red, ls='None')   # Discarded ref. positions
         ax4c.plot((xmid, xc), (ymid, yc), 'k-')
         ax4c.plot(xguess, yguess, 'k--') # Guess ADR
         ax4c.plot(xfit, yfit, green)     # Adjusted ADR
@@ -1416,10 +1421,11 @@ if __name__ == "__main__":
         #                     zip(xfit,yfit,fit_ell,[fitpar[4]]*nmeta)])
         # and associated errors.
 
-        ax6a.errorbar(meta_cube.lbda[good], alpha_vec[good], dparams[good,6],
-                      marker='.',
-                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None',
-                      label="Fit 2D")
+        if good.any():
+            ax6a.errorbar(meta_cube.lbda[good], alpha_vec[good], dparams[good,6],
+                          marker='.',
+                          mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None',
+                          label="Fit 2D")
         if bad.any():
             ax6a.plot(meta_cube.lbda[bad], alpha_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None', label="_")
@@ -1434,12 +1440,13 @@ if __name__ == "__main__":
                   (', '.join([ 'a%d=%.2f' % (i,a) for i,a
                                in enumerate(fitpar[6+ellDeg:npar_psf]) ])),
                   transform=ax6a.transAxes, fontsize='small', ha='right')
-        leg = ax6a.legend(loc='best', fontsize='small')
+        ax6a.legend(loc='best', fontsize='small')
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
-        ax6b.errorbar(meta_cube.lbda[good], ell_vec[good], dparams[good,5],
-                      marker='.',
-                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
+        if good.any():
+            ax6b.errorbar(meta_cube.lbda[good], ell_vec[good], dparams[good,5],
+                          marker='.',
+                          mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
             ax6b.plot(meta_cube.lbda[bad],ell_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
@@ -1458,9 +1465,10 @@ if __name__ == "__main__":
                   transform=ax6b.transAxes, fontsize='small', ha='right')
         P.setp(ax6b.get_yticklabels(), fontsize='x-small')
 
-        ax6c.errorbar(meta_cube.lbda[good], xy_vec[good], dparams[good,4],
-                      marker='.',
-                      mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
+        if good.any():
+            ax6c.errorbar(meta_cube.lbda[good], xy_vec[good], dparams[good,4],
+                          marker='.',
+                          mfc=blue, mec=blue, ecolor=blue, capsize=0, ls='None')
         if bad.any():
             ax6c.plot(meta_cube.lbda[bad], xy_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
