@@ -100,7 +100,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
-        print_msg("Meta-slice #%d/%d, %.0f A:" % (i+1,cube.nslice,cube.lbda[i]),
+        print_msg((" Meta-slice #%d/%d, %.0f A " % 
+                   (i+1,cube.nslice,cube.lbda[i])).center(50, '-'),
                   2, verbosity)
         # Single-slice cubes
         cube_star.lbda = N.array([cube.lbda[i]])

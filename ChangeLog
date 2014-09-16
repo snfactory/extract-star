@@ -1,3 +1,9 @@
+2014-09-16  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: use standard minimizer
+	interface 'minimize' for final 3D-fit and relax convergence
+	tolerance.
+
 2014-09-11  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (read_DDTpos): add sanity check (SN ought

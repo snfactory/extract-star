@@ -864,7 +864,7 @@ if __name__ == "__main__":
         print "Gradient checks:"        # Include hyper-terms if any
         data_model.check_grad()
 
-    data_model.fit(maxfun=2000, save=True, msge=(opts.verbosity>=4))
+    data_model.minimize(verbose=(opts.verbosity >= 3), tol=1e-6)
 
     # Print out fit facts
     parnames = ['delta', 'theta', 'x0', 'y0', 'xy'] + \
@@ -875,11 +875,10 @@ if __name__ == "__main__":
                  for i in range(nmeta) for j in range(npar_sky) ]
     print data_model.facts(params=opts.verbosity >= 1, names=parnames)
 
-    if data_model.status > 0:
+    if not data_model.success:
         raise ValueError(
             '3D-PSF fit did not converge (status=%d: %s)' % 
-            (data_model.status,
-             pySNIFS_fit.SO.tnc.RCSTRINGS[data_model.status]))
+            (data_model.status, data_model.res.message))
 
     # Store guess and fit parameters ------------------------------
  
@@ -889,8 +888,7 @@ if __name__ == "__main__":
     covpar = data_model.param_cov(fitpar) # Parameter covariance matrix
     dfitpar = N.sqrt(covpar.diagonal()) # Diagonal errors on adjusted parameters
 
-    print_msg("  Fit result [%d]: chi2/dof=%.2f/%d" % 
-              (data_model.status, chi2, data_model.dof), 1)
+    print_msg("  Fit result: chi2/dof=%.2f/%d" % (chi2,data_model.dof), 1)
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" % 
               fitpar[npar_psf:npar_psf+nmeta], 3)
@@ -948,9 +946,9 @@ if __name__ == "__main__":
                 'Parangle (%.0fdeg) more than 20deg away from prediction (%.0fdeg)' %
                 (adr.get_parangle(), adr.get_parangle(theta0)))
     else:                       # Simpler tests on seeing and airmass
-        if not 0.4 < seeing < 4.:
+        if not 0.3 < seeing < 4.:
             raise ValueError('Unphysical seeing (%.2f")' % seeing)
-        if not 1. < adr.get_airmass() < 4.:
+        if not 1. <= adr.get_airmass() < 4.:
             raise ValueError('Unphysical airmass (%.2f)' % adr.get_airmass())
         # Test positivity of alpha and ellipticity
         if fit_alpha.min() < 0:
