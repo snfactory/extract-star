@@ -773,9 +773,12 @@ def read_DDTpos(inhdr):
     available.
     """
 
-    lddt = inhdr['DDTLREF'] # Ref. wavelength [A]
-    xddt = inhdr['DDTXP']   # Predicted position [spx]
-    yddt = inhdr['DDTYP']
+    try:
+        lddt = inhdr['DDTLREF'] # Ref. wavelength [A]
+        xddt = inhdr['DDTXP']   # Predicted position [spx]
+        yddt = inhdr['DDTYP']
+    except KeyError as err:
+        raise KeyError("File has no DDT-related keywords (%s)" % err)
 
     # Some sanity check
     if not (abs(xddt) < 7 and abs(yddt) < 7):

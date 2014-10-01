@@ -87,7 +87,7 @@ hence alpha(lref) = a[-1].
 __author__ = "Y. Copin, C. Buton, E. Pecontal"
 __version__ = '$Id$'
 
-import os
+import os, sys
 
 import pyfits as F
 import numpy as N 
@@ -416,45 +416,42 @@ if __name__ == "__main__":
 
     parser = optparse.OptionParser(usage, version=__version__)
 
-    parser.add_option("-i", "--in", type="string", dest="input",
+    parser.add_option("-i", "--in", type=str, dest="input",
                       help="Input datacube (or use argument)")
-    parser.add_option("-o", "--out", type="string",
+    parser.add_option("-o", "--out", type=str,
                       help="Output point source spectrum")
-    parser.add_option("-s", "--sky", type="string",
+    parser.add_option("-s", "--sky", type=str,
                       help="Output sky spectrum")
 
     # PSF parameters
-    parser.add_option("-S", "--skyDeg", type="int",
+    parser.add_option("-S", "--skyDeg", type=int,
                       help="Sky polynomial background degree [%default]",
                       default=0)
-    parser.add_option("-A", "--alphaDeg", type="int",
+    parser.add_option("-A", "--alphaDeg", type=int,
                       help="Alpha polynomial degree [%default]",
                       default=2)
-    parser.add_option("-E", "--ellDeg", type="int",
+    parser.add_option("-E", "--ellDeg", type=int,
                       help="Ellipticity polynomial degree [%default]",
                       default=0)
 
     # PSF model
-    parser.add_option("--psf",
-                      choices=('classic','classic-powerlaw','chromatic'),
-                      help="PSF model " \
-                      "(classic[-powerlaw]|chromatic) [%default]",
+    parser.add_option("--psf", choices=('classic','classic-powerlaw','chromatic'),
+                      help="PSF model (classic[-powerlaw]|chromatic) [%default]",
                       default='classic-powerlaw')
 
     # Extraction method and parameters
-    parser.add_option("-N", "--nmeta", type='int',
+    parser.add_option("-N", "--nmeta", type=int,
                       help="Number of chromatic meta-slices [%default]",
                       default=12)
-    parser.add_option("--subsampling", type='int',
+    parser.add_option("--subsampling", type=int,
                       help="Spaxel subsampling [%default]",
                       default=3)
 
-    parser.add_option("-m", "--method",
+    parser.add_option("-m", "--method", 
                       choices=('psf','optimal','aperture','subaperture'),
-                      help="Extraction method " \
-                      "(psf|optimal|[sub]aperture) [%default]",
+                      help="Extraction method (psf|optimal|[sub]aperture) [%default]",
                       default="psf")
-    parser.add_option("-r", "--radius", type="float",
+    parser.add_option("-r", "--radius", type=float,
                       help="Aperture radius for non-PSF extraction " \
                            "(>0: in \", <0: in seeing sigma) [%default]",
                       default=-5.)
@@ -472,36 +469,37 @@ if __name__ == "__main__":
 
     # Covariance management
     parser.add_option("-V", "--covariance", action='store_true',
-                      help="Compute and store covariance matrix in extension",
-                      default=False)
+                      help="Compute and store covariance matrix in extension")
 
     # Priors
-    parser.add_option("--usePriors", type="float", 
-                      help="PSF prior hyper-scale " \
+    parser.add_option("--usePriors", type=float, 
+                      help="PSF prior hyper-scale, or 0 for none " \
                       "(req. powerlaw-PSF and seeing prior) [%default]",
                       default=0.)
-    parser.add_option("--seeingPrior", type="float",
+    parser.add_option("--seeingPrior", type=float,
                       help="Seeing prior (from Exposure.Seeing) [\"]")
     parser.add_option("--useDDTPriors", action='store_true',
-                      help="Prior on point-source position from DDT",
-                      default=False)
+                      help="Prior on point-source position from DDT")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
                       help="Do not perform final 3D-fit")
     parser.add_option("--keepmodel", action='store_true',
                       help="Store meta-slices and adjusted model in 3D cubes")
-    parser.add_option("--psf3Dconstraints", type='string', action='append',
+    parser.add_option("--psf3Dconstraints", type=str, action='append',
                       help="Constraints on PSF parameters (n:val,[val])")
 
     # Debug options
-    parser.add_option("-v", "--verbosity", type="int",
+    parser.add_option("-v", "--verbosity", type=int,
                       help="Verbosity level (<0: quiet) [%default]",
                       default=0)
-    parser.add_option("-f", "--file", type="string", dest="log2D",
+    parser.add_option("-f", "--file", type=str, dest="log2D",
                       help="2D adjustment logfile name")
-    parser.add_option("-F", "--File", type="string", dest="log3D",
+    parser.add_option("-F", "--File", type=str, dest="log3D",
                       help="3D adjustment logfile name")
+    parser.add_option("--ignorePertinenceTests", action='store_true',
+                      #help=optparse.SUPPRESS_HELP
+                      help="Ignore tests on PSF pertinence (but really DON'T!)")
 
     opts,args = parser.parse_args()
     if not opts.input:
@@ -662,9 +660,8 @@ if __name__ == "__main__":
     if opts.useDDTPriors:
         try:
             ddtlxy = libES.read_DDTpos(inhdr) # lref,x,y
-        except KeyError:
-            parser.error(
-                "Input file has no DDT-related keywords needed by '--useDDTPriors'")
+        except KeyError as err:
+            raise KeyError(err)
             #print "WARNING: cannot read DDT-related keywords"
             #ddtpos = None
         else:
@@ -919,47 +916,55 @@ if __name__ == "__main__":
 
     # Check fit pertinence ------------------------------
 
-    if opts.usePriors:          # Test against priors
-        # Test position of point-source
-        if opts.useDDTPriors:
-            if not N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) < 5:
+    try:
+        if opts.usePriors:          # Test against priors
+            # Test position of point-source
+            if opts.useDDTPriors:
+                if not N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) < 5:
+                    raise ValueError(
+                        'Point-source %.2fx%.2f located more than 5 spx away '
+                        'from DDT prediction %.2fx%.2f' % 
+                        (fitpar[2],fitpar[3],ddtpos[0],ddtpos[1]))
+            elif not ( abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7 ):
+                raise ValueError('Point-source located outside the FoV')
+            # Tests on seeing
+            if not 0.6 < seeing/opts.seeingPrior < 1.4:
                 raise ValueError(
-                    'Point-source %.2fx%.2f located more than 5 spx away '
-                    'from DDT prediction %.2fx%.2f' % 
-                    (fitpar[2],fitpar[3],ddtpos[0],ddtpos[1]))
-        elif not ( abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7 ):
-            raise ValueError('Point-source located outside the FoV')
-        # Tests on seeing
-        if not 0.6 < seeing/opts.seeingPrior < 1.4:
-            raise ValueError(
-                'Seeing (%.2f") more than 40%% away from prediction (%.2f")' %
-                (seeing, opts.seeingPrior))
-        # Tests on ADR parameters
-        if not 0.8 < adr.get_airmass()/adr.get_airmass(delta0) < 1.2:
-            raise ValueError(
-                'Airmass (%.2f) more than 20%% away from prediction (%.2f)' %
-                (adr.get_airmass(), adr.get_airmass(delta0)))
-        # Rewrap angle difference [rad]
-        rewrap = lambda dtheta: (dtheta + N.pi)%(2*N.pi) - N.pi
-        if not abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) < 20:
-            raise ValueError(
-                'Parangle (%.0fdeg) more than 20deg away from prediction (%.0fdeg)' %
-                (adr.get_parangle(), adr.get_parangle(theta0)))
-    else:                       # Simpler tests on seeing and airmass
-        if not 0.3 < seeing < 4.:
-            raise ValueError('Unphysical seeing (%.2f")' % seeing)
-        if not 1. <= adr.get_airmass() < 4.:
-            raise ValueError('Unphysical airmass (%.2f)' % adr.get_airmass())
-        # Test positivity of alpha and ellipticity
-        if fit_alpha.min() < 0:
-            raise ValueError("Alpha is negative (%.2f) at %.0f A" % 
-                             (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
-        if fit_ell.min() < 0.2:
-            raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
-                             (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
-        if fit_ell.max() > 5.:
-            raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
-                             (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
+                    'Seeing (%.2f") more than 40%% away from prediction (%.2f")' %
+                    (seeing, opts.seeingPrior))
+            # Tests on ADR parameters
+            if not 0.8 < adr.get_airmass()/adr.get_airmass(delta0) < 1.2:
+                raise ValueError(
+                    'Airmass (%.2f) more than 20%% away from prediction (%.2f)' %
+                    (adr.get_airmass(), adr.get_airmass(delta0)))
+            # Rewrap angle difference [rad]
+            rewrap = lambda dtheta: (dtheta + N.pi)%(2*N.pi) - N.pi
+            if not abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) < 20:
+                raise ValueError(
+                    'Parangle (%.0fdeg) more than 20deg away '
+                    'from prediction (%.0fdeg)' %
+                    (adr.get_parangle(), adr.get_parangle(theta0)))
+        else:                       # Simpler tests on seeing and airmass
+            if not 0.3 < seeing < 4.:
+                raise ValueError('Unphysical seeing (%.2f")' % seeing)
+            if not 1. <= adr.get_airmass() < 4.:
+                raise ValueError('Unphysical airmass (%.2f)' % adr.get_airmass())
+            # Test positivity of alpha and ellipticity
+            if fit_alpha.min() < 0:
+                raise ValueError("Alpha is negative (%.2f) at %.0f A" % 
+                                 (fit_alpha.min(), 
+                                  meta_cube.lbda[fit_alpha.argmin()]))
+            if fit_ell.min() < 0.2:
+                raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
+                                 (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
+            if fit_ell.max() > 5.:
+                raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
+                                 (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
+    except ValueError as notPertinentException:
+        if opts.ignorePertinenceTests:
+            sys.stderr.write("ERROR: %s\n" % str(notPertinentException))
+        else:
+            raise               # Will reraise input exception
 
     # Compute point-source and background spectra ==============================
 
