@@ -4,6 +4,7 @@
 ## Filename:      libExtractStar.py
 ## Version:       $Revision$
 ## Description:   Extract_star utilities module
+## Modified at:   $Date$
 ## Author:        $Author$
 ## $Id$
 ##############################################################################
@@ -178,7 +179,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
               [-10, 10],                # yc
               [-0.6, +0.6],             # xy parameter
               [0.2, 5],                 # Ellipticity parameter > 0
-              [0.1, 10],                # alpha > 0
+              [0.1, 15],                # alpha > 0
               [0, None]]                # Intensity > 0
 
         # alphaDeg & ellDeg set to 0 for meta-slice fits
@@ -242,11 +243,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Check fit results
         if not model_star.success:      # Fit failure
             pass
-        elif not model_star.fitpar[5] > 0:
+        elif not 0.2 < model_star.fitpar[5] < 5:
             model_star.success = False
             model_star.status = -1
-            model_star.res.message = "ellipticity is null"
-        elif not 0 < model_star.fitpar[6] < 10:
+            model_star.res.message = "ellipticity is invalid (%.2f)" % \
+                                     model_star.fitpar[5]
+        elif not 0.1 < model_star.fitpar[6] < 15:
             model_star.success = False
             model_star.status = -2
             model_star.res.message = "alpha is invalid (%.2f)" % \

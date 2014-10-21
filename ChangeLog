@@ -2,6 +2,8 @@
 
 	* lib/libExtractStar.py (read_psf_param): make function compatible
 	with previsous keyword name 'ES_PA'.
+	(fit_metaslices): relax boundaries on alpha parameters (needed for
+	seeing above 3 arcsec).
 
 2014-10-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
