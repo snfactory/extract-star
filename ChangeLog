@@ -1,3 +1,16 @@
+2014-10-21  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (read_psf_param): make function compatible
+	with previsous keyword name 'ES_PA'.
+
+2014-10-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: switch to 1+|mean|
+	normalization (rather than max) to help convergence.
+
+	* lib/libExtractStar.py (extract_specs): do not force sky
+	positivity.
+
 2014-10-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new expert option

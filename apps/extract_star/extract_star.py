@@ -629,10 +629,10 @@ if __name__ == "__main__":
         "  Meta-slices before selection: %d from %.2f to %.2f by %.2f A" % 
         (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
 
-    # Normalisation of the signal and variance in order to avoid numerical
-    # problems with too small numbers
-    norm = meta_cube.data.max(axis=-1).reshape(-1,1) # (nmeta,1)
-    print_msg("  Meta-slice normalization (max): %s" % (norm.squeeze()), 2)
+    # Normalisation of the signal and variance in order to avoid
+    # numerical problems with too small numbers
+    norm = (1 + N.abs(meta_cube.data.mean(axis=-1))).reshape(-1,1) # (nmeta,1)
+    print_msg("  Meta-slice normalization (1+|mean|): %s" % (norm.squeeze()), 2)
     meta_cube.data /= norm                           # (nmeta,nspx)
     meta_cube.var  /= norm**2
 
@@ -661,7 +661,7 @@ if __name__ == "__main__":
         try:
             ddtlxy = libES.read_DDTpos(inhdr) # lref,x,y
         except KeyError as err:
-            raise KeyError(err)
+            raise
             #print "WARNING: cannot read DDT-related keywords"
             #ddtpos = None
         else:
@@ -852,24 +852,35 @@ if __name__ == "__main__":
         print_msg(str(hterm), 1)
         hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
 
-    # Instantiate the model and perform the 3D-fit (fmin_tnc)
-    data_model = pySNIFS_fit.model(data=meta_cube, func=func,
-                                   param=param, bounds=bounds,
-                                   myfunc={psfFn.name: psfFn},
-                                   hyper=hyper)
-    if opts.verbosity >= 4:
-        print "Gradient checks:"        # Include hyper-terms if any
-        data_model.check_grad()
-
-    data_model.minimize(verbose=(opts.verbosity >= 3), tol=1e-6)
-
-    # Print out fit facts
+    # Parameter names
     parnames = ['delta', 'theta', 'x0', 'y0', 'xy'] + \
                [ 'E%02d' % i for i in range(ellDeg+1) ] + \
                [ 'A%02d' % i for i in range(alphaDeg+1) ] + \
                [ 'I%02d' % (i+1) for i in range(nmeta) ] + \
                [ 'B%02d_%02d' % (i+1,j)
                  for i in range(nmeta) for j in range(npar_sky) ]
+
+    # Instantiate the model and perform the 3D-fit (fmin_tnc)
+    data_model = pySNIFS_fit.model(data=meta_cube, func=func,
+                                   param=param, bounds=bounds,
+                                   myfunc={psfFn.name: psfFn},
+                                   hyper=hyper)
+
+    if opts.verbosity >= 4:
+        print "Gradient checks:"        # Include hyper-terms if any
+        data_model.check_grad()
+
+    # Minimization: default method is 'TNC'
+    data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6, 
+                        options={'maxiter':400}, method='TNC')
+    if not data_model.success:  # Try with 'L-BFGS-B'
+        print "WARNING: 3D-PSF fit did not converge w/ TNC minimizer " \
+            "(status=%d: %s), trying again with L-BFGS-B minimizer" % \
+            (data_model.status, data_model.res.message)
+        data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6, 
+                            options={'maxiter':400}, method='L-BFGS-B')
+
+    # Print out fit facts
     print data_model.facts(params=opts.verbosity >= 1, names=parnames)
 
     if not data_model.success:

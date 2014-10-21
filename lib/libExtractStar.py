@@ -224,8 +224,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             print "Gradient checks:"    # Includes hyper-term if any
             model_star.check_grad()
 
-        #model_star.fit(maxfun=400, msge=(verbosity >= 4))
-        model_star.minimize(verbose=(verbosity >= 2), tol=1e-6)
+        model_star.minimize(verbose=(verbosity >= 2), tol=1e-6, 
+                            options={'maxiter':400})
 
         print_msg(model_star.facts(params=(verbosity >= 2), names=parnames),
                   1, verbosity)
@@ -422,8 +422,9 @@ def extract_specs(cube, psf, skyDeg=0,
         if negSky.any(): # and 'long' not in psf_fn.name.lower():
             print "WARNING: %d slices w/ sky<0 in extract_specs" % \
                   (len(negSky.nonzero()[0]))
-            print_msg(str(cube.lbda[negSky]), 2, verbosity)
+            print_msg(str(cube.lbda[negSky]), 3, verbosity)
         #if 'short' in psf_fn.name:
+        if False:
             # For slices w/ sky<0, fit only PSF without background
             Alpha = N.array([ N.dot(aa,aa) for aa in A[negSky,:,0] ])
             Beta = N.array([ N.dot(aa,bb)
@@ -737,7 +738,10 @@ def read_psf_param(hdr):
 
     xref = hdr['ES_XC']  # Reference position [spx] at ref. wavelength
     yref = hdr['ES_YC']
-    xy   = hdr['ES_PA']  # xy parameter
+    try:
+        xy = hdr['ES_XY']       # xy parameter
+    except KeyError:
+        xy = hdr['ES_PA']       # Old name
 
     # This reproduces exactly the PSF parameters used by
     # extract_specs(full_cube...)

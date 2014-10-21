@@ -885,13 +885,15 @@ class model:
             self.flatparam = self.fitpar.copy()
 
     def minimize(self, save=False, verbose=False,
-                 method='TNC', tol=None, options={}):
+                 method='TNC', tol=None, options=None):
         """Perform the model fitting by minimizing the objective
         function objfun. Similar to self.fit[_bfgs], but using unified
         minimizer SO.minimize."""
 
         self.guessparam = self.flatparam.copy()
 
+        if options is None:
+            options = {}
         if method.lower()=='tnc':
             options.setdefault('minfev', self.dof)
 
@@ -912,7 +914,7 @@ class model:
         # Reduced khi2 = khi2 / DoF (not including hyper term)
         self.khi2 = self.objfun(param=self.fitpar, hyper=False) / self.dof
 
-        if save:
+        if save and self.success:
             self.flatparam = self.fitpar.copy()
 
         return self.fitpar
