@@ -68,7 +68,7 @@ The chromatic evolution of Y2-coefficient can be computed from ES_Exx
 coefficients of polynom function of relative wavelength
 lr:=lbda/lref-1:
 
-Y2-coeff(lbda) = e0 + e1*lr + e2*lr**2 + ... 
+Y2-coeff(lbda) = e0 + e1*lr + e2*lr**2 + ...
 
 With a polynomial (i.e. non-'powerlaw') PSF, the chromatic evolution
 of alpha is computed similarly from ES_Axx coefficients:
@@ -90,7 +90,7 @@ __version__ = '$Id$'
 import os, sys
 
 import pyfits as F
-import numpy as N 
+import numpy as N
 
 import pySNIFS
 import pySNIFS_fit
@@ -294,7 +294,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
             list2D.extend([fitpar[npar_psf+cube.nslice+n*npar_sky+i],
                            dfitpar[npar_psf+cube.nslice+n*npar_sky+i]])
         # Compute chi2|RSS
-        chi2 = N.nan_to_num((cube.slice2d(n, coord='p') - 
+        chi2 = N.nan_to_num((cube.slice2d(n, coord='p') -
                              cube_fit.slice2d(n, coord='p'))**2)
         if cube.var is not None:    # chi2: divide by variance
             chi2 /= cube.slice2d(n, coord='p', var=True)
@@ -313,8 +313,9 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, ddtpos, fluxes):
     print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" %
               (LbdaRef,xref,yref), 0)
 
-    # '[short|long], classic[-powerlaw]' or '[long|short] [blue|red], chromatic'
-    psfname = ', '.join((psf.name, psf.model)) 
+    # "[short|long], classic[-powerlaw]" or "[long|short] [blue|red],
+    # chromatic"
+    psfname = ', '.join((psf.name, psf.model))
 
     # Convert polynomial coeffs from lr = (2*lbda - (lmin+lmax))/(lmax-lmin)
     # to lr~ = lbda/LbdaRef - 1 = a + b*lr
@@ -395,7 +396,7 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
                 params[n] = val
                 bounds[n] = [val,val]
                 print "WARNING: Forcing PSF param[%d] to %f" % (n,val)
-                
+
             else:               # Loose constraint: vmin <= param <= vmax
                 vmin, vmax = sorted(vals)
                 params[n] = min(max(params[n], vmin), vmax)
@@ -435,8 +436,10 @@ if __name__ == "__main__":
                       default=0)
 
     # PSF model
-    parser.add_option("--psf", choices=('classic','classic-powerlaw','chromatic'),
-                      help="PSF model (classic[-powerlaw]|chromatic) [%default]",
+    parser.add_option("--psf",
+                      choices=('classic','classic-powerlaw','chromatic'),
+                      help="PSF model "
+                      "(classic[-powerlaw]|chromatic) [%default]",
                       default='classic-powerlaw')
 
     # Extraction method and parameters
@@ -447,21 +450,22 @@ if __name__ == "__main__":
                       help="Spaxel subsampling [%default]",
                       default=3)
 
-    parser.add_option("-m", "--method", 
+    parser.add_option("-m", "--method",
                       choices=('psf','optimal','aperture','subaperture'),
-                      help="Extraction method (psf|optimal|[sub]aperture) [%default]",
+                      help="Extraction method "
+                      "(psf|optimal|[sub]aperture) [%default]",
                       default="psf")
     parser.add_option("-r", "--radius", type=float,
                       help="Aperture radius for non-PSF extraction " \
                            "(>0: in \", <0: in seeing sigma) [%default]",
                       default=-5.)
-    parser.add_option("-L", "--leastSquares", 
+    parser.add_option("-L", "--leastSquares",
                       dest="chi2fit", action="store_false",
                       help="Least-square fit [default is a chi2 fit]",
                       default=True)
 
     # Plotting
-    parser.add_option("-g", "--graph", 
+    parser.add_option("-g", "--graph",
                       choices=('png','eps','pdf','svg','pylab'),
                       help="Graphic output format (png,eps,pdf,svg,pylab)")
     parser.add_option("-p", "--plot", action='store_true',
@@ -472,7 +476,7 @@ if __name__ == "__main__":
                       help="Compute and store covariance matrix in extension")
 
     # Priors
-    parser.add_option("--usePriors", type=float, 
+    parser.add_option("--usePriors", type=float,
                       help="PSF prior hyper-scale, or 0 for none " \
                       "(req. powerlaw-PSF and seeing prior) [%default]",
                       default=0.)
@@ -499,7 +503,7 @@ if __name__ == "__main__":
                       help="3D adjustment logfile name")
     parser.add_option("--ignorePertinenceTests", action='store_true',
                       #help=optparse.SUPPRESS_HELP
-                      help="Ignore tests on PSF pertinence (but really DON'T!)")
+                      help="Ignore tests on PSF pertinence (but DON'T!)")
 
     opts,args = parser.parse_args()
     if not opts.input:
@@ -525,14 +529,14 @@ if __name__ == "__main__":
         if opts.usePriors < 0:
             parser.error("Prior scale (--scalePriors) must be positive.")
         if not opts.seeingPrior:
-            parser.error(
-                "Priors (--usePriors > 0) requires a seeing prior (--seeingPrior).")
+            parser.error("Priors (--usePriors > 0) requires a seeing prior "
+                         "(--seeingPrior).")
         if not opts.psf.endswith('powerlaw'):
             parser.error("Priors implemented for 'powerlaw' PSF only.")
         if opts.alphaDeg!=2 or opts.ellDeg!=0:
             parser.error("Priors mode requires '--alphaDeg 2 --ellDeg 0'.")
 
-    # Input datacube ===========================================================
+    # Input datacube ==========================================================
 
     print "Opening datacube %s" % opts.input
 
@@ -550,7 +554,7 @@ if __name__ == "__main__":
     full_cube.flag_nans(name='input cube')
     step = full_cube.lstep
 
-    print_msg("Cube %s [%s]: %d slices [%.2f-%.2f], %d spaxels" % 
+    print_msg("Cube %s [%s]: %d slices [%.2f-%.2f], %d spaxels" %
               (os.path.basename(opts.input), 'E3D' if isE3D else '3D',
                full_cube.nslice,
                full_cube.lbda[0], full_cube.lbda[-1], full_cube.nlens), 1)
@@ -561,7 +565,8 @@ if __name__ == "__main__":
     try:
         parangle = inhdr['PARANG']        # Sky parallactic angle [deg]
     except KeyError:                      # Not in original headers
-        print "WARNING: Computing PARANG from header ALTITUDE, AZIMUTH and LATITUDE."
+        print "WARNING: Computing PARANG " \
+            "from header ALTITUDE, AZIMUTH and LATITUDE."
         _,inhdr['PARANG'] = libES.estimate_zdpar(inhdr) # [deg]
 
     channel = inhdr['CHANNEL'][0].upper() # 'B' or 'R'
@@ -576,7 +581,7 @@ if __name__ == "__main__":
 
     # Test channel and set default output name
     if channel not in ('B','R'):
-        parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" % 
+        parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" %
                      (opts.input, channel))
     if not opts.out:                    # Default output
         opts.out = 'spec_%s.fits' % (channel)
@@ -604,11 +609,12 @@ if __name__ == "__main__":
     # Sub-sampling
     psfFn.subsampling = opts.subsampling
 
-    print "  Object: %s, Efftime: %.1fs, Airmass: %.2f" % (objname, efftime, airmass)
+    print "  Object: %s, Efftime: %.1fs, Airmass: %.2f" % \
+        (objname, efftime, airmass)
     print "  PSF: '%s', sub x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
-    # 2D-model fitting =========================================================
+    # 2D-model fitting ========================================================
 
     # Meta-slice definition (min,max,step [px]) ------------------------------
 
@@ -625,9 +631,8 @@ if __name__ == "__main__":
     spxSize = meta_cube.spxSize
     nmeta = meta_cube.nslice
 
-    print_msg(
-        "  Meta-slices before selection: %d from %.2f to %.2f by %.2f A" % 
-        (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
+    print_msg("  Meta-slices before selection: %d from %.2f to %.2f by %.2f A" %
+              (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
 
     # Normalisation of the signal and variance in order to avoid
     # numerical problems with too small numbers
@@ -665,11 +670,11 @@ if __name__ == "__main__":
             #print "WARNING: cannot read DDT-related keywords"
             #ddtpos = None
         else:
-            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" % 
+            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
                       ddtlxy, 0)
-            ddtpos = adr.refract(   # Back-propagate positions to ref. wavelength
+            ddtpos = adr.refract(   # Back-propagate pos. to ref. wavelength
                 ddtlxy[1], ddtlxy[2], ddtlxy[0], backward=True, unit=spxSize) # x,y
-            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" % 
+            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
                       (lmid, ddtpos[0], ddtpos[1]), 1)
     else:
         ddtpos = None           # No predictions nor priors
@@ -680,7 +685,7 @@ if __name__ == "__main__":
           ('chi2' if opts.chi2fit else 'least-squares')
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
-        scalePriors=opts.usePriors, 
+        scalePriors=opts.usePriors,
         seeingPrior=opts.seeingPrior if opts.usePriors else None,
         posPrior=ddtpos,
         airmass=airmass, verbosity=opts.verbosity)
@@ -699,7 +704,7 @@ if __name__ == "__main__":
         print "Producing 2D adjusted parameter logfile %s..." % opts.log2D
         create_2Dlog(opts, meta_cube, params, dparams, chi2s)
 
-    # 3D-model fitting =========================================================
+    # 3D-model fitting ========================================================
 
     print "Datacube 3D-fitting (%s)..." % \
           ('chi2' if opts.chi2fit else 'least-squares')
@@ -709,7 +714,7 @@ if __name__ == "__main__":
     # 0) ADR parameters
     delta0 = adr.delta           # ADR power = tan(zenithal distance)
     theta0 = adr.theta           # ADR angle = parallactic angle [rad]
-    print_msg("  ADR guess: delta=%.2f (airmass=%.2f), theta=%.1f deg" % 
+    print_msg("  ADR guess: delta=%.2f (airmass=%.2f), theta=%.1f deg" %
               (delta0, adr.get_airmass(), theta0*TA.RAD2DEG), 1)
 
     # 1) Reference position
@@ -717,7 +722,7 @@ if __name__ == "__main__":
     # median position, using effective parangle including MLA tilt
     xmids,ymids = adr.refract(   # Back-propagate positions to lmid wavelength
         xc_vec, yc_vec, meta_cube.lbda, backward=True, unit=spxSize)
-    xmids = N.atleast_1d(xmids)  # Some dimensions could be squeezed in adr.refract
+    xmids = N.atleast_1d(xmids)  # Some dim could be squeezed in adr.refract
     ymids = N.atleast_1d(ymids)
     valid = chi2s > 0                   # Discard unfitted slices
     xmid = N.median(xmids[valid])       # Robust to outliers
@@ -733,7 +738,7 @@ if __name__ == "__main__":
     if opts.useDDTPriors:       # Use DDT position as prior
         xc,yc = ddtpos
     elif good.any():
-        print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" % 
+        print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" %
                   (len(xmids[good]),len(xmids),rmax,xmid,ymid), 1)
         xc,yc = xmids[good].mean(), ymids[good].mean() # Position at lmid
     else:
@@ -747,7 +752,7 @@ if __name__ == "__main__":
         if len(xc_vec[good]) <= alphaDeg+1 and not opts.usePriors:
             raise ValueError('Not enough points for alpha initial guess')
 
-    print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" % 
+    print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" %
               (lmid, xc, yc), 1)
 
     # 2) Other parameters
@@ -815,7 +820,7 @@ if __name__ == "__main__":
         setPSF3Dconstraints(opts.psf3Dconstraints, p1, b1)
 
     psfCtes = [spxSize, lmid, alphaDeg, ellDeg]
-    func = [ '%s;%s' % 
+    func = [ '%s;%s' %
              (psfFn.name, ','.join( '%f' % p for p in psfCtes )) ] # PSF
     param = [p1]
     bounds = [b1]
@@ -828,11 +833,10 @@ if __name__ == "__main__":
         bounds += [b2]
 
     print_msg("  Adjusted parameters: delta,theta,xc,yc,xy,"
-              "%d ellCoeffs,%d alphaCoeffs,%d intensities, %d bkgndCoeffs" % 
-              (ellDeg+1,alphaDeg+1,nmeta, npar_sky*nmeta if skyDeg>=0 else 0),
-              2)
+              "%d ellCoeffs,%d alphaCoeffs,%d intensities, %d bkgndCoeffs" %
+              (ellDeg+1,alphaDeg+1,nmeta, npar_sky*nmeta if skyDeg>=0 else 0), 2)
     print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
-    print_msg("  Initial guess [Intensities]: %s" % 
+    print_msg("  Initial guess [Intensities]: %s" %
               p1[npar_psf:npar_psf+nmeta], 3)
     if skyDeg >= 0:
         print_msg("  Initial guess [Bkgnd]: %s" % p2, 3)
@@ -846,7 +850,7 @@ if __name__ == "__main__":
     # Hyper-term
     hyper = {}
     if opts.usePriors:
-        hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr, 
+        hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr,
                                      seeing=opts.seeingPrior, position=ddtpos,
                                      scale=opts.usePriors)
         print_msg(str(hterm), 1)
@@ -871,47 +875,46 @@ if __name__ == "__main__":
         data_model.check_grad()
 
     # Minimization: default method is 'TNC'
-    data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6, 
+    data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6,
                         options={'maxiter':400}, method='TNC')
     if not data_model.success:  # Try with 'L-BFGS-B'
         print "WARNING: 3D-PSF fit did not converge w/ TNC minimizer " \
             "(status=%d: %s), trying again with L-BFGS-B minimizer" % \
             (data_model.status, data_model.res.message)
-        data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6, 
+        data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6,
                             options={'maxiter':400}, method='L-BFGS-B')
 
     # Print out fit facts
     print data_model.facts(params=opts.verbosity >= 1, names=parnames)
 
     if not data_model.success:
-        raise ValueError(
-            '3D-PSF fit did not converge (status=%d: %s)' % 
-            (data_model.status, data_model.res.message))
+        raise ValueError('3D-PSF fit did not converge (status=%d: %s)' %
+                         (data_model.status, data_model.res.message))
 
     # Store guess and fit parameters ------------------------------
- 
+
     fitpar = data_model.fitpar          # Adjusted parameters
     data_model.khi2 *= data_model.dof   # Restore real chi2 (or RSS)
     chi2 = data_model.khi2              # Total chi2 of 3D-fit
     covpar = data_model.param_cov(fitpar) # Parameter covariance matrix
-    dfitpar = N.sqrt(covpar.diagonal()) # Diagonal errors on adjusted parameters
+    dfitpar = N.sqrt(covpar.diagonal()) # Diag. errors on adjusted parameters
 
     print_msg("  Fit result: chi2/dof=%.2f/%d" % (chi2,data_model.dof), 1)
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
-    print_msg("  Fit result [Intensities]: %s" % 
+    print_msg("  Fit result [Intensities]: %s" %
               fitpar[npar_psf:npar_psf+nmeta], 3)
     if skyDeg >= 0:
         print_msg("  Fit result [Background]: %s" % fitpar[npar_psf+nmeta:], 3)
     if opts.usePriors:
         print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
-    print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" % 
+    print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" %
               (lmid, fitpar[2], dfitpar[2], fitpar[3], dfitpar[3]), 1)
     # Update ADR params
-    print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" % 
+    print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" %
               (fitpar[0], dfitpar[0],
                fitpar[1]*TA.RAD2DEG, dfitpar[1]*TA.RAD2DEG), 1)
-    adr.set_param(delta=fitpar[0], theta=fitpar[1]) 
+    adr.set_param(delta=fitpar[0], theta=fitpar[1])
     print "  Effective airmass: %.2f" % adr.get_airmass()
     # Estimated seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
@@ -927,57 +930,68 @@ if __name__ == "__main__":
 
     # Check fit pertinence ------------------------------
 
+    if opts.usePriors:      # Test against priors
+        # These are warnings only, since these tests can eventually be
+        # performed a posteriori. Note that it would be preferable to perform
+        # tests on hyper-term contributions rather than on absolute
+        # comparisons.
+
+        # Test position of point-source
+        if opts.useDDTPriors:
+            if N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) > 5:
+                print "WARNING: " \
+                    "Point-source %.2fx%.2f more than 5 spx away " \
+                    "from DDT prediction %.2fx%.2f" % \
+                    (fitpar[2],fitpar[3],ddtpos[0],ddtpos[1])
+        elif not ( abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7 ):
+            print "WARNING: " \
+                "Point-source %.2fx%.2f outside the FoV" % \
+                (fitpar[2],fitpar[3])
+        # Tests on seeing
+        if not 0.6 < seeing/opts.seeingPrior < 1.4:
+            print "WARNING: " \
+                "Seeing %.2f\" more than 40%% away from predicted %.2f\"" % \
+                (seeing, opts.seeingPrior)
+        # Tests on ADR parameters
+        if not 0.8 < adr.get_airmass()/adr.get_airmass(delta0) < 1.2:
+            print "WARNING: " \
+                "Airmass %.2f more than 20%% away from predicted %.2f" % \
+                (adr.get_airmass(), adr.get_airmass(delta0))
+        # Rewrap angle difference [rad]
+        rewrap = lambda dtheta: (dtheta + N.pi)%(2*N.pi) - N.pi
+        if abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) > 20:
+            print "WARNING: " \
+                "Parangle %.0fdeg more than 20deg away " \
+                "from predicted %.0fdeg" % \
+                (adr.get_parangle(), theta0*TA.RAD2DEG)
+
     try:
-        if opts.usePriors:          # Test against priors
-            # Test position of point-source
-            if opts.useDDTPriors:
-                if not N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) < 5:
-                    raise ValueError(
-                        'Point-source %.2fx%.2f located more than 5 spx away '
-                        'from DDT prediction %.2fx%.2f' % 
-                        (fitpar[2],fitpar[3],ddtpos[0],ddtpos[1]))
-            elif not ( abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7 ):
-                raise ValueError('Point-source located outside the FoV')
-            # Tests on seeing
-            if not 0.6 < seeing/opts.seeingPrior < 1.4:
-                raise ValueError(
-                    'Seeing (%.2f") more than 40%% away from prediction (%.2f")' %
-                    (seeing, opts.seeingPrior))
-            # Tests on ADR parameters
-            if not 0.8 < adr.get_airmass()/adr.get_airmass(delta0) < 1.2:
-                raise ValueError(
-                    'Airmass (%.2f) more than 20%% away from prediction (%.2f)' %
-                    (adr.get_airmass(), adr.get_airmass(delta0)))
-            # Rewrap angle difference [rad]
-            rewrap = lambda dtheta: (dtheta + N.pi)%(2*N.pi) - N.pi
-            if not abs(rewrap(adr.theta - theta0)*TA.RAD2DEG) < 20:
-                raise ValueError(
-                    'Parangle (%.0fdeg) more than 20deg away '
-                    'from prediction (%.0fdeg)' %
-                    (adr.get_parangle(), adr.get_parangle(theta0)))
-        else:                       # Simpler tests on seeing and airmass
-            if not 0.3 < seeing < 4.:
-                raise ValueError('Unphysical seeing (%.2f")' % seeing)
-            if not 1. <= adr.get_airmass() < 4.:
-                raise ValueError('Unphysical airmass (%.2f)' % adr.get_airmass())
-            # Test positivity of alpha and ellipticity
-            if fit_alpha.min() < 0:
-                raise ValueError("Alpha is negative (%.2f) at %.0f A" % 
-                                 (fit_alpha.min(), 
-                                  meta_cube.lbda[fit_alpha.argmin()]))
-            if fit_ell.min() < 0.2:
-                raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
-                                 (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
-            if fit_ell.max() > 5.:
-                raise ValueError("Unphysical ellipticity (%.2f) at %.0f A" % 
-                                 (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
+        # Tests on seeing and airmass
+        if not 0.3 < seeing < 4.:
+            raise ValueError("Unphysical seeing (%.2f\")" % seeing)
+        if not 1. <= adr.get_airmass() < 4.:
+            raise ValueError(
+                "Unphysical airmass (%.2f)" % adr.get_airmass())
+        # Test positivity of alpha and ellipticity
+        if fit_alpha.min() < 0:
+            raise ValueError(
+                "Alpha is negative (%.2f) at %.0f A" %
+                (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
+        if fit_ell.min() < 0.2:
+            raise ValueError(
+                "Unphysical ellipticity (%.2f) at %.0f A" %
+                (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
+        if fit_ell.max() > 5.:
+            raise ValueError(
+                "Unphysical ellipticity (%.2f) at %.0f A" %
+                (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
     except ValueError as notPertinentException:
         if opts.ignorePertinenceTests:
             sys.stderr.write("ERROR: %s\n" % str(notPertinentException))
         else:
             raise               # Will reraise input exception
 
-    # Compute point-source and background spectra ==============================
+    # Compute point-source and background spectra =============================
 
     # Compute aperture radius
     if opts.method == 'psf':
@@ -995,7 +1009,7 @@ if __name__ == "__main__":
     if skyDeg < 0:
         print "WARNING: No background adjusted."
 
-    # Spectrum extraction (point-source, sky, etc.) 
+    # Spectrum extraction (point-source, sky, etc.)
     lbda,sigspecs,varspecs = libES.extract_specs(
         full_cube, (psfFn, psfCtes, fitpar[:npar_psf]),
         skyDeg=skyDeg, method=opts.method,
@@ -1210,7 +1224,7 @@ if __name__ == "__main__":
         if not opts.covariance:     # Plot fit on rows and columns sum
 
             fig3 = P.figure()
-            fig3.suptitle("Rows and columns plot [%s, airmass=%.2f]" % 
+            fig3.suptitle("Rows and columns plot [%s, airmass=%.2f]" %
                           (objname,airmass))
 
             for i in xrange(nmeta):        # Loop over slices
@@ -1226,14 +1240,14 @@ if __name__ == "__main__":
                         i, coord='p', var=True, NAN=False)
                     err_I = N.sqrt(varSlice.sum(axis=0))
                     err_J = N.sqrt(varSlice.sum(axis=1))
-                    ax.errorbar(range(len(prof_I)),prof_I,err_I, 
+                    ax.errorbar(range(len(prof_I)),prof_I,err_I,
                                 fmt='o', c=blue, ecolor=blue, ms=3)
-                    ax.errorbar(range(len(prof_J)),prof_J,err_J, 
+                    ax.errorbar(range(len(prof_J)),prof_J,err_J,
                                 fmt='^', c=red, ecolor=red, ms=3)
                 else:            # Least-square fit
-                    ax.plot(range(len(prof_I)),prof_I, 
+                    ax.plot(range(len(prof_I)),prof_I,
                             marker='o', c=blue, ms=3, ls='None')
-                    ax.plot(range(len(prof_J)),prof_J, 
+                    ax.plot(range(len(prof_J)),prof_J,
                             marker='^', c=red, ms=3, ls='None')
                 # Model
                 modSlice = cube_fit.slice2d(i, coord='p')
@@ -1317,8 +1331,8 @@ if __name__ == "__main__":
                                 ylabel="Y center [spx]")
 
         if good.any():
-            ax4a.errorbar(meta_cube.lbda[good], xc_vec[good], yerr=dparams[good,2],
-                          fmt=None, ecolor=green)
+            ax4a.errorbar(meta_cube.lbda[good], xc_vec[good],
+                          yerr=dparams[good,2], fmt=None, ecolor=green)
             ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
                          c=meta_cube.lbda[good],
                          cmap=M.cm.jet, zorder=3, label="Fit 2D")
@@ -1332,8 +1346,8 @@ if __name__ == "__main__":
         ax4a.legend(loc='best', fontsize='small', frameon=False)
 
         if good.any():
-            ax4b.errorbar(meta_cube.lbda[good], yc_vec[good], yerr=dparams[good,3],
-                          fmt=None, ecolor=green)
+            ax4b.errorbar(meta_cube.lbda[good], yc_vec[good],
+                          yerr=dparams[good,3], fmt=None, ecolor=green)
             ax4b.scatter(meta_cube.lbda[good], yc_vec[good], edgecolors='none',
                          c=meta_cube.lbda[good], cmap=M.cm.jet, zorder=3)
         if bad.any():
@@ -1366,13 +1380,13 @@ if __name__ == "__main__":
         ax4c.add_patch(M.patches.Circle((xmid,ymid),radius=rmax,
                                         ec='0.8',fc='None'))
         ax4c.add_patch(M.patches.Rectangle((-7.5,-7.5),15,15,
-                                                 ec='0.8',lw=2,fc='None')) # FoV
+                                           ec='0.8',lw=2,fc='None')) # FoV
         ax4c.text(0.97, 0.85,
-                  u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
+                  u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' %
                   (xc, yc, airmass, theta0*TA.RAD2DEG),
                   transform=ax4c.transAxes, fontsize='small', ha='right')
         ax4c.text(0.97, 0.75,
-                  u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' % 
+                  u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' %
                   (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle()),
                   transform=ax4c.transAxes, fontsize='small', ha='right')
 
@@ -1579,7 +1593,7 @@ if __name__ == "__main__":
         # Missing energy (not activated by default)
         if opts.verbosity>=3:
             print_msg("Producing missing energy plot...", 1)
-            
+
             figB = P.figure()
             for i in xrange(nmeta):        # Loop over slices
                 ax = figB.add_subplot(nrow, ncol, i+1, yscale='log')
@@ -1620,13 +1634,13 @@ if __name__ == "__main__":
         # Radial Chi2 plot (not activated by default)
         if opts.verbosity>=3:
             print_msg("Producing radial chi2 plot...", 1)
-            
+
             figA = P.figure()
             for i in xrange(nmeta):        # Loop over slices
                 ax = figA.add_subplot(nrow, ncol, i+1, yscale='log')
                 rfit = ellRadius(cube_fit.x, cube_fit.y,
                                  xfit[i],yfit[i], fit_ell[i], fitpar[4])
-                chi2 = ( meta_cube.slice2d(i,coord='p') - 
+                chi2 = ( meta_cube.slice2d(i,coord='p') -
                          cube_fit.slice2d(i,coord='p') )**2 / \
                          meta_cube.slice2d(i,coord='p',var=True)
                 ax.plot(rfit, chi2.flatten(),
@@ -1647,7 +1661,7 @@ if __name__ == "__main__":
             if opts.graph != 'pylab':
                 figA.savefig(
                     os.path.extsep.join((basename+"_chi2", opts.graph)))
-                
+
         # Contour plot of each slice -----------------------------------------
 
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
@@ -1759,4 +1773,4 @@ if __name__ == "__main__":
         if opts.graph == 'pylab':
             P.show()
 
-# End of extract_star.py =======================================================
+# End of extract_star.py ======================================================

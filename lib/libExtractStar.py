@@ -28,8 +28,10 @@ LbdaRef = 5000.               # Use constant ref. wavelength for easy comparison
 SpxSize = SNIFS_cube.spxSize  # Spaxel size in arcsec
 
 def print_msg(str, limit, verb=0):
-    """Print message 'str' if verbosity level (typically
-    opts.verbosity) >= limit."""
+    """
+    Print message 'str' if verbosity level (typically opts.verbosity)
+    >= limit.
+    """
 
     if verb >= limit:
         print str
@@ -286,9 +288,10 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
 def extract_specs(cube, psf, skyDeg=0,
                   method='psf', radius=5., chi2fit=True, verbosity=0):
-    """Extract object and sky spectra from *cube* using PSF --
-    described by *psf*=(psf_fn,psf_ctes,psf_param) -- in presence of
-    sky (polynomial degree *skyDeg*) using *method* ('psf':
+    """
+    Extract object and sky spectra from *cube* using PSF -- described
+    by *psf*=(psf_fn,psf_ctes,psf_param) -- in presence of sky
+    (polynomial degree *skyDeg*) using *method* ('psf':
     PSF-photometry, 'aperture': aperture photometry, or
     'optimal'). For aperture related methods, *radius* gives aperture
     radius in arcsec.
@@ -622,8 +625,10 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
 # Header information access utilities ===============================
 
 def read_PT(hdr, MK_pressure=616., MK_temp=2.):
-    """Read pressure [mbar] and temperature [C] from hdr (or use default
-    Mauna-Kea values), and check value consistency."""
+    """
+    Read pressure [mbar] and temperature [C] from hdr (or use default
+    Mauna-Kea values), and check value consistency.
+    """
 
     if hdr is None:
         return MK_pressure, MK_temp
@@ -715,8 +720,10 @@ def read_psf_ctes(hdr):
 
 
 def read_psf_param(hdr):
-    """Read (7+ellDeg+alphaDeg) PSF parameters from header:
-    delta,theta,xc,yc,xy,e0,...en,a0,...an."""
+    """
+    Read (7+ellDeg+alphaDeg) PSF parameters from header:
+    delta,theta,xc,yc,xy,e0,...en,a0,...an.
+    """
 
     # Chromatic expansion coefficients
     c_ell = [ v for k,v in hdr.items() if re.match('ES_E\d+$',k) ]
@@ -760,8 +767,10 @@ def read_psf_param(hdr):
 
 
 def estimate_zdpar(inhdr):
-    """Estimate zenithal distance [deg] and parallactic angle [deg] from
-    header."""
+    """
+    Estimate zenithal distance [deg] and parallactic angle [deg] from
+    header.
+    """
 
     from ToolBox.Astro import Coords
     ha,dec = Coords.altaz2hadec(inhdr['ALTITUDE'], inhdr['AZIMUTH'],
@@ -796,8 +805,10 @@ def read_DDTpos(inhdr):
 # Polynomial utilities ======================================================
 
 def polyEval(coeffs, x):
-    """Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention for
-    polynomial coeffs: [c0,c1...,cn] (opposite to N.polyfit)."""
+    """
+    Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention
+    for polynomial coeffs: [c0,c1...,cn] (opposite to N.polyfit).
+    """
 
     if N.isscalar(x):
         y = 0                           # Faster on scalar
@@ -811,10 +822,12 @@ def polyEval(coeffs, x):
 
 
 def polyConvMatrix(n, trans=(0,1)):
-    """Return the upper triangular matrix (i,k) * b**k * a**(i-k), that
-    converts polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
-    ...) in polynomial coeffs for x (P = a0 + a1*x + a2*x**2 +
-    ...). Therefore, (a,b)=(0,1) gives identity."""
+    """
+    Return the upper triangular matrix (i,k) * b**k * a**(i-k), that
+    converts polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ +
+    a2~*x~**2 + ...) in polynomial coeffs for x (P = a0 + a1*x +
+    a2*x**2 + ...). Therefore, (a,b)=(0,1) gives identity.
+    """
 
     from scipy.misc import comb
     a,b = trans
@@ -826,7 +839,8 @@ def polyConvMatrix(n, trans=(0,1)):
 
 
 def polyConvert(coeffs, trans=(0,1), backward=False):
-    """Converts polynomial coeffs for x (P = a0 + a1*x + a2*x**2 + ...) in
+    """
+    Converts polynomial coeffs for x (P = a0 + a1*x + a2*x**2 + ...) in
     polynomial coeffs for x~:=a+b*x (P~ = a0~ + a1~*x~ + a2~*x~**2 +
     ...). Therefore, (a,b)=(0,1) makes nothing. If backward, makes the
     opposite transformation.
@@ -834,7 +848,8 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
     Note: backward transformation could be done using more general
     polynomial composition `polyval`, but forward transformation is a
     long standing issue in the general case (look for functional
-    decomposition of univariate polynomial)."""
+    decomposition of univariate polynomial).
+    """
 
     a,b = trans
     if not backward:
@@ -844,8 +859,11 @@ def polyConvert(coeffs, trans=(0,1), backward=False):
 
 
 def polyfit_clip(x, y, deg, clip=3, nitermax=10):
-    """Least squares polynomial fit with sigma-clipping (if clip>0). Returns
-    polynomial coeffs w/ same convention as N.polyfit: [cn,...,c1,c0]."""
+    """
+    Least squares polynomial fit with sigma-clipping (if
+    clip>0). Returns polynomial coeffs w/ same convention as
+    N.polyfit: [cn,...,c1,c0].
+    """
 
     good = N.ones(y.shape, dtype='bool')
     niter = 0
@@ -880,8 +898,10 @@ def chebNorm(x, xmin, xmax):
 
 
 def chebEval(pars, nx, chebpolys=[]):
-    """Orthogonal Chebychev polynomial expansion, x should be already
-    normalized in [-1,1]."""
+    """
+    Orthogonal Chebychev polynomial expansion, x should be already
+    normalized in [-1,1].
+    """
 
     from scipy.special import chebyu
 
@@ -893,8 +913,9 @@ def chebEval(pars, nx, chebpolys=[]):
 
 
 def powerLawEval(coeffs, x):
-    """Evaluate (curved) power-law:
-    coeffs[-1] * x**(coeffs[-2] + coeffs[-3]*(x-1) + ...)
+    """
+    Evaluate (curved) power-law: coeffs[-1] * x**(coeffs[-2] +
+    coeffs[-3]*(x-1) + ...)
 
     Note that f(1) = pars[-1] = alpha(lref) with x = lbda/lref.
     """
@@ -936,10 +957,12 @@ def powerLawFit(x, y, deg=2, guess=None):
 # Ellipse utilities ==============================
 
 def quadEllipse(a,b,c,d,f,g):
-    """Ellipse elements (center, semi-axes and PA) from the general
+    """
+    Ellipse elements (center, semi-axes and PA) from the general
     quadratic curve a*x2 + 2*b*x*y + c*y2 + 2*d*x + 2*f*y + g = 0.
 
-    http://mathworld.wolfram.com/Ellipse.html"""
+    http://mathworld.wolfram.com/Ellipse.html
+    """
 
     D = N.linalg.det([[a,b,d],[b,c,f],[d,f,g]])
     J = N.linalg.det([[a,b],[b,c]])
@@ -973,7 +996,8 @@ def quadEllipse(a,b,c,d,f,g):
 
 
 def flatAndPA(cy2, c2xy):
-    """Return flattening q=b/a and position angle PA [deg] for ellipse
+    """
+    Return flattening q=b/a and position angle PA [deg] for ellipse
     defined by x**2 + cy2*y**2 + 2*c2xy*x*y = 1.
     """
 
@@ -1000,7 +1024,8 @@ class ExposurePSF:
     subsampling = 1                     # No subsampling by default
 
     def __init__(self, psf_ctes, cube, coords=None):
-        """Initiating the class.
+        """
+        Initiating the class.
         
         psf_ctes: Internal parameters (pixel size in cube spatial unit,
                   reference wavelength and polynomial degrees).
@@ -1284,8 +1309,10 @@ class ExposurePSF:
 
     @classmethod
     def seeing_powerlaw(cls, lbda, alphaCoeffs):
-        """Estimate power-law chromatic model seeing FWHM [arcsec] at
-        wavelength `lbda` for alpha coefficients `alphaCoeffs`."""
+        """
+        Estimate power-law chromatic model seeing FWHM [arcsec] at
+        wavelength `lbda` for alpha coefficients `alphaCoeffs`.
+        """
 
         def hwhm(r, alphaCoeffs, lbda):
 
@@ -1319,8 +1346,9 @@ class Long_ExposurePSF(ExposurePSF):
 
 
 class Short_ExposurePSF(ExposurePSF):
-    """Classic PSF model (achromatic correlations) for short
-    exposures."""
+    """
+    Classic PSF model (achromatic correlations) for short exposures.
+    """
 
     name = 'short'
     model = 'classic'
@@ -1334,8 +1362,10 @@ class Short_ExposurePSF(ExposurePSF):
 
 
 class LongBlue_ExposurePSF(ExposurePSF):
-    """PSF model with chromatic correlations (2nd order Chebychev
-    polynomial) for long, blue exposures."""
+    """
+    PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for long, blue exposures.
+    """
 
     name = 'long blue'
     model = 'chromatic'
@@ -1350,8 +1380,10 @@ class LongBlue_ExposurePSF(ExposurePSF):
 
 
 class LongRed_ExposurePSF(ExposurePSF):
-    """PSF model with chromatic correlations (2nd order Chebychev
-    polynomial) for long, red exposures."""
+    """
+    PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for long, red exposures.
+    """
 
     name = 'long red'
     model = 'chromatic'
@@ -1366,8 +1398,10 @@ class LongRed_ExposurePSF(ExposurePSF):
 
 
 class ShortBlue_ExposurePSF(ExposurePSF):
-    """PSF model with chromatic correlations (2nd order Chebychev
-    polynomial) for short, blue exposures."""
+    """
+    PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for short, blue exposures.
+    """
 
     name = 'short blue'
     model = 'chromatic'
@@ -1382,8 +1416,10 @@ class ShortBlue_ExposurePSF(ExposurePSF):
 
 
 class ShortRed_ExposurePSF(ExposurePSF):
-    """PSF model with chromatic correlations (2nd order Chebychev
-    polynomial) for short, red exposures."""
+    """
+    PSF model with chromatic correlations (2nd order Chebychev
+    polynomial) for short, red exposures.
+    """
 
     name = 'short red'
     model = 'chromatic'
@@ -1398,9 +1434,11 @@ class ShortRed_ExposurePSF(ExposurePSF):
 
 
 class Hyper_PSF3D_PL(object):
-    """Hyper-term to be added to 3D-PSF fit: priors on ADR parameters,
+    """
+    Hyper-term to be added to 3D-PSF fit: priors on ADR parameters,
     alpha power-law chromatic expansion, PSF shape parameters and
-    point-source position."""
+    point-source position.
+    """
 
     positionAccuracy = 0.1     # Rather arbitrary DDT position accuracy [spx]
 
@@ -1460,8 +1498,10 @@ class Hyper_PSF3D_PL(object):
 
     @classmethod
     def predict_alpha_coeffs(cls, seeing, channel):
-        """Predict power-law expansion alpha coefficients from seeing
-        for given channel."""
+        """
+        Predict power-law expansion alpha coefficients from seeing for
+        given channel.
+        """
 
         if channel=='B':
             coeffs = N.array([
@@ -1495,10 +1535,12 @@ class Hyper_PSF3D_PL(object):
         return y2
 
     def _predict_ADR(self, inhdr, verbose=False):
-        """Predict ADR parameters delta,theta and prediction accuracy
+        """
+        Predict ADR parameters delta,theta and prediction accuracy
         ddelta,dtheta, for use in hyper-term computation. 1st-order
         corrections and model dispersions were obtained from faint
-        standard star ad-hoc analysis (`adr.py` and `runaway.py`)."""
+        standard star ad-hoc analysis (`adr.py` and `runaway.py`).
+        """
 
         self.delta,self.theta = self.predict_adr_params(inhdr)
 
@@ -1522,11 +1564,13 @@ class Hyper_PSF3D_PL(object):
                   (self.ddelta, self.dtheta*TA.RAD2DEG)
 
     def _predict_PL(self, seeing, verbose=False):
-        """Predict ADR parameters power-law parameters {p_i} and
-        prediction precision matrix cov^{-1}({p_i}), for use in
-        hyper-term computation. 1st-order corrections and model
-        dispersions were obtained from faint standard star ad-hoc
-        analysis (`adr.py` and `runaway.py`)."""
+        """
+        Predict ADR parameters power-law parameters {p_i} and prediction
+        precision matrix cov^{-1}({p_i}), for use in hyper-term
+        computation. 1st-order corrections and model dispersions were
+        obtained from faint standard star ad-hoc analysis (`adr.py`
+        and `runaway.py`).
+        """
 
         # Predict power-law expansion coefficients and precision matrix
         if self.X=='B':                 # Blue
@@ -1551,10 +1595,12 @@ class Hyper_PSF3D_PL(object):
                   tuple(self.plicov.diagonal()**-0.5)
 
     def _predict_shape(self, inhdr, verbose=False):
-        """Predict shape parameters y2,xy and prediction accuracy
-        dy2,dxy, for use in hyper-term computation. 1st-order
-        corrections and model dispersions were obtained from faint
-        standard star ad-hoc analysis (`runaway.py`)."""
+        """
+        Predict shape parameters y2,xy and prediction accuracy dy2,dxy, for
+        use in hyper-term computation. 1st-order corrections and model
+        dispersions were obtained from faint standard star ad-hoc
+        analysis (`runaway.py`).
+        """
 
         self.y2 = self.predict_y2_param(inhdr)
         self.xy = 0.                    # Pure dispersion
@@ -1588,7 +1634,8 @@ class Hyper_PSF3D_PL(object):
             print "  dParam:    Δx=% .3f, Δy=% .3f" % self.dposition
 
     def comp(self, param):
-        """Input parameters, same as `ExposurePSF.comp`, notably:
+        """
+        Input parameters, same as `ExposurePSF.comp`, notably:
         
         - param[0,1]: ADR power (delta) and parallactic angle (theta[rad])
         - param[2,3]: X,Y position at reference wavelength
@@ -1658,8 +1705,10 @@ class Hyper_PSF3D_PL(object):
 
     
 class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
-    """Hyper-term to be added to 2D-PSF fit: priors on alpha (seeing), xy
-    and y2 shape terms."""
+    """
+    Hyper-term to be added to 2D-PSF fit: priors on alpha (seeing), xy
+    and y2 shape terms.
+    """
 
     dalpha = 0.15               # Relaxed achromatic accuracy
 
@@ -1687,7 +1736,8 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         return alpha-dalpha             # Total prediction
 
     def comp(self, param):
-        """Input parameters, notably:
+        """
+        Input parameters, notably:
         
         - param[0,1]: ADR delta and theta (kept fixed to 0)
         - param[2,3]: X,Y position at reference wavelength

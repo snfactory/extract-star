@@ -1,3 +1,9 @@
+2014-10-22  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: convert exceptions from tests
+	against priors into warnings only, since these tests can
+	eventually be performed a posteriori.
+
 2014-10-21  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (read_psf_param): make function compatible
