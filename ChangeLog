@@ -1,3 +1,10 @@
+2014-12-01  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: auto-PEP8.
+
+	* lib/libExtractStar.py (__init__): use
+	ToolBox.Atmosphere.ADR.get_scale(); auto-PEP8.
+
 2014-10-22  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: convert exceptions from tests
