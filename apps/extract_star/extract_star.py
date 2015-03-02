@@ -186,6 +186,12 @@ def flag_nans(cube, varflag=0, name='cube'):
     """Flag non-finite values (NaN or Inf) in `cube.data|var` in with
     `varflag` in `cube.var`."""
 
+    # bad = (cube.data == 0) & (cube.var != 0)
+    # if bad.any():
+    #     print "WARNING: %s data contains %d strictly null values." % \
+    #         (name, len(cube.data[bad]))
+    #     cube.var[bad] = varflag
+
     for label, arr in (('data', cube.data), ('variance', cube.var)):
         bad = ~N.isfinite(arr)
         if bad.any():
@@ -643,9 +649,10 @@ if __name__ == "__main__":
     # Normalisation of the signal and variance in order to avoid
     # numerical problems with too small numbers
     # (nmeta,1)
-    norm = (1 + N.abs(meta_cube.data.mean(axis=-1))).reshape(-1, 1)
-    print_msg("  Meta-slice normalization (1+|mean|): %s" %
-              (norm.squeeze()), 2)
+    norm = ( N.abs(meta_cube.data.mean(axis=None)) +
+             N.abs(meta_cube.data.mean(axis=-1)) ).reshape(-1, 1)
+    print_msg("  Meta-slice normalization (|mean|+|mean_slice|): %s" %
+              (norm.squeeze()), 1)
     meta_cube.data /= norm                           # (nmeta,nspx)
     meta_cube.var /= norm ** 2
 

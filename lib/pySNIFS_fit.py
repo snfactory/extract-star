@@ -521,7 +521,7 @@ class Hyper:
     def comp(self, params):
         """Hyper-term (p-p̄)⋅Cov(p)⁻¹⋅(p-p̄)ᵀ."""
 
-        dpar = N.asarray(params) - self.mean        
+        dpar = N.asarray(params) - self.mean
         return self.hparam * dpar.dot(icov).dot(dpar) # Hyper-term ()
 
     def deriv(self, params):
@@ -541,7 +541,7 @@ class model:
     def __init__(self, func=['gaus2D'], data=None, param=None, bounds=None,
                  myfunc=None, hyper={}):
         """hyper={'fname':hyper term instance}."""
-        
+
         self.fitpar = None
 
         if param is None:
@@ -615,7 +615,7 @@ class model:
             self.chi2fit = True
             if self.model_3D:
                 self.weight = N.where(data.var>0, 1/data.var, 0.).astype('d')
-            elif self.model_2D: 
+            elif self.model_2D:
                 self.data.var = N.array(data.var, dtype='d')
                 self.data.var = self.data.var.reshape(1,self.data.var.size)
                 self.weight = N.where(self.data.var>0, 1./self.data.var, 0.)
@@ -659,7 +659,7 @@ class model:
         for i,f in enumerate(self.func):
             if f.npar != N.size(param[i]):
                 raise ValueError(
-                    "Function %s must have %d parameters, %d given." % 
+                    "Function %s must have %d parameters, %d given." %
                     (f.name, f.npar, len(param[i])))
         self.param = param
         nparam = [ len(p) for p in param ]
@@ -681,7 +681,7 @@ class model:
             for i in range(len(param)):
                 if len(param[i]) != len(bounds[i]):
                     raise ValueError(
-                        "Function #%d has not the same " 
+                        "Function #%d has not the same "
                         "bound pairs and variables number." % i)
                 for j in range(len(param[i])):
                     self.bounds.append(bounds[i][j])
@@ -703,7 +703,7 @@ class model:
 
     def eval(self, param=None):
         """Evaluate model with current parameters stored in flatparam."""
-        
+
         if param is None:
             param = self.flatparam
         val = N.zeros((self.data.nslice,self.data.nlens),'d')
@@ -716,15 +716,15 @@ class model:
     def res_eval(self, param=None):
         """Evaluate model residuals with current parameters stored in
         param (or flatparam)."""
-        
+
         return self.data.data - self.eval(param)
 
     def evalfit(self):
         """Evaluate model at fitted parameters stored in fitpar."""
-        
+
         if self.fitpar is None:
             raise ValueError("No fit parameters to evaluate model.")
-        
+
         return self.eval(param=self.fitpar)
 
     def res_evalfit(self):
@@ -768,7 +768,7 @@ class model:
         """ Compute the objective function to be minimized:
         Sum(weight*(data-model)^2) at the given parameters
         values. Include hyper-term if needed."""
-        
+
         chi2 = (self.res_eval(param=param)**2 * self.weight).sum()
         if self.hyper and hyper:        # Add hyper-terms
             chi2 += self.eval_hyper(param)
@@ -801,7 +801,7 @@ class model:
 
         if self.hyper and hyper:        # Add hyper-jacobians
             jac += self.grad_hyper(param)
-            
+
         return jac
 
     def check_grad(self, param=None, eps=1e-6):
@@ -854,7 +854,7 @@ class model:
 
         if disp:
             return self.fitpar
-        
+
         if save:
             self.flatparam = self.fitpar.copy()
 
@@ -880,7 +880,7 @@ class model:
 
         if disp:
             return self.fitpar
-        
+
         if save:
             self.flatparam = self.fitpar.copy()
 
@@ -926,7 +926,7 @@ class model:
         if names:
             assert len(names)==self.nparam
 
-        fns = [ (f.name,len(pars)) for f,pars in zip(self.func, self.param) ]
+        fns = [ (f.name, len(pars)) for f, pars in zip(self.func, self.param) ]
         s  = "Model: %s = %d parameters" % \
              (' + '.join( '%s[%d]' % fn for fn in fns ), self.nparam)
         if self.fitpar is not None:     # Minimization was performed
@@ -937,26 +937,26 @@ class model:
                   self.khi2*self.dof, self.dof)
             if params:
                 s += "\n##  %s--Guess--  ---Fit---  --Error--  --Note--" % \
-                     ('Name'.center(10,'-')+'  ' if names else '')
+                     ('Name'.center(10, '-') + '  ' if names else '')
                 covpar = self.param_error()
                 dpars = N.sqrt(covpar.diagonal()) # StdErr on parameters
                 for i in range(self.nparam):
                     ip = self.guessparam[i] # Initial guess
                     p = self.fitpar[i]      # Fitted parameters
                     dp = dpars[i]           # Error
-                    pmin,pmax = self.bounds[i] # Bounds
+                    pmin, pmax = self.bounds[i] # Bounds
                     if names:
                         name = '%10s  ' % names[i]
                     else:
                         name = ''
                     s += "\n%02d  %s%9s  %s" % \
-                         (i+1,name, str_magn(ip, dp)[0],
+                         (i+1, name, str_magn(ip, dp)[0],
                           '%9s  %9s' % str_magn(p, dp))
-                    if not (pmin,pmax)==(None,None) and pmin==pmax:
+                    if (pmin, pmax) != (None, None) and pmin == pmax:
                         s += '  fixed'                 # Fixed parameters
-                    elif pmin is not None and p==pmin: # Hit minimal bound
-                        s += '  <<<' 
-                    elif pmax is not None and p==pmax: # Hit maximal bound
+                    elif pmin is not None and p == pmin: # Hit minimal bound
+                        s += '  <<<'
+                    elif pmax is not None and p == pmax: # Hit maximal bound
                         s += '  >>>'
 
         return s
@@ -986,7 +986,7 @@ class model:
             cov[N.outer(free,free)] = selcov.ravel()
         except SL.LinAlgError:
             print "WARNING: cannot invert (selected) hessian approximation."
-        
+
         return cov
 
     def param_error(self, param=None):

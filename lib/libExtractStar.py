@@ -167,9 +167,9 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                                                 [[0, 5 * imax]],
                                                 [[None, None]]])  # background
         model_gauss.minimize(verbose=(verbosity >= 3), tol=1e-4)
-        facts = model_gauss.facts(params=verbosity >= 3,
-                                  names=['xc', 'yc', 'sx', 'sy', 'I', 'B'])
-        print_msg(facts, 2, verbosity)
+        print_msg(model_gauss.facts(params=verbosity >= 3,
+                                    names=['xc', 'yc', 'sx', 'sy', 'I', 'B']),
+                  2, verbosity)
 
         if model_gauss.success:
             xc, yc = model_gauss.fitpar[:2]  # Update centroid position

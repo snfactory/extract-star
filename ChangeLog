@@ -1,3 +1,9 @@
+2015-03-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: previous "1 + |mean_slice|"
+	is not homogeneous; switch to "|mean| + |mean_slice|"
+	normalization.
+
 2014-12-01  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: auto-PEP8.
