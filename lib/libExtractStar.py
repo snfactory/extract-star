@@ -78,7 +78,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     # PSF intensity + Sky + Bkgnd coeffs
     params = N.zeros((cube.nslice, npar_psf + 1 + npar_sky), dtype='d')
     dparams = N.zeros((cube.nslice, npar_psf + 1 + npar_sky), dtype='d')
-    chi2s = N.zeros(cube.nslice,                      dtype='d')
+    chi2s = N.zeros(cube.nslice, dtype='d')
 
     # Nb of edge spx used for sky estimate
     if nsky > 7:
@@ -91,19 +91,22 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                ['B%02d' % j for j in range(npar_sky)]
     print_msg("  Adjusted parameters: %s" % ','.join(parnames), 2, verbosity)
 
-    xc, yc = None, None                   # Position guess at lmid
-    alpha = None                        # Alpha guess
+    xc, yc = None, None                  # Position guess at lmid
+    alpha = None                         # Alpha guess
     channel = 'B' if cube.lstart < 5000. else 'R'
-    if channel == 'B':                    # Blue cube
+    if channel == 'B':                   # Blue cube
         loop = range(cube.nslice)[::-1]  # Blueward loop
-    else:                               # Red cube
-        loop = range(cube.nslice)       # Redward loop
+    else:                                # Red cube
+        loop = range(cube.nslice)        # Redward loop
 
-    # Hyper-term on alpha from seeing prior
-    if scalePriors and seeingPrior:
+    # Hyper-term on alpha from seeing prior and on position
+    if scalePriors:
         if not psf_fn.model.endswith('powerlaw'):
             raise NotImplementedError
-        print "  Seeing prior: %.2f\"" % seeingPrior
+        if seeingPrior:
+            print "  Seeing prior: %.2f\"" % seeingPrior
+        if posPrior:
+            print "  Position prior: %+.2f x %+.2f spx" % posPrior
 
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -126,12 +129,11 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             cube_sky.var[:, ~skySpx] = 0  # Discard central spaxels
             if not chi2fit:
                 cube_sky.var[cube_sky.var > 0] = 1  # Least-square
-            model_sky = pySNIFS_fit.model(data=cube_sky,
-                                          func=['poly2D;%d' % skyDeg],
-                                          param=[
-                                              [skyLev] + [0.] * (npar_sky - 1)],
-                                          bounds=[[[0, None]] +
-                                                  [[None, None]] * (npar_sky - 1)])
+            model_sky = pySNIFS_fit.model(
+                data=cube_sky, func=['poly2D;%d' % skyDeg],
+                param=[[skyLev] + [0.] * (npar_sky - 1)],
+                bounds=[[[0, None]] +
+                        [[None, None]] * (npar_sky - 1)])
             model_sky.fit()
             skyLev = model_sky.evalfit().squeeze()  # Structured bkgnd estimate
 
@@ -139,13 +141,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         medstar = median_filter(cube_star.data[0], 3) - skyLev  # (nspx,)
         imax = medstar.max()                    # Intensity
         if posPrior is not None:                # Use prior on position
-            # Note the prior on position (formally at ADR
-            # reference wavelength lmid) is not differentially
-            # refracted to current wavelength
+            # Note the prior on position (formally at ADR reference wavelength
+            # lmid) is not differentially refracted to current wavelength
             xc, yc = posPrior
-        # No prior nor previous estimate
-        elif (xc, yc) == (None, None):
-            # Flux-weighted centroid on central part
+        elif (xc, yc) == (None, None) or (xc, yc) == (0, 0):
+            # No prior nor previous estimate: use flux-weighted centroid on
+            # central part
             xc = N.average(cube.x[~skySpx], weights=medstar[~skySpx])
             yc = N.average(cube.y[~skySpx], weights=medstar[~skySpx])
             if not (-7 + nsky < xc < 7 - nsky and -7 + nsky < yc < 7 - nsky):
@@ -155,7 +156,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         if chi2fit:
             cube_sky.var = cube.var[i, N.newaxis]  # Reset to cube.var for chi2
         else:
-            cube_sky.var = None                   # Least-square
+            cube_sky.var = None                    # Least-square
 
         # Guess parameters from 2D-Gaussian + polynomial background fit
         model_gauss = pySNIFS_fit.model(data=cube_sky,
@@ -179,6 +180,18 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                 (model_gauss.status, model_gauss.res.message)
             if alpha is None:
                 alpha = 2.4             # Educated guess from median seeing
+
+        # Hyper-term on alpha from seeing and position prior
+        hyper = {}
+        if scalePriors:
+            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingPrior, airmass, channel,
+                                   position=posPrior, scale=scalePriors)
+            print_msg(str(hterm), 2, verbosity)
+            hyper = {psf_fn.name: hterm}
+            if seeingPrior:
+                alpha = hterm.predict_alpha(cube.lbda[i])
+            if posPrior:
+                xc, yc = posPrior
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)
         p1 = [0., 0., xc, yc, 0., 1., alpha, imax]  # psf parameters
@@ -217,14 +230,6 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         if not chi2fit:
             cube_star.var = None  # Will be handled by pySNIFS_fit.model
 
-        # Hyper-term on alpha from seeing and position prior
-        hyper = {}
-        if seeingPrior:
-            hterm = Hyper_PSF2D_PL(cube.lbda[i], seeingPrior, airmass, channel,
-                                   position=posPrior, scale=scalePriors)
-            print_msg(str(hterm), 2, verbosity)
-            hyper = {psf_fn.name: hterm}
-
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
@@ -240,7 +245,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
 
         print_msg(model_star.facts(params=(verbosity >= 2), names=parnames),
                   1, verbosity)
-        if scalePriors and seeingPrior:
+        if scalePriors:
             print_msg("  Hyper-term: h=%f" % hterm.comp(model_star.fitpar),
                       2, verbosity)
 
@@ -267,6 +272,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             model_star.success = False
             model_star.status = -3
             model_star.res.message = "intensity is null"
+        elif not (abs(model_star.fitpar[2]) < 9 and
+                  abs(model_star.fitpar[3]) < 9):
+            model_star.success = False
+            model_star.status = -3
+            model_star.res.message = "source is outside FoV (%.2f,%.2f)" % \
+                                     (model_star.fitpar[2], model_star.fitpar[3])
 
         # Error computation and metaslice clipping
         if model_star.success:
@@ -284,6 +295,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                   (i + 1, model_star.status, model_star.res.message,)
             model_star.khi2 *= -1       # To be discarded
             dpar = N.zeros(len(dparams.T))
+        else:
+            xc, yc = model_star.fitpar[2:4]  # Update centroid position
 
         # Storing the result of the current slice parameters
         params[i] = model_star.fitpar
@@ -807,7 +820,7 @@ def read_DDTpos(inhdr):
 
     try:
         lddt = inhdr['DDTLREF']  # Ref. wavelength [A]
-        xddt = inhdr['DDTXP']   # Predicted position [spx]
+        xddt = inhdr['DDTXP']    # Predicted position [spx]
         yddt = inhdr['DDTYP']
     except KeyError as err:
         raise KeyError("File has no DDT-related keywords (%s)" % err)
@@ -1478,10 +1491,10 @@ class Hyper_PSF3D_PL(object):
     point-source position.
     """
 
-    positionAccuracy = 0.1     # Rather arbitrary DDT position accuracy [spx]
+    positionAccuracy = 0.5     # Rather arbitrary position prior accuracy [spx]
 
-    def __init__(self, psf_ctes, inhdr, seeing,
-                 position=None, scale=1., verbose=False):
+    def __init__(self, psf_ctes, inhdr, seeing=None, position=None,
+                 scale=1., verbose=False):
 
         alphaDeg = psf_ctes[2]          # Alpha expansion degree
         ellDeg = psf_ctes[3]            # Ellipticity expansion degree
@@ -1498,9 +1511,9 @@ class Hyper_PSF3D_PL(object):
         self.scale = scale              # Global hyper-scaling
 
         # Compute predictions and associated accuracy
-        self._predict_ADR(inhdr, verbose=verbose)  # ADR parameters
-        self._predict_PL(seeing, verbose=verbose)  # Power-law expansion coeffs
+        self._predict_ADR(inhdr, verbose=verbose)    # ADR parameters
         self._predict_shape(inhdr, verbose=verbose)  # Shape (xy & y2) params
+        self._predict_PL(seeing, verbose=verbose)    # Power-law expansion coeffs
         # Position at ref. wavelength
         self._predict_pos(position, verbose=verbose)
 
@@ -1544,14 +1557,14 @@ class Hyper_PSF3D_PL(object):
 
         if channel == 'B':
             coeffs = N.array([
-                -0.134 * seeing + 0.572,  # p0
-                -0.1339 * seeing - 0.0913,  # p1
-                +3.474 * seeing - 1.388])  # p2
+                -0.134 * seeing + 0.5720,    # p0
+                -0.134 * seeing - 0.0913,    # p1
+                +3.474 * seeing - 1.3880])   # p2
         elif channel == 'R':
             coeffs = N.array([
-                -0.0777 * seeing + 0.1741,  # p0
-                -0.0202 * seeing - 0.3434,  # p1
-                +3.400 * seeing - 1.352])  # p2
+                -0.0777 * seeing + 0.1741,   # p0
+                -0.0202 * seeing - 0.3434,   # p1
+                +3.4000 * seeing - 1.352])   # p2
         else:
             raise KeyError("Unknown channel '%s'" % channel)
 
@@ -1610,6 +1623,10 @@ class Hyper_PSF3D_PL(object):
         obtained from faint standard star ad-hoc analysis (`adr.py`
         and `runaway.py`).
         """
+
+        if seeing is None:
+            self.plpars = None  # No prediction
+            return
 
         # Predict power-law expansion coefficients and precision matrix
         if self.X == 'B':                 # Blue
@@ -1690,10 +1707,13 @@ class Hyper_PSF3D_PL(object):
         # Term from shape parameters
         hsha = ( (param[4] - self.xy) / self.dxy ) ** 2 + \
                ((param[5] - self.y2) / self.dy2) ** 2
-        # Term from PL parameters
-        dalpha = param[self.alphaSlice] - self.plpars
-        # Faster than dalpha.dot(self.plicov).dot(dalpha)
-        hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
+        if self.plpars is not None:
+            # Term from PL parameters
+            dalpha = param[self.alphaSlice] - self.plpars
+            # Faster than dalpha.dot(self.plicov).dot(dalpha)
+            hpl = N.dot(N.dot(dalpha, self.plicov), dalpha)
+        else:
+            hpl = 0.
         # Term from position
         if self.position is not None:
             hpos = ( (param[2] - self.position[0]) / self.dposition[0] ) ** 2 + \
@@ -1713,9 +1733,10 @@ class Hyper_PSF3D_PL(object):
         # Shape parameter jacobian
         hjac[4] = (param[4] - self.xy) / self.dxy ** 2
         hjac[5] = (param[5] - self.y2) / self.dy2 ** 2
-        # PL-expansion parameter jacobian
-        hjac[self.alphaSlice] = N.dot(
-            self.plicov, param[self.alphaSlice] - self.plpars)
+        if self.plpars is not None:
+            # PL-expansion parameter jacobian
+            hjac[self.alphaSlice] = N.dot(
+                self.plicov, param[self.alphaSlice] - self.plpars)
         # Position jacobian
         if self.position is not None:
             hjac[2] = (param[2] - self.position[0]) / self.dposition[0] ** 2
@@ -1729,12 +1750,13 @@ class Hyper_PSF3D_PL(object):
         s += "\n  ADR: delta=% 7.2f +/- %.2f" % (self.delta, self.ddelta)
         s += "\n       theta=%+7.2f +/- %.2f deg" % \
              (self.theta * TA.RAD2DEG, self.dtheta * TA.RAD2DEG)
-        dplpars = self.plicov.diagonal() ** -0.5  # Approximate variance
-        s += "\n  PL: p0=%+.3f +/- %.3f" % (self.plpars[0], dplpars[0])
-        s += "\n      p1=%+.3f +/- %.3f" % (self.plpars[1], dplpars[1])
-        s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
         s += "\n  Shape: xy=% 5.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n         y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
+        if self.plpars is not None:
+            dplpars = self.plicov.diagonal() ** -0.5  # Approximate variance
+            s += "\n  PL: p0=%+.3f +/- %.3f" % (self.plpars[0], dplpars[0])
+            s += "\n      p1=%+.3f +/- %.3f" % (self.plpars[1], dplpars[1])
+            s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
         if self.position is not None:
             s += "\n  Position: x=% 5.3f +/- %.3f" % \
                  (self.position[0], self.dposition[0])
@@ -1770,11 +1792,14 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
     def predict_alpha(self, lbda):
         """Predict alpha at wavelength `lbda`."""
 
+        if self.plpars is None:
+            return None
+
         alpha = powerLawEval(self.plpars, lbda / LbdaRef)
         # Adjust prediction with linear regression in wavelength
         dalpha = -2.35e-05 * lbda + 0.156  # Up to 0.1 correction
 
-        return alpha - dalpha             # Total prediction
+        return alpha - dalpha              # Total prediction
 
     def comp(self, param):
         """
@@ -1788,15 +1813,16 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         - param[7]: Pount-source intensity
         """
 
-        # Terms from xy- and y2-parameters and from alpha
+        # Terms from xy- and y2-parameters
         h = (((param[4] - self.xy) / self.dxy) ** 2 +
-             ((param[5] - self.y2) / self.dy2) ** 2 +
-             ((param[6] - self.alpha) / self.dalpha) ** 2
-             )
-        # Term from point-source position
+             ((param[5] - self.y2) / self.dy2) ** 2)
+        if self.plpars is not None:
+            # Term from alpha
+            h += ((param[6] - self.alpha) / self.dalpha) ** 2
         if self.position is not None:
-            h += ( (param[2] - self.position[0]) / self.dposition[0] ) ** 2 + \
-                 ((param[3] - self.position[1]) / self.dposition[1]) ** 2
+            # Term from point-source position
+            h += (((param[2] - self.position[0]) / self.dposition[0] ) ** 2 +
+                  ((param[3] - self.position[1]) / self.dposition[1]) ** 2)
 
         return self.scale * h
 
@@ -1805,7 +1831,8 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         hjac = N.zeros(len(param))      # Half jacobian
         hjac[4] = (param[4] - self.xy) / self.dxy ** 2
         hjac[5] = (param[5] - self.y2) / self.dy2 ** 2
-        hjac[6] = (param[6] - self.alpha) / self.dalpha ** 2
+        if self.plpars is not None:
+            hjac[6] = (param[6] - self.alpha) / self.dalpha ** 2
         if self.position is not None:
             hjac[2] = (param[2] - self.position[0]) / self.dposition[0] ** 2
             hjac[3] = (param[3] - self.position[1]) / self.dposition[1] ** 2
@@ -1815,11 +1842,13 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
     def __str__(self):
 
         s = "PSF2D_PL hyper-term: hyper-scale=%.2f" % self.scale
-        s += "\n  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)" % \
-             (self.alpha, self.dalpha,
-              Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars), LbdaRef)
         s += "\n  Pred. xy:   %+.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n  Pred. y2:   %+.3f +/- %.3f" % (self.y2, self.dy2)
+        if self.plpars is not None:
+            s += "\n  Pred. alpha:  %.2f +/- %.2f (%.2f\" at %.0f A)" % \
+                 (self.alpha, self.dalpha,
+                  Long_ExposurePSF.seeing_powerlaw(LbdaRef, self.plpars),
+                  LbdaRef)
         if self.position is not None:
             s += "\n  Pred. x:   %+.2f +/- %.2f" % (self.position[0],
                                                     self.dposition[0])

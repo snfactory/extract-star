@@ -10,7 +10,8 @@
 # $Id$
 ##############################################################################
 
-"""3D PSF-based point-source extractor. The PSF is a constrained
+"""
+3D PSF-based point-source extractor. The PSF is a constrained
 Gaussian+Moffat with elliptical distortion.
 
 Todo:
@@ -61,7 +62,7 @@ PSF parameter keywords
 - SEEING: estimated seeing FWHM [\"] at reference wavelength
 - ES_PRIOR: PSF prior hyper-scale (aka 'supernova mode')
 - ES_PRISE: Seeing prior [arcsec]
-- ES_PRIXY: Use DDT[X|Y]P as priors on position
+- ES_PRIXY: 'x,y' or 'DDT' (see 'DDT[X|Y]P' keywords) priors on position
 - ES_BNDx: constraints on 3D-PSF parameters
 
 The chromatic evolution of Y2-coefficient can be computed from ES_Exx
@@ -144,7 +145,7 @@ def write_fits(self, filename=None, header=None):
     """Overrides pySNIFS_fit.spectrum.WR_fits_file. Allows full header
     propagation (including comments) and covariance matrix storage."""
 
-    assert None not in (self.start, self.step, self.data)
+    assert not (self.start is None or self.step is None or self.data is None)
 
     # Primary HDU: signal
     hdusig = F.PrimaryHDU(self.data, header=header)
@@ -315,7 +316,8 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     logfile.close()
 
 
-def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, ddtpos, fluxes):
+def fill_header(hdr, psf, param, adr, cube, opts, chi2,
+                seeing, posprior, fluxes):
     """Fill header *hdr* with PSF fit-related keywords."""
 
     # Convert reference position from lmid = (lmin+lmax)/2 to LbdaRef
@@ -375,9 +377,15 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2, seeing, ddtpos, fluxes):
 
     if opts.usePriors:
         hdr['ES_PRIOR'] = (opts.usePriors, 'PSF prior hyper-scale')
-        hdr['ES_PRISE'] = (opts.seeingPrior, 'Seeing prior [arcsec]')
-        if ddtpos is not None:
-            hdr['ES_PRIXY'] = (True, 'Use DDT[X|Y]P as priors on position')
+        if opts.seeingPrior is not None:
+            hdr['ES_PRISE'] = (opts.seeingPrior, 'Seeing prior [arcsec]')
+        if posprior is not None:
+            if posprior == 'DDT':
+                hdr['ES_PRIXY'] = ("DDT",
+                                   "Use DDT[X|Y]P as priors on position")
+            else:
+                hdr['ES_PRIXY'] = ("%+.2f,%+.2f" % posprior,
+                                   "Priors on position")
     if opts.psf3Dconstraints:
         for i, constraint in enumerate(opts.psf3Dconstraints):
             hdr['ES_BND%d' % (i + 1)] = (constraint, "Constraint on 3D-PSF")
@@ -489,12 +497,12 @@ if __name__ == "__main__":
     # Priors
     parser.add_option("--usePriors", type=float,
                       help="PSF prior hyper-scale, or 0 for none "
-                      "(req. powerlaw-PSF and seeing prior) [%default]",
+                      "(req. powerlaw-PSF) [%default]",
                       default=0.)
     parser.add_option("--seeingPrior", type=float,
-                      help="Seeing prior (from Exposure.Seeing) [\"]")
-    parser.add_option("--useDDTPriors", action='store_true',
-                      help="Prior on point-source position from DDT")
+                      help="Additional seeing prior (from Exposure.Seeing) [\"]")
+    parser.add_option("--positionPrior", type=str,
+                      help="Additional position prior ('x,y' or 'DDT')")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
@@ -538,14 +546,16 @@ if __name__ == "__main__":
 
     if opts.usePriors:
         if opts.usePriors < 0:
-            parser.error("Prior scale (--scalePriors) must be positive.")
-        if not opts.seeingPrior:
-            parser.error("Priors (--usePriors > 0) requires a seeing prior "
-                         "(--seeingPrior).")
+            parser.error("Prior scale (--usePriors) must be positive.")
         if not opts.psf.endswith('powerlaw'):
             parser.error("Priors implemented for 'powerlaw' PSF only.")
         if opts.alphaDeg != 2 or opts.ellDeg != 0:
             parser.error("Priors mode requires '--alphaDeg 2 --ellDeg 0'.")
+
+    if opts.seeingPrior and not opts.usePriors:
+        parser.error("Seeing prior requires prior usage (--usePriors > 0).")
+    if opts.positionPrior and not opts.usePriors:
+        parser.error("Position prior requires prior usage (--usePriors > 0).")
 
     # Input datacube ==========================================================
 
@@ -623,7 +633,7 @@ if __name__ == "__main__":
 
     print "  Object: %s, Efftime: %.1fs, Airmass: %.2f" % \
         (objname, efftime, airmass)
-    print "  PSF: '%s', sub x%d" % \
+    print "  PSF: '%s', sub-sampled x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
     # 2D-model fitting ========================================================
@@ -676,23 +686,34 @@ if __name__ == "__main__":
                      airmass=airmass, parangle=parangle + DTHETA[channel])
     print_msg('  ' + str(adr), 1)
 
-    # DDT-priors on position
-    if opts.useDDTPriors:
-        try:
-            ddtlxy = libES.read_DDTpos(inhdr)  # lref,x,y
-        except KeyError as err:
-            raise
-            # print "WARNING: cannot read DDT-related keywords"
-            #ddtpos = None
+    # Priors on position
+    posPrior = None
+    if opts.positionPrior:
+        if opts.positionPrior.upper() == 'DDT':
+            try:
+                ddtlxy = libES.read_DDTpos(inhdr)  # lref, x, y
+            except KeyError as err:
+                raise
+                # print "WARNING: cannot read DDT-related keywords"
+                #ddtpos = None
+            else:
+                print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
+                          ddtlxy, 0)
+                posPrior = adr.refract(   # Back-propagate to ref. wavelength
+                    ddtlxy[1], ddtlxy[2], ddtlxy[0],
+                    backward=True, unit=spxSize)  # x,y
+                print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
+                          (lmid, position[0], position[1]), 1)
         else:
-            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
-                      ddtlxy, 0)
-            ddtpos = adr.refract(   # Back-propagate pos. to ref. wavelength
-                ddtlxy[1], ddtlxy[2], ddtlxy[0], backward=True, unit=spxSize)  # x,y
-            print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
-                      (lmid, ddtpos[0], ddtpos[1]), 1)
-    else:
-        ddtpos = None           # No predictions nor priors
+            try:
+                posPrior = _, _ = tuple(
+                    float(val) for val in opts.positionPrior.split(',') )
+            except ValueError as err:
+                parser.error(
+                    "Cannot parse position prior '%s'" % opts.positionPrior)
+            else:
+                print_msg("  Prior on position [%.0f A]: %.2f x %.2f spx" %
+                          (lmid, posPrior[0], posPrior[1]), 1)
 
     # 2D-fit ------------------------------
 
@@ -702,7 +723,7 @@ if __name__ == "__main__":
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
         scalePriors=opts.usePriors,
         seeingPrior=opts.seeingPrior if opts.usePriors else None,
-        posPrior=ddtpos,
+        posPrior=posPrior if opts.usePriors else None,
         airmass=airmass, verbosity=opts.verbosity)
     print_msg("", 1)
 
@@ -743,15 +764,15 @@ if __name__ == "__main__":
     xmid = N.median(xmids[valid])       # Robust to outliers
     ymid = N.median(ymids[valid])
     r = N.hypot(xmids - xmid, ymids - ymid)
-    rmax = 4.4478 * N.median(r[valid])    # Robust to outliers 3*1.4826
+    rmax = 4.4478 * N.median(r[valid])  # Robust to outliers 3*1.4826
     good = valid & (r <= rmax)          # Valid fit and reasonable position
-    bad = valid & (r > rmax)           # Valid fit but discarded position
+    bad = valid & (r > rmax)            # Valid fit but discarded position
     if bad.any():
         print "WARNING: %d metaslices discarded after ADR selection" % \
               (len(N.nonzero(bad)))
 
-    if opts.useDDTPriors:       # Use DDT position as prior
-        xc, yc = ddtpos
+    if opts.positionPrior:              # Use prior on position
+        xc, yc = posPrior
     elif good.any():
         print_msg("%d/%d centroids found within %.2f spx of (%.2f,%.2f)" %
                   (len(xmids[good]), len(xmids), rmax, xmid, ymid), 1)
@@ -759,7 +780,7 @@ if __name__ == "__main__":
     else:
         raise ValueError('No position initial guess')
 
-    if not good.all():                   # Invalid slices + discarded centroids
+    if not good.all():                  # Invalid slices + discarded centroids
         print "%d/%d centroid positions discarded for initial guess" % \
               (len(xc_vec[~good]), nmeta)
         if len(xc_vec[good]) <= ellDeg + 1 and not opts.usePriors:
@@ -790,7 +811,7 @@ if __name__ == "__main__":
             alpha_vec[good], 3, alphaDeg, lbda_rel[good])
         guessAlphaCoeffs = polAlpha.coeffs[::-1]
     else:                                 # Power-law expansion
-        if opts.usePriors:
+        if opts.seeingPrior:
             # Use PSF priors: predict parameters from seeing prior
             guessAlphaCoeffs = libES.Hyper_PSF3D_PL.predict_alpha_coeffs(
                 opts.seeingPrior, channel)
@@ -867,7 +888,7 @@ if __name__ == "__main__":
     hyper = {}
     if opts.usePriors:
         hterm = libES.Hyper_PSF3D_PL(psfCtes, inhdr,
-                                     seeing=opts.seeingPrior, position=ddtpos,
+                                     seeing=opts.seeingPrior, position=posPrior,
                                      scale=opts.usePriors)
         print_msg(str(hterm), 1)
         hyper = {psfFn.name: hterm}     # Hyper dict {fname:hyper}
@@ -954,18 +975,14 @@ if __name__ == "__main__":
         # comparisons.
 
         # Test position of point-source
-        if opts.useDDTPriors:
-            if N.hypot(fitpar[2] - ddtpos[0], fitpar[3] - ddtpos[1]) > 5:
-                print "WARNING: " \
-                    "Point-source %.2fx%.2f more than 5 spx away " \
-                    "from DDT prediction %.2fx%.2f" % \
-                    (fitpar[2], fitpar[3], ddtpos[0], ddtpos[1])
-        elif not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < +7):
+        if opts.positionPrior and \
+           not N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1]) > 1:
             print "WARNING: " \
-                "Point-source %.2fx%.2f outside the FoV" % \
-                (fitpar[2], fitpar[3])
+                "Point-source %.2fx%.2f more than 1 spx away " \
+                "from position prior %.2fx%.2f" % \
+                (fitpar[2], fitpar[3], posPrior[0], posPrior[1])
         # Tests on seeing
-        if not 0.6 < seeing / opts.seeingPrior < 1.4:
+        if opts.seeingPrior and not 0.6 < seeing / opts.seeingPrior < 1.4:
             print "WARNING: " \
                 "Seeing %.2f\" more than 40%% away from predicted %.2f\"" % \
                 (seeing, opts.seeingPrior)
@@ -982,6 +999,9 @@ if __name__ == "__main__":
                 "from predicted %.0fdeg" % \
                 (adr.get_parangle(), theta0 * TA.RAD2DEG)
 
+    if not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < 7):
+        print "WARNING: Point-source %.2fx%.2f outside the FoV" % \
+            (fitpar[2], fitpar[3])
     try:
         # Tests on seeing and airmass
         if not 0.3 < seeing < 4.:
@@ -1077,7 +1097,7 @@ if __name__ == "__main__":
         sflux = 0                   # Not stored anyway
 
     fill_header(inhdr, psfFn, fitpar[:npar_psf], adr, meta_cube, opts,
-                chi2, seeing, ddtpos, (tflux, sflux))
+                chi2, seeing, posPrior, (tflux, sflux))
 
     # Save point-source spectrum ------------------------------
 
@@ -1330,10 +1350,8 @@ if __name__ == "__main__":
         # Guessed and adjusted position at current wavelength
         xguess = xc + delta0 * N.sin(theta0) * psf_model.ADRscale[:, 0]
         yguess = yc - delta0 * N.cos(theta0) * psf_model.ADRscale[:, 0]
-        xfit = fitpar[2] + fitpar[0] * \
-            N.sin(fitpar[1]) * psf_model.ADRscale[:, 0]
-        yfit = fitpar[3] - fitpar[0] * \
-            N.cos(fitpar[1]) * psf_model.ADRscale[:, 0]
+        xfit = fitpar[2] + fitpar[0] * N.sin(fitpar[1]) * psf_model.ADRscale[:, 0]
+        yfit = fitpar[3] - fitpar[0] * N.cos(fitpar[1]) * psf_model.ADRscale[:, 0]
 
         fig4 = P.figure()
 
@@ -1353,13 +1371,14 @@ if __name__ == "__main__":
         if good.any():
             ax4a.errorbar(meta_cube.lbda[good], xc_vec[good],
                           yerr=dparams[good, 2], fmt=None, ecolor=green)
-            ax4a.scatter(meta_cube.lbda[good], xc_vec[good], edgecolors='none',
-                         c=meta_cube.lbda[good],
+            ax4a.scatter(meta_cube.lbda[good], xc_vec[good],
+                         edgecolors='none', c=meta_cube.lbda[good],
                          cmap=M.cm.jet, zorder=3, label="Fit 2D")
         if bad.any():
             ax4a.plot(meta_cube.lbda[bad], xc_vec[bad],
                       mfc=red, mec=red, marker='.', ls='None', label='_')
-        ax4a.plot(meta_cube.lbda, xguess, 'k--', label="Guess 3D")
+        ax4a.plot(meta_cube.lbda, xguess, 'k--',
+                  label="Guess 3D" if not opts.positionPrior else "Prior 3D")
         ax4a.plot(meta_cube.lbda, xfit, green, label="Fit 3D")
         P.setp(ax4a.get_xticklabels() + ax4a.get_yticklabels(),
                fontsize='xx-small')
@@ -1398,7 +1417,7 @@ if __name__ == "__main__":
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,), (yc,), 'k+')
         ax4c.add_patch(M.patches.Circle((xmid, ymid), radius=rmax,
-                                        ec='0.8', fc='None'))
+                                        ec='0.8', fc='None')) # ADR selection
         ax4c.add_patch(M.patches.Rectangle((-7.5, -7.5), 15, 15,
                                            ec='0.8', lw=2, fc='None'))  # FoV
         ax4c.text(0.97, 0.85,
@@ -1478,7 +1497,8 @@ if __name__ == "__main__":
         if bad.any():
             ax6a.plot(meta_cube.lbda[bad], alpha_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None', label="_")
-        ax6a.plot(meta_cube.lbda, guessAlpha, 'k--', label="Guess 3D")
+        ax6a.plot(meta_cube.lbda, guessAlpha, 'k--',
+                  label="Guess 3D" if not opts.seeingPrior else "Prior 3D")
         #plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, None)
         ax6a.text(0.97, 0.15, 'Guess: %s' %
@@ -1489,7 +1509,7 @@ if __name__ == "__main__":
                   (', '.join(['a%d=%.2f' % (i, a) for i, a
                               in enumerate(fitpar[6 + ellDeg:npar_psf])])),
                   transform=ax6a.transAxes, fontsize='small', ha='right')
-        ax6a.legend(loc='best', fontsize='small')
+        ax6a.legend(loc='best', fontsize='small', frameon=False)
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
         if good.any():

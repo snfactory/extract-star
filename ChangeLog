@@ -1,3 +1,14 @@
+2015-03-25  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: new option '--positionPrior'
+	replaces deprecated option '--useDDTprior'; more flexible prior
+	management updated.
+
+2015-03-16  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (fit_metaslices): use converged metaslice
+	fit position as initial guess for next metaslice.
+
 2015-03-02  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: previous "1 + |mean_slice|"
