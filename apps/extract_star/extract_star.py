@@ -424,6 +424,36 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
                       (n, vmin, vmax)
 
 
+class Accountant(list):
+
+    def __init__(self, filename, outname):
+        list.__init__(self)                # List of warnings
+        try:
+            self.stream = open(filename, 'a')  # YAML file
+        except IOError:
+            raise IOError("Cannot open accountant file '%s'" % filename)
+        self.outname = outname             # Main out file name
+
+    def write(self, index=0):
+
+        if self.stream.closed:
+            raise IOError("Accountant file is already closed")
+
+        msg = self.__getitem__(index)
+        if len(msg) > 30:
+            warnings.warn("Truncating accountant message to 30 characters")
+            msg = msg[:30]
+
+        self.stream.write("""\
+- type: record_quality
+  filename: %s
+  quality: 2
+  quality_s: %s
+""" % (self.outname, msg))
+
+        self.stream.close()
+
+
 # ########## MAIN ##############################
 
 if __name__ == "__main__":
@@ -523,6 +553,10 @@ if __name__ == "__main__":
     parser.add_option("--ignorePertinenceTests", action='store_true',
                       # help=optparse.SUPPRESS_HELP
                       help="Ignore tests on PSF pertinence (but DON'T!)")
+
+    # Production options
+    parser.add_option("--accountant",
+                      help="Accountant output YAML file")
 
     opts, args = parser.parse_args()
     if not opts.input:
@@ -839,7 +873,7 @@ if __name__ == "__main__":
               [yc, yc],                 # yc
               [xy, xy]]                 # xy
         for coeff in p1[5:6 + ellDeg] + p1[6 + ellDeg:npar_psf]:
-            b1 += [[coeff, coeff]]       # ell and alpha coeff.
+            b1 += [[coeff, coeff]]      # ell and alpha coeff.
     else:
         b1 = [[None, None],             # delta
               [None, None],             # theta
@@ -871,7 +905,8 @@ if __name__ == "__main__":
 
     print_msg("  Adjusted parameters: delta,theta,xc,yc,xy,"
               "%d ellCoeffs,%d alphaCoeffs,%d intensities, %d bkgndCoeffs" %
-              (ellDeg + 1, alphaDeg + 1, nmeta, npar_sky * nmeta if skyDeg >= 0 else 0), 2)
+              (ellDeg + 1, alphaDeg + 1,
+               nmeta, npar_sky * nmeta if skyDeg >= 0 else 0), 2)
     print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
     print_msg("  Initial guess [Intensities]: %s" %
               p1[npar_psf:npar_psf + nmeta], 3)
@@ -974,30 +1009,53 @@ if __name__ == "__main__":
         # tests on hyper-term contributions rather than on absolute
         # comparisons.
 
+        if opts.accountant:
+            accountant = Accountant(opts.accountant, opts.out)
+
         # Test position of point-source
-        if opts.positionPrior and \
-           not N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1]) > 1:
-            print "WARNING: " \
-                "Point-source %.2fx%.2f more than 1 spx away " \
-                "from position prior %.2fx%.2f" % \
-                (fitpar[2], fitpar[3], posPrior[0], posPrior[1])
+        if opts.positionPrior:
+            dprior = N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1])
+            if dprior > 1:
+                print "WARNING: " \
+                    "Point-source %.2fx%.2f is %.2f spx away " \
+                    "from position prior %.2fx%.2f" % \
+                    (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
+                if opts.accountant:
+                    accountant.append("Position %.2f spx from prior" % dprior)
+        elif not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < 7):
+            print "WARNING: Point-source %.2fx%.2f outside the FoV" % \
+                (fitpar[2], fitpar[3])
+            if opts.accountant:
+                accountant.append("Position outside FoV")
         # Tests on seeing
-        if opts.seeingPrior and not 0.6 < seeing / opts.seeingPrior < 1.4:
-            print "WARNING: " \
-                "Seeing %.2f\" more than 40%% away from predicted %.2f\"" % \
-                (seeing, opts.seeingPrior)
+        if opts.seeingPrior:
+            fac = (seeing / opts.seeingPrior - 1)*1e2
+            if not abs(fac) < 40:
+                print "WARNING: " \
+                    "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
+                    (seeing, fac, opts.seeingPrior)
+                if opts.accountant:
+                    accountant.append("Seeing %.0f%% from prior" % fac)
         # Tests on ADR parameters
-        if not 0.8 < adr.get_airmass() / adr.get_airmass(delta0) < 1.2:
+        fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1)*1e2
+        if not abs(fac) < 20:
             print "WARNING: " \
-                "Airmass %.2f more than 20%% away from predicted %.2f" % \
-                (adr.get_airmass(), adr.get_airmass(delta0))
+                "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
+                (adr.get_airmass(), fac, adr.get_airmass(delta0))
+            if opts.accountant:
+                accountant.append("Airmass %.0f%% from prior" % fac)
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
-        if abs(rewrap(adr.theta - theta0) * TA.RAD2DEG) > 20:
+        err = rewrap(adr.theta - theta0) * TA.RAD2DEG
+        if abs(err) > 20:
             print "WARNING: " \
-                "Parangle %.0fdeg more than 20deg away " \
-                "from predicted %.0fdeg" % \
-                (adr.get_parangle(), theta0 * TA.RAD2DEG)
+                "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
+                (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
+            if opts.accountant:
+                accountant.append("Parangle %+.0fdeg from prior" % err)
+
+        if opts.accountant and len(accountant) >= 1:
+            accountant.write()
 
     if not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < 7):
         print "WARNING: Point-source %.2fx%.2f outside the FoV" % \
