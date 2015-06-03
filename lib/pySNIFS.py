@@ -1,7 +1,7 @@
 ######################################################################
 ## Filename:      pySNIFS.py
 ## Version:       $Revision$
-## Description:   
+## Description:
 ## Author:        Emmanuel Pecontal
 ## Author:        $Author$
 ## $Id$
@@ -35,7 +35,7 @@ class spectrum:
         @param no: number of the spaxel in the datacube. Needed only if the
             input file is a euro3d cube.
         @param x: array containing the x coordinates in the spectrum. It is
-            used only if the spectrum is not regularly sampled    
+            used only if the spectrum is not regularly sampled
         @param data: array containing the data of the spectrum
         @param var: array containing the variance of the spectrum
         @param start: coordinate in user coordinates of the first point of the
@@ -60,11 +60,11 @@ class spectrum:
                 else:
                     if no in data_fits[1].data.field('SPEC_ID'):
                         i = data_fits[1].data.field('SPEC_ID').tolist().index(no)
-                        self.data = num.array(data_fits[1].data.field('DATA_SPE')[i],'f')
+                        self.data = num.array(data_fits[1].data.field('DATA_SPE')[i])
                         if 'STAT_SPE' in data_fits[1].columns.names:
-                            self.var = num.array(data_fits[1].data.field('STAT_SPE')[i],'f')
+                            self.var = num.array(data_fits[1].data.field('STAT_SPE')[i])
                         else:
-                            self.var = None 
+                            self.var = None
                         self.len = data_fits[1].data.field('SPEC_LEN')[i]
                         self.step = data_fits[1].header.get('CDELTS')
                         self.start = data_fits[1].header.get('CRVALS') + \
@@ -82,13 +82,13 @@ class spectrum:
             else:
                 # Case where the data and variance spectra are read from fits
                 # files
-                self.data = num.array(data_fits[0].data,'f')
+                self.data = num.array(data_fits[0].data)
                 if len(data_fits) == 2:
                     # The data fits spectrum has an extension containing the
                     # variance spectrum
                     self.var = num.array(data_fits[1].data)
                 elif var_file is not None:
-                    # The variance is read from a fits file 
+                    # The variance is read from a fits file
                     var_fits = pyfits.open(var_file, ignore_missing_end=True)
                     self.var = num.array(var_fits[0].data)
                 else:
@@ -120,7 +120,7 @@ class spectrum:
                         print 'WARNING: When nx is given, the data array ' \
                               'is not taken into account and the ' \
                               'spectrum data is zet to zeros(nx)'
-                                            
+
                 else:           # One of start,step,nx is None
                     if data is None:
                         if nx is None:
@@ -139,7 +139,7 @@ class spectrum:
                         else:
                             self.step = 1
                         self.x = self.start + num.arange(nx)*self.step
-                        
+
                     else:       # data is not None
                         self.data = data
                         self.len = len(data)
@@ -160,7 +160,7 @@ class spectrum:
                         else:
                             self.step = 1
                         self.x = self.start + num.arange(self.len)*self.step
-                        
+
             else:
                 # Case for a not regularly sampled spectrum
                 self.start = None
@@ -181,30 +181,30 @@ class spectrum:
                     self.data = data
                     self.var = var
                     self.x = x
-        
+
         self.data = num.array(self.data)
         self.x = num.array(self.x)
         if self.var is not None:
             self.var = num.array(self.var)
-              
+
         if self.var is None:
             self.has_var = False
         else:
             self.has_var = True
-        
+
         if self.len is not None:
             self.index_list = num.arange(self.len).tolist()
             self.intervals = [(0,self.len)]
-         
+
         self.curs_val = []
-        self.cid = None       
-        
+        self.cid = None
+
     def subset(self,intervals=None,reject=False):
         """
         Compute the indexes corresponding to the intervals bounds given in x coordinates and store them in the
         intervals field of the spectrum.
         @param intervals: A list of two elements tuples defining the intervals in x to be plotted
-        @param reject: If set to True, the selection will be considered as negative. NOT YET IMPLEMENTED.  
+        @param reject: If set to True, the selection will be considered as negative. NOT YET IMPLEMENTED.
         """
         self.index_list = []
         self.intervals = []
@@ -235,8 +235,8 @@ class spectrum:
         self.index_list = num.arange(self.len).tolist()
         self.intervals = [(1,self.len)]
 
- 
-     
+
+
     def index(self,x):
         """
         Return the index of the closest point to x in the spectrum
@@ -246,7 +246,7 @@ class spectrum:
         else:
             return num.argmin((self.x - x)**2,axis=-1)
 
-                        
+
     def WR_fits_file(self,filename,header_list=None):
         """
         Write the spectrum in a fits file.
@@ -256,7 +256,7 @@ class spectrum:
         """
         if self.start is None or self.step is None or self.data is None:
             raise ValueError('Only regularly sampled spectra can be saved as fits files.')
-        
+
         hdu = pyfits.PrimaryHDU()
         hdu.data = num.array(self.data)
         hdu.header['NAXIS'] = 1
@@ -291,9 +291,9 @@ class spec_list:
             if not isinstance(s,spectrum):
                 raise TypeError('The list elements must be pySNIFS.spectrum objects')
         self.list = slist
-        
+
     def WR_fits_file(self,filename,header_list=None):
-                
+
         hdulist = pyfits.HDUList()
         hdu = pyfits.PrimaryHDU()
         if header_list is not None:
@@ -362,7 +362,7 @@ class image_array:
                 self.nx = data_fits[0].header.get('NAXIS1')
                 self.ny = data_fits[0].header.get('NAXIS2')
                 self.endx = self.startx + (self.nx-1)*self.stepx
-                self.data = num.array(data_fits[0].data,'f')
+                self.data = num.array(data_fits[0].data)
                 self.endy = self.starty + (self.ny-1)*self.stepy
                 self.header = data_fits[0].header.items()
                 self.var = var
@@ -394,21 +394,21 @@ class image_array:
                 self.endy = starty + (self.ny-1)*stepy
             else:
                 self.endy = endy
-                self.stepy = float(endy-starty)/(self.ny-1)            
-            
+                self.stepy = float(endy-starty)/(self.ny-1)
+
             self.header = header
-            
+
         self.labx = labx
         self.laby = laby
         self.vmin = float(self.data.min())
         self.vmax = float(self.data.max())
 
-        
+
     def WR_fits_file(self,file_name,mode='w+'):
         """
         Write the image in a fits file.
         @param file_name: name of the fits file
-        @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail. 
+        @param mode: writing mode. if w+, the file is overwritten. Otherwise the writing will fail.
         """
         hdulist = pyfits.HDUList()
         hdu = pyfits.PrimaryHDU()
@@ -440,7 +440,7 @@ class SNIFS_cube:
     """
 
     spxSize = 0.43                      # Spx size in arcsec
-    
+
     def __init__(self,e3d_file=None,fits3d_file=None,slices=None,lbda=None,threshold=1e20,nodata=False):
         """
         Initiating the class.
@@ -487,14 +487,14 @@ class SNIFS_cube:
 
         self.data = None
         self.var = None
-                
+
         if e3d_file is not None:
             e3d_cube = pyfits.open(e3d_file, ignore_missing_end=True)
             gen_header = dict(e3d_cube[0].header.items())
             if 'EURO3D' not in gen_header or \
                    gen_header['EURO3D'] not in ('T', pyfits.TRUE):
                 raise ValueError("Invalid E3d file ('EURO3D' keyword)")
-            
+
             self.from_e3d_file = True
             self.e3d_file = e3d_file
             # The header of the data extension is stored in a field of the
@@ -527,7 +527,7 @@ class SNIFS_cube:
                 tvar = num.array([ var[i][common_lstart-spec_sta[i]: \
                                           common_lend-spec_sta[i]] \
                                    for i in range(len(var)) ]).T
-                                                          
+
                 # In the variance image, pixels where variance is not
                 # available for some reason are set to an arbitrarily high
                 # value. As this values seems to change from one version to
@@ -549,7 +549,7 @@ class SNIFS_cube:
 
             if lmax-lmin < lstep:
                 raise ValueError('Slice step incompatible with requested slices interval')
-                         
+
             if not s:
                 if not nodata:
                     self.data = tdata[lmin - common_lstart: \
@@ -572,7 +572,7 @@ class SNIFS_cube:
                                  lmax - common_lstart+lstep/2:lstep]
             self.lstep *= lstep
             self.lstart = self.lbda[0]
-            
+
             self.x = e3d_cube[1].data.field('XPOS')
             self.y = e3d_cube[1].data.field('YPOS')
             self.no = e3d_cube[1].data.field('SPEC_ID')
@@ -590,13 +590,13 @@ class SNIFS_cube:
                 # coords X,Y
                 self.i = num.round(self.x / self.spxSize).astype('i') + 7
                 self.j = num.round(self.y / self.spxSize).astype('i') + 7
-                
+
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
             self.nlens = len(self.x)
-            
+
         elif fits3d_file is not None:
-            
+
             self.from_e3d_file = False
 
             fits3d_cube = pyfits.open(fits3d_file, ignore_missing_end=True)
@@ -652,19 +652,19 @@ class SNIFS_cube:
                 self.lbda = lbda
             else:
                 if not nodata:
-                    self.data = F.uniform_filter(num.array(data,'d'),
+                    self.data = F.uniform_filter(num.array(data),
                                                  (lstep,1))[lmin + lstep/2:
                                                             lmax +lstep/2:
                                                             lstep]
                     if var is not None:
-                        self.var = F.uniform_filter(num.array(var,'d'),
+                        self.var = F.uniform_filter(num.array(var),
                                                     (lstep,1))[lmin + lstep/2:
                                                                lmax+lstep/2:
                                                                lstep] / lstep
                 self.lbda = lbda[lmin+lstep/2:lmax+lstep/2:lstep]
             self.lstep *= lstep
             self.lstart = self.lbda[0]
-            self.i = nx - 1-num.ravel(num.indices((nx,ny))[1]) 
+            self.i = nx - 1-num.ravel(num.indices((nx,ny))[1])
             self.j = num.ravel(num.indices((nx,ny))[0])
             self.x = self.i*stepx+startx
             self.y = self.j*stepy+starty
@@ -680,19 +680,19 @@ class SNIFS_cube:
             self.x = self.x[ind]
             self.y = self.y[ind]
             self.no = self.no[ind]
- 
+
             self.nslice = len(self.lbda)
             self.lend = self.lstart + (self.nslice-1)*self.lstep
             self.nlens = len(self.x)
-            
+
         else:
             # If neither euro3d nor fits3d file is given, we create an SNIFS
             # cube from
             self.from_e3d_file = False
             self.nlens = 225
             if lbda is None:
-                self.data = num.zeros(self.nlens,num.float32)
-                self.lbda = None  
+                self.data = num.zeros(self.nlens)
+                self.lbda = None
                 self.nslice = None
             else:
                 # Check 1st that lbda is a linear ramp
@@ -704,20 +704,19 @@ class SNIFS_cube:
                 self.lstart = lbda[0]
                 self.lend = lbda[-1]
                 self.nslice = len(lbda)
-                data = num.zeros((self.nslice,self.nlens),num.float64)
                 i,j = [ arr.ravel()
                         for arr in num.meshgrid(num.arange(15),
                                                 num.arange(14,-1,-1)) ]
                 x = (i-7)*self.spxSize
                 y = (j-7)*self.spxSize
                 no = num.arange(1,self.nlens+1).reshape(15,15).T.ravel()
-                self.data = num.array(data,'f')
+                self.data = num.zeros((self.nslice,self.nlens))
                 self.x = num.array(x)
                 self.y = num.array(y)
                 self.i = num.array(i)
                 self.j = num.array(j)
                 self.no = num.array(no)
-          
+
     def slice2d(self,n=None,coord='w',weight=None,var=False,nx=15,ny=15,NAN=True):
         """
         Extract a 2D slice (individual slice or average of several ones) from a cube and return it as an array
@@ -733,7 +732,7 @@ class SNIFS_cube:
         """
         if weight is None and n is None:
             raise ValueError("Slices to be averaged must be given either as a list or as a weight spectrum")
-        
+
         if weight is None:
             if isinstance(n,list):
                 if len(n) != 2:
@@ -764,7 +763,7 @@ class SNIFS_cube:
                     raise ValueError("Coord. flag should be 'p' or 'w'")
 
             if n1 >= 0 and n2 <= num.shape(self.data)[0]:
-                slice_2D = num.zeros((nx,ny),num.float32)
+                slice_2D = num.zeros((nx, ny), self.data.dtype)
                 if NAN:
                     slice_2D *= num.nan
                 i = num.array(self.i)
@@ -795,7 +794,7 @@ class SNIFS_cube:
                     lbda = self.lstart+num.arange(imax-imin)*self.lstep
                     tck = I.splrep(weight.x,weight.data,s=0)
                     w = I.splev(lbda,tck)
-                    slice_2D = num.zeros((nx,ny),num.float32)
+                    slice_2D = num.zeros((nx,ny))
                     if NAN:
                         slice_2D *= num.nan
                     i = num.array(self.i)
@@ -810,7 +809,7 @@ class SNIFS_cube:
                     slice_2D[j,i] = num.sum((arr[imin:imax,:].T*w).T,axis=0)
 
                     return slice_2D
-                
+
     def spec(self,no=None,ind=None,mask=None,var=False):
         """
         Extract a spectrum from the datacube and return it as a 1D array.
@@ -824,13 +823,13 @@ class SNIFS_cube:
             data = self.var
         else:
             data = self.data
-            
+
         if mask is not None:
             if num.shape(mask) != num.shape(data):
                 raise ValueError('mask array must have the same shape than the data array')
             data = data * mask
             return num.sum(data,1)
-        
+
         if (no is not None and ind is not None) or \
                (no is None and ind is None):
             raise TypeError("lens number (no) OR spec index (ind) should be given.")
@@ -857,7 +856,7 @@ class SNIFS_cube:
                         return num.sum(data[:,ind[0]:ind[1]],1)
                     else:
                         raise IndexError("Index list out of range")
-                        
+
     def get_spec(self,no):
         """
         Extract the spectrum corresponding to lenslet no and return it as a pySNIFS.spectrum object
@@ -865,17 +864,17 @@ class SNIFS_cube:
         """
         spec = spectrum(x=self.lbda,data=self.spec(no),
                         var=self.spec(no,var=True))
-        
+
         if hasattr(self,'lstep'):
             spec.step = self.lstep
         if hasattr(self,'lstart'):
             spec.start = self.lstart
 
         return spec
-    
+
     def get_no(self,i,j):
         """
-        Get the lenslet number from its coordinates i,j 
+        Get the lenslet number from its coordinates i,j
         """
         if i>max(self.i) or i<min(self.i) or j>max(self.j) or j<min(self.j):
             raise ValueError("Index out of range.")
@@ -932,7 +931,7 @@ class SNIFS_cube:
         Write the datacube in a NAXIS=3 FITS file.
         @param filename: name of the output FITS file
         @param mode: writing mode. If w+, the file is overwritten;
-                     otherwise the writing will fail. 
+                     otherwise the writing will fail.
         """
         if header is None:
             header = self.e3d_data_header.copy()
@@ -977,10 +976,10 @@ class SNIFS_cube:
             hdu_var.header['CRPIX2'] = 1
             hdu_var.header['CRPIX3'] = 1
             hdulist.append(hdu_var)
-            
+
         hdulist.writeto(filename,clobber=(mode=='w+'))
 
-        
+
 #####################     SNIFS masks     ########################
 
 class SNIFS_mask:
@@ -995,7 +994,7 @@ class SNIFS_mask:
         @param step: step in pixels along the dispersion direction at which the mask is computed. The other
             values will be interpolated
         @param order: diffraction order (0,1 or 2). The useful signal is expected at order 1.
-        
+
         """
 
         import commands, os
@@ -1062,7 +1061,7 @@ class SNIFS_mask:
         x = I.splev(lbda,tckx)
         y = I.splev(lbda,tcky)
         return x,y
-    
+
     def interpolate(self,no,yy):
         """
         Interpolate the spectra x position for spectrum #no at position yy
@@ -1079,7 +1078,7 @@ class SNIFS_mask:
 
 
 #####################  Utility functions  ########################
-       
+
 def convert_tab(table,colx,coly,ref_pos):
     """
     Interpolate a spline in a set of (x,y) points where x and y are given by two columns of
@@ -1109,14 +1108,14 @@ def histogram(data,nbin=None,Min=None,Max=None,bin=None,cumul=False):
         Max = max(data)
     if bin is None:
         bin = (Max-Min)/nbin
-        
+
     bin_array = num.arange(nbin)*bin + Min
     n = num.searchsorted(num.sort(data), bin_array)
     n = num.concatenate([n, [len(data)]])
     data = n[1:]-n[:-1]
     x = bin_array
     hist = spectrum(data=data,x=x)
-    
+
     hist.len = len(bin_array)
     if cumul:
         hist.data = num.array([ float(num.sum(hist.data[0:i+1]))
@@ -1172,7 +1171,7 @@ def common_lens(cube_list):
     """
     inters = cube_list[0].no
     for i in xrange(1,len(cube_list)):
-        inters = filter(lambda x:x in cube_list[i].no,inters) 
+        inters = filter(lambda x:x in cube_list[i].no,inters)
     return inters
 
 def fit_poly(y,n,deg,x=None):
@@ -1191,7 +1190,7 @@ def fit_poly(y,n,deg,x=None):
     y = num.asarray(y)
     old_l = 0
     l = len(y)
-    while l != old_l:        
+    while l != old_l:
         old_l = len(y)
         poly = num.poly1d(num.polyfit(x,y,deg))
         delta = num.abs(poly(x) - y)
@@ -1225,18 +1224,18 @@ def WR_e3d_file(data_list, var_list, no_list,
        @param nslice: number of wavelengthes slices in the datacube. If not given, all the spectra of the datacube may have
                       different lengthes
     """
-    
+
     pri_hdu = pyfits.PrimaryHDU()
     hdulist = pyfits.HDUList([pri_hdu,grp_hdu]+extra_hdu_list)
-    
+
     start = max(start_list)
     spec_sta = [int((s - start)/step+0.5*num.sign(s-start)) for s in start_list]
     spec_len = [len(s) for s in data_list]
     selected = [0]*len(data_list)
-    group_n =  [1]*len(data_list) 
-    nspax =    [1]*len(data_list) 
-    spax_id =  [' ']*len(data_list) 
-    
+    group_n =  [1]*len(data_list)
+    nspax =    [1]*len(data_list)
+    spax_id =  [' ']*len(data_list)
+
     col_list = [pyfits.Column(name='SPEC_ID', format='J', array=no_list),
                 pyfits.Column(name='SELECTED', format='J', array=selected),
                 pyfits.Column(name='NSPAX', format='J', array=nspax),
@@ -1270,7 +1269,7 @@ def WR_e3d_file(data_list, var_list, no_list,
     tb_hdu.header['CDELTS'] = step
     tb_hdu.header['CRPIXS'] = 1
     tb_hdu.header['EXTNAME'] = 'E3D_DATA'
-    
+
     for desc in data_header:
         if desc not in ('XTENSION','BITPIX','GCOUNT','PCOUNT','TFIELDS',
                         'EXTNAME','TFORM','TUNIT','TDISP',
@@ -1363,7 +1362,7 @@ def zerolike(cube):
     except:
         newcube.e3d_data_header = None
         newcube.e3d_extra_hdu_list = None
-        newcube.e3d_file = None 
-        newcube.e3d_grp_hdu = None 
+        newcube.e3d_file = None
+        newcube.e3d_grp_hdu = None
 
     return newcube

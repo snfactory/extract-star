@@ -614,9 +614,9 @@ class model:
         else:                           # Chi2
             self.chi2fit = True
             if self.model_3D:
-                self.weight = N.where(data.var>0, 1/data.var, 0.).astype('d')
+                self.weight = N.where(data.var>0, 1./data.var, 0.)
             elif self.model_2D:
-                self.data.var = N.array(data.var, dtype='d')
+                self.data.var = N.array(data.var)
                 self.data.var = self.data.var.reshape(1,self.data.var.size)
                 self.weight = N.where(self.data.var>0, 1./self.data.var, 0.)
             elif self.model_1D:

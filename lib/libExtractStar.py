@@ -370,7 +370,7 @@ def extract_specs(cube, psf, skyDeg=0,
     # Chi2 (variance-weighted) vs. Least-square (unweighted) fit
     # *Note* that weight is actually 1/sqrt(var) (see NR)
     if chi2fit:
-        weight = N.where(cube.var > 0, 1 / N.sqrt(cube.var), 0)  # nslice,nlens
+        weight = N.where(cube.var > 0, cube.var**-0.5, 0)  # nslice,nlens
     else:
         weight = N.where(cube.var > 0, 1, 0)  # nslice,nlens
 
@@ -414,7 +414,7 @@ def extract_specs(cube, psf, skyDeg=0,
     # Compute the least-square variance using the chi2-case method
     # (errors are meaningless in pure least-square case)
     if not chi2fit:
-        weight = N.where(cube.var > 0, 1 / N.sqrt(cube.var), 0)
+        weight = N.where(cube.var > 0, cube.var**-0.5, 0)
         A = BF * weight[..., N.newaxis]
         Alpha = N.array([N.dot(aa.T, aa) for aa in A])
         try:

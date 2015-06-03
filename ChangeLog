@@ -1,3 +1,13 @@
+2015-06-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* apps/extract_star/extract_star.py (flag_nans): detect suspicious
+	variance values more than 1e6x median (non-null) variance
+	[test-case: 12_290_052_003_2_260_720_02-02_000.fits]
+
+	* lib/pySNIFS.py (SNIFS_cube.slice2d): do not downcast input
+	dtype. Has an impact on `SNIFS_cube.WR_3D_fits` and therefore on
+	`e3dto3d.py`.
+
 2015-06-01  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new option '--accountant' to
@@ -476,12 +486,12 @@
 	* lib/pySNIFS.py : fixed bug with generating fits tables with
 	variable length columns which was causing adjust_dichroic crashes.
 
-2010-05-14  Cl�ment BUTON  <cbuton@lyoma81.in2p3.fr>
+2010-05-14  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* lib/libExtractStar.py: Update PSF correlation chromaticity
 	parameters.
 
-2010-05-03  Cl�ment BUTON  <cbuton@lyoma81.in2p3.fr>
+2010-05-03  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Decrease figures size of
 	plots (from [12,10] to [8,6]) to resolve disk space problem (see
@@ -516,12 +526,12 @@
 	* lib/libExtractStar.py: hide Chebychev's polynomials in chebEval
 	instead of a global variable. Minor rewriting.
 
-2010-02-23  Cl�ment BUTON  <cbuton@lyoma81.in2p3.fr>
+2010-02-23  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* lib/libExtractStar.py: minor bug correction related to
 	'scipy.special' importation.
 
-2010-02-16  Cl�ment BUTON  <cbuton@lyoma81.in2p3.fr>
+2010-02-16  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: add '--correlations' option
 	which allow to choose between 'old' and 'new' version of the PSF
@@ -531,7 +541,7 @@
 	which allow to choose between 'old' and 'new' version of the PSF
 	shape parameters correlations (default is 'old').
 
-2010-02-12  Cl�ment BUTON  <cbuton@lyoma81.in2p3.fr>
+2010-02-12  Clément BUTON  <cbuton@lyoma81.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Major update of the
 	guassian+moffat PSF description (chromaticity, use of checbychev
@@ -591,7 +601,7 @@
 	2,3=position, 4=PA, 5...6+ellDeg=ellipticity coeffs and
 	7+ellDeg...8+ellDeg+alphaDeg=alpha coeffs) can be constrained
 	individually strictly (e.g. '0:1' to force delta to 1) or loosely
-	(e.g. '2:-1,1' to constrain x-position within �1). Note that
+	(e.g. '2:-1,1' to constrain x-position within ±1). Note that
 	constraints on polynomial coeffs have to be expressed as function
 	of lr := (2*lambda - (lmin+lmax))/(lmax-lmin), while the coeffs
 	stored in header keywords are for polynoms of lr := lambda/lref-1.
@@ -714,7 +724,7 @@
 	* apps/extract_star : Test if the input datacube is a e3d or a
 	fits3d file
 
-2008-05-19  Cl�ment BUTON  <cbuton@bigbrother.dhcp.lbnl.us>
+2008-05-19  Clément BUTON  <cbuton@bigbrother.dhcp.lbnl.us>
 
 	* lib/pySNIFS_fit.py (model.fit): minor changes
 
@@ -780,7 +790,7 @@
 	* apps/extract_star/extract_star.py: test positivity of alpha and
 	ellipticity after 3D fit.
 
-2008-02-18  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2008-02-18  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py : add new option '-F' to
 	create a log file with adjusted parameters of final 3D fit.
@@ -800,7 +810,7 @@
 	* lib/pySNIFS.py (SNIFS_cube.__init__): self.e3d_data_header is
 	now a plain dictionary (instead of a list of items [(key,value)]).
 
-2008-02-04  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2008-02-04  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Add new keywords and change
 	the log file.
@@ -815,14 +825,14 @@
 	* lib/pySNIFS.py (SNIFS_cube.__init__): debug i,j spx coords
 	computed from arcsec coords x,y.
 
-2008-01-09  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2008-01-09  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Minor changes.
 
 	* lib/pySNIFS.py (fit_poly): Add a warning in fit_poly when number
 	of point is not sufficient to make a fit.
 
-2008-01-07  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2008-01-07  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (fit_slices): Fit a 2D
 	polynomial of degree skyDeg on the edge pixels of a given cube
@@ -876,7 +886,7 @@
 
 	* apps/extract_star/extract_star.py: new estimate of ADR angle.
 
-2007-11-21  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-21  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: new option '-e/--ellDeg' to
 	choose polynomial degree of ellipticity.
@@ -892,12 +902,12 @@
 	photometry (new option '-m/--method PSF|aperture'). Debug seeing
 	estimate.
 
-2007-11-16  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-16  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: build_sky_cube is now working
 	normally.
 
-2007-11-15  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-15  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Add fwhm estimate.
 
@@ -913,14 +923,14 @@
 	long_exposure_psf inherit from a ExposurePSF class. Normalize PSF
 	from within psf.comp (new keyword normed).
 
-2007-11-14  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-14  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* lib/pySNIFS_fit.py (fnnls): replace any(x) by x.any().
 
 	* apps/extract_star/extract_star.py: Correct a bug related to the
 	polynomial of the sky. Make the code robust.
 
-2007-11-13  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-13  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Correct minor bug.
 
@@ -930,17 +940,17 @@
 
 	* apps/extract_star/extract_star.py: force alpha to >0.
 
-2007-11-09  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-09  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Correct determination of
 	theta_guest for the 3D fit.
 
-2007-11-08  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-08  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: Change relative lambda in
 	lambda/lambda_ref - 1.
 
-2007-11-07  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-07  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: add an option to choose the
 	polynomial degree of alpha.
@@ -950,7 +960,7 @@
 	* apps/extract_star/extract_star.py (comp_spec): check for
 	negative variance.
 
-2007-11-06  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-06  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: minor bug corrected.
 
@@ -964,12 +974,12 @@
 	* lib/pySNIFS.py:
 	* lib/pySNIFS_fit.py: "pythonication" and optimization.
 
-2007-11-05  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-11-05  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star.py: back to a linear
 	representation of alpha.
 
-2007-10-29  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-10-29  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: change names between
 	extract_star.py (v 1.32) and extract_star_2.py (v 1.13).
@@ -977,7 +987,7 @@
 	* apps/extract_star/extract_star.py: change names between
 	extract_star.py (v 1.32) and extract_star_2.py (v 1.13).
 
-2007-10-25  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-10-25  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: bug in var_sky
 	normalization corrected.
@@ -988,11 +998,11 @@
 
 2007-10-23  yannick.copin  <yannick.copin@laposte.net>
 
-	* apps/extract_star/extract_star_2.py: remove spectrum � 2 sigma
-	plot (unreadble in low S/N, spline convergence issues). Still some
-	normalization issues...
+	* apps/extract_star/extract_star_2.py: remove spectrum ± 2 sigma
+	plot (unreadable in low S/N, spline convergence issues). Still
+	some normalization issues...
 
-2007-10-23  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-10-23  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: merge the polynomial
 	background from extract_star.py (version 1.37).
@@ -1001,7 +1011,7 @@
 
 	* apps/extract_star/extract_star_2.py: add residual plot.
 
-2007-10-22  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-10-22  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* apps/extract_star/extract_star_2.py: add short exposure psf
 	function.
@@ -1022,7 +1032,7 @@
 	* apps/extract_star/extract_star_2.py: plot updates. Remove
 	constraints on a0,a1 3D-fit.
 
-2007-10-18  Cl�ment Buton  <cbuton@lyopc387.in2p3.fr>
+2007-10-18  Clément Buton  <cbuton@lyopc387.in2p3.fr>
 
 	* setup.py: add extract_star_2.py.
 

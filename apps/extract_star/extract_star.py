@@ -200,6 +200,17 @@ def flag_nans(cube, varflag=0, name='cube'):
                   (name, label, len(arr[N.isnan(arr)]), len(arr[N.isinf(arr)]))
         cube.var[bad] = varflag
 
+    # Look for suspicious variances
+    medvar = N.median(cube.var[cube.var > 0])
+    bad = cube.var / medvar > 1e6
+    if bad.any():
+        print "WARNING: %s contains %d suspicious variance values." % \
+            (name, len(cube.var[bad]))
+        if len(cube.var[bad]) > len(cube.var):
+            raise ValueError("%s is too heavily corrupted, aborting" % name)
+
+    cube.var[bad] = varflag
+
 
 def create_2Dlog(opts, cube, params, dparams, chi2):
     """Dump an informative text log about the PSF (metaslice) 2D-fit."""
@@ -424,32 +435,75 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
                       (n, vmin, vmax)
 
 
-class Accountant(list):
+class Accountant(object):
+    """
+    The *Accountant* complete the YAML file used for DB-registration with
+    "record_quality" entries from warnings.
+
+    >>> accountant = Accountant("accountant.yml", output_filename)
+    >>> accountant.add_warning("Snurp rules!")
+    >>> accountant.finalize()
+    """
 
     def __init__(self, filename, outname):
-        list.__init__(self)                # List of warnings
+        """
+        Open accountant YAML file *filename*, and set output file to *outname*.
+        """
+
         try:
             self.stream = open(filename, 'a')  # YAML file
         except IOError:
             raise IOError("Cannot open accountant file '%s'" % filename)
-        self.outname = outname             # Main out file name
+        self.outname = outname                 # Main out file name
+        self.warnings = []
 
-    def write(self, index=0):
+    def __str__(self):
+
+        s = "Accountant: '%s' (%s), %s" % (
+            self.stream.name,
+            'closed' if self.stream.closed else 'open',
+            "%d warnings" % len(self.warnings) if self.warnings else "no warning")
+        s += "\n  Parent file: %s" % self.outname
+
+        return s
+
+    def add_warning(self, warning):
+        """Add a warning to the internal list of warnings."""
+
+        print "Accountant: adding warning '%s'" % warning
+        self.warnings.append(warning)
+
+    def write(self, quality, quality_s, maxlen=30):
+        """Add a "record_quality" entry to accountant file."""""
 
         if self.stream.closed:
-            raise IOError("Accountant file is already closed")
+            raise IOError("Accountant file '%s' is already closed" %
+                          self.stream.name)
 
-        msg = self.__getitem__(index)
-        if len(msg) > 30:
-            warnings.warn("Truncating accountant message to 30 characters")
-            msg = msg[:30]
+        if len(quality_s) > maxlen:
+            quality_s = quality_s[:maxlen]
+            warnings.warn(
+                "Truncating accountant message to %d characters:\n  %s" %
+                (maxlen, quality_s))
 
         self.stream.write("""\
 - type: record_quality
   filename: %s
-  quality: 2
+  quality: %s
   quality_s: %s
-""" % (self.outname, msg))
+""" % (self.outname, quality, quality_s))
+
+    def finalize(self, index=0, quality=2, maxlen=30):
+        """Dump selected warning to accountant file and close it."""""
+
+        print "Accountant: finalizing (%d warnings)" % len(self.warnings)
+        if self.stream.closed:
+            raise IOError("Accountant file '%s' is already closed" %
+                          self.stream.name)
+
+        if self.warnings:
+            quality_s = self.warnings[index]
+            self.write(quality, quality_s, maxlen=maxlen)
 
         self.stream.close()
 
@@ -598,14 +652,17 @@ if __name__ == "__main__":
     # The pySNIFS e3d_data_header dictionary is not enough for later
     # updates in fill_header, which requires a *true* pyfits header.
 
-    try:                                # Try to read a Euro3D cube
-        inhdr = F.getheader(opts.input, 1)  # 1st extension
-        full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
-        isE3D = True
-    except ValueError:                  # Try to read a 3D FITS cube
-        inhdr = F.getheader(opts.input, 0)  # Primary extension
-        full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
-        isE3D = False
+    try:
+        try:                                    # Try to read a Euro3D cube
+            inhdr = F.getheader(opts.input, 1)  # 1st extension
+            full_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input)
+            isE3D = True
+        except ValueError:                      # Try to read a 3D FITS cube
+            inhdr = F.getheader(opts.input, 0)  # Primary extension
+            full_cube = pySNIFS.SNIFS_cube(fits3d_file=opts.input)
+            isE3D = False
+    except IOError:
+        parser.error("Cannot access file '%s'" % opts.input)
     full_cube.flag_nans(name='input cube')
     step = full_cube.lstep
 
@@ -670,6 +727,12 @@ if __name__ == "__main__":
     print "  PSF: '%s', sub-sampled x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
+    if opts.accountant:
+        import atexit
+        accountant = Accountant(opts.accountant, opts.out)
+        print accountant
+        atexit.register(accountant.finalize)
+
     # 2D-model fitting ========================================================
 
     # Meta-slice definition (min,max,step [px]) ------------------------------
@@ -690,11 +753,10 @@ if __name__ == "__main__":
     print_msg("  Meta-slices before selection: %d from %.2f to %.2f by %.2f A" %
               (nmeta, meta_cube.lstart, meta_cube.lend, meta_cube.lstep), 0)
 
-    # Normalisation of the signal and variance in order to avoid
-    # numerical problems with too small numbers
-    # (nmeta,1)
+    # Normalisation of the signal and variance in order to avoid numerical
+    # problems with too small numbers
     norm = ( N.abs(meta_cube.data.mean(axis=None)) +
-             N.abs(meta_cube.data.mean(axis=-1)) ).reshape(-1, 1)
+             N.abs(meta_cube.data.mean(axis=-1)) ).reshape(-1, 1)  # (nmeta,1)
     print_msg("  Meta-slice normalization (|mean|+|mean_slice|): %s" %
               (norm.squeeze()), 1)
     meta_cube.data /= norm                           # (nmeta,nspx)
@@ -1009,9 +1071,6 @@ if __name__ == "__main__":
         # tests on hyper-term contributions rather than on absolute
         # comparisons.
 
-        if opts.accountant:
-            accountant = Accountant(opts.accountant, opts.out)
-
         # Test position of point-source
         if opts.positionPrior:
             dprior = N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1])
@@ -1021,12 +1080,8 @@ if __name__ == "__main__":
                     "from position prior %.2fx%.2f" % \
                     (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
                 if opts.accountant:
-                    accountant.append("Position %.2f spx from prior" % dprior)
-        elif not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < 7):
-            print "WARNING: Point-source %.2fx%.2f outside the FoV" % \
-                (fitpar[2], fitpar[3])
-            if opts.accountant:
-                accountant.append("Position outside FoV")
+                    accountant.add_warning(
+                        "ES position %.2f spx from prior" % dprior)
         # Tests on seeing
         if opts.seeingPrior:
             fac = (seeing / opts.seeingPrior - 1)*1e2
@@ -1035,7 +1090,7 @@ if __name__ == "__main__":
                     "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
                     (seeing, fac, opts.seeingPrior)
                 if opts.accountant:
-                    accountant.append("Seeing %.0f%% from prior" % fac)
+                    accountant.add_warning("ES seeing %.0f%% from prior" % fac)
         # Tests on ADR parameters
         fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1)*1e2
         if not abs(fac) < 20:
@@ -1043,7 +1098,7 @@ if __name__ == "__main__":
                 "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
                 (adr.get_airmass(), fac, adr.get_airmass(delta0))
             if opts.accountant:
-                accountant.append("Airmass %.0f%% from prior" % fac)
+                accountant.add_warning("ES airmass %.0f%% from prior" % fac)
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
@@ -1052,14 +1107,14 @@ if __name__ == "__main__":
                 "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
                 (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
             if opts.accountant:
-                accountant.append("Parangle %+.0fdeg from prior" % err)
+                accountant.add_warning("ES parangle %+.0fdeg from prior" % err)
 
-        if opts.accountant and len(accountant) >= 1:
-            accountant.write()
-
-    if not (abs(fitpar[2]) < 7 and abs(fitpar[3]) < 7):
-        print "WARNING: Point-source %.2fx%.2f outside the FoV" % \
+    if not (abs(fitpar[2]) < 6 and abs(fitpar[3]) < 6):
+        print "WARNING: Point-source %.2fx%.2f mis-centered" % \
             (fitpar[2], fitpar[3])
+        if opts.accountant:
+            accountant.add_warning("ES position mis-centered")
+
     try:
         # Tests on seeing and airmass
         if not 0.3 < seeing < 4.:
