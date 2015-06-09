@@ -1,3 +1,8 @@
+2015-06-09  Yannick Copin  <ycopin@lyonovae03.in2p3.fr>
+
+	* apps/extract_star/extract_star.py: add prior warnings to output
+	plot, by a systematic use of (unfinalized) accountant.
+
 2015-06-03  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* apps/extract_star/extract_star.py (flag_nans): detect suspicious

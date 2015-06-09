@@ -450,20 +450,29 @@ class Accountant(object):
         Open accountant YAML file *filename*, and set output file to *outname*.
         """
 
-        try:
-            self.stream = open(filename, 'a')  # YAML file
-        except IOError:
-            raise IOError("Cannot open accountant file '%s'" % filename)
+        if filename:
+            try:
+                self.stream = open(filename, 'a')  # YAML file
+            except IOError:
+                raise IOError("Cannot open accountant file '%s'" % filename)
+        else:
+            self.stream = None
         self.outname = outname                 # Main out file name
         self.warnings = []
 
     def __str__(self):
 
-        s = "Accountant: '%s' (%s), %s" % (
-            self.stream.name,
-            'closed' if self.stream.closed else 'open',
-            "%d warnings" % len(self.warnings) if self.warnings else "no warning")
-        s += "\n  Parent file: %s" % self.outname
+        if self.stream:
+            s = "Accountant: '%s' (%s), %s" % (
+                self.stream.name,
+                'closed' if self.stream.closed else 'open',
+                "%d warnings" % len(self.warnings)
+                if self.warnings else "no warning")
+            s += "\n  Parent file: %s" % self.outname
+        else:
+            s = "Virtual accountant: %s" % (
+                "%d warnings" % len(self.warnings) 
+                if self.warnings else "no warning")
 
         return s
 
@@ -473,10 +482,23 @@ class Accountant(object):
         print "Accountant: adding warning '%s'" % warning
         self.warnings.append(warning)
 
+    def test_warning(self, string):
+        """Test if string is in internal list of warnings."""
+
+        return any( string in msg for msg in self.warnings )
+
+    def get_warning(self, string):
+
+        if self.test_warning(string):
+            idx = [ i for i, msg in enumerate(self.warnings) if string in msg ]
+            return self.warnings[idx[0]]   # Return 1st warning
+        else:
+            raise IndexError("Cannot find '%s' in warnings" % string)
+    
     def write(self, quality, quality_s, maxlen=30):
         """Add a "record_quality" entry to accountant file."""""
 
-        if self.stream.closed:
+        if self.stream and self.stream.closed:
             raise IOError("Accountant file '%s' is already closed" %
                           self.stream.name)
 
@@ -486,7 +508,8 @@ class Accountant(object):
                 "Truncating accountant message to %d characters:\n  %s" %
                 (maxlen, quality_s))
 
-        self.stream.write("""\
+        if self.stream:
+            self.stream.write("""\
 - type: record_quality
   filename: %s
   quality: %s
@@ -497,6 +520,10 @@ class Accountant(object):
         """Dump selected warning to accountant file and close it."""""
 
         print "Accountant: finalizing (%d warnings)" % len(self.warnings)
+        
+        if not self.stream:
+            return
+        
         if self.stream.closed:
             raise IOError("Accountant file '%s' is already closed" %
                           self.stream.name)
@@ -727,9 +754,9 @@ if __name__ == "__main__":
     print "  PSF: '%s', sub-sampled x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
+    accountant = Accountant(opts.accountant, opts.out)
     if opts.accountant:
         import atexit
-        accountant = Accountant(opts.accountant, opts.out)
         print accountant
         atexit.register(accountant.finalize)
 
@@ -1079,9 +1106,8 @@ if __name__ == "__main__":
                     "Point-source %.2fx%.2f is %.2f spx away " \
                     "from position prior %.2fx%.2f" % \
                     (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
-                if opts.accountant:
-                    accountant.add_warning(
-                        "ES position %.2f spx from prior" % dprior)
+                accountant.add_warning(
+                    "ES position %.2f spx from prior" % dprior)
         # Tests on seeing
         if opts.seeingPrior:
             fac = (seeing / opts.seeingPrior - 1)*1e2
@@ -1089,16 +1115,14 @@ if __name__ == "__main__":
                 print "WARNING: " \
                     "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
                     (seeing, fac, opts.seeingPrior)
-                if opts.accountant:
-                    accountant.add_warning("ES seeing %.0f%% from prior" % fac)
+                accountant.add_warning("ES seeing %.0f%% from prior" % fac)
         # Tests on ADR parameters
         fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1)*1e2
         if not abs(fac) < 20:
             print "WARNING: " \
                 "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
                 (adr.get_airmass(), fac, adr.get_airmass(delta0))
-            if opts.accountant:
-                accountant.add_warning("ES airmass %.0f%% from prior" % fac)
+            accountant.add_warning("ES airmass %.0f%% from prior" % fac)
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
@@ -1106,14 +1130,12 @@ if __name__ == "__main__":
             print "WARNING: " \
                 "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
                 (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
-            if opts.accountant:
-                accountant.add_warning("ES parangle %+.0fdeg from prior" % err)
+            accountant.add_warning("ES parangle %+.0fdeg from prior" % err)
 
     if not (abs(fitpar[2]) < 6 and abs(fitpar[3]) < 6):
         print "WARNING: Point-source %.2fx%.2f mis-centered" % \
             (fitpar[2], fitpar[3])
-        if opts.accountant:
-            accountant.add_warning("ES position mis-centered")
+        accountant.add_warning("ES position mis-centered")
 
     try:
         # Tests on seeing and airmass
@@ -1295,8 +1317,7 @@ if __name__ == "__main__":
             axN = fig1.add_subplot(2, 1, 2)
 
         axS.text(0.95, 0.8, os.path.basename(opts.input),
-                 fontsize='small', horizontalalignment='right',
-                 transform=axS.transAxes)
+                 fontsize='small', ha='right', transform=axS.transAxes)
 
         axS.plot(star_spec.x, star_spec.data, blue)
         axS.errorband(star_spec.x, star_spec.data, N.sqrt(star_spec.var),
@@ -1354,9 +1375,8 @@ if __name__ == "__main__":
                 ax.plot(sno, bkg2[i, :], color=orange, ls='-')  # Background
             P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                    fontsize='x-small', horizontalalignment='left',
-                    transform=ax.transAxes)
+            ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                    fontsize='x-small', transform=ax.transAxes)
 
             ax.set_ylim(data.min() / 1.2, data.max() * 1.2)
             ax.set_xlim(-1, 226)
@@ -1375,7 +1395,7 @@ if __name__ == "__main__":
         if not opts.covariance:     # Plot fit on rows and columns sum
 
             fig3 = P.figure()
-            fig3.suptitle("Rows and columns plot [%s, airmass=%.2f]" %
+            fig3.suptitle("Rows and columns [%s, airmass=%.2f]" %
                           (objname, airmass))
 
             for i in xrange(nmeta):        # Loop over slices
@@ -1409,9 +1429,8 @@ if __name__ == "__main__":
 
                 P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                        fontsize='x-small', horizontalalignment='left',
-                        transform=ax.transAxes)
+                ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                        fontsize='x-small', transform=ax.transAxes)
                 if ax.is_last_row() and ax.is_first_col():
                     ax.set_xlabel("I (blue) or J (red)", fontsize='small')
                     ax.set_ylabel("Flux", fontsize='small')
@@ -1463,8 +1482,10 @@ if __name__ == "__main__":
         # Guessed and adjusted position at current wavelength
         xguess = xc + delta0 * N.sin(theta0) * psf_model.ADRscale[:, 0]
         yguess = yc - delta0 * N.cos(theta0) * psf_model.ADRscale[:, 0]
-        xfit = fitpar[2] + fitpar[0] * N.sin(fitpar[1]) * psf_model.ADRscale[:, 0]
-        yfit = fitpar[3] - fitpar[0] * N.cos(fitpar[1]) * psf_model.ADRscale[:, 0]
+        xfit = fitpar[2] + \
+          fitpar[0] * N.sin(fitpar[1]) * psf_model.ADRscale[:, 0]
+        yfit = fitpar[3] - \
+          fitpar[0] * N.cos(fitpar[1]) * psf_model.ADRscale[:, 0]
 
         fig4 = P.figure()
 
@@ -1526,22 +1547,30 @@ if __name__ == "__main__":
                       mfc=red, mec=red, ls='None')   # Discarded ref. positions
         ax4c.plot((xmid, xc), (ymid, yc), 'k-')
         ax4c.plot(xguess, yguess, 'k--')  # Guess ADR
-        ax4c.plot(xfit, yfit, green)     # Adjusted ADR
+        ax4c.plot(xfit, yfit, green)      # Adjusted ADR
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,), (yc,), 'k+')
         ax4c.add_patch(M.patches.Circle((xmid, ymid), radius=rmax,
                                         ec='0.8', fc='None')) # ADR selection
         ax4c.add_patch(M.patches.Rectangle((-7.5, -7.5), 15, 15,
                                            ec='0.8', lw=2, fc='None'))  # FoV
-        ax4c.text(0.97, 0.85,
-                  u'Guess: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' %
-                  (xc, yc, airmass, theta0 * TA.RAD2DEG),
-                  transform=ax4c.transAxes, fontsize='small', ha='right')
-        ax4c.text(0.97, 0.75,
-                  u'Fit: x0,y0=%4.2f,%4.2f  airmass=%.2f parangle=%.1f°' %
-                  (fitpar[2], fitpar[3],
-                   adr.get_airmass(), adr.get_parangle()),
-                  transform=ax4c.transAxes, fontsize='small', ha='right')
+        txt = u'Guess: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
+          (xc, yc, airmass, theta0 * TA.RAD2DEG) + \
+          '\n' + \
+          u'Fit: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
+          (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
+        txtcol = 'k'
+        if accountant.test_warning('position'):
+            txt += '\n%s' % accountant.get_warning('position')
+            txtcol = MPL.red
+        if accountant.test_warning('airmass'):
+            txt += '\n%s' % accountant.get_warning('airmass')
+            txtcol = MPL.red
+        if accountant.test_warning('parangle'):
+            txt += '\n%s' % accountant.get_warning('airmass')
+            txtcol = MPL.red
+        ax4c.text(0.95, 0.8, txt, transform=ax4c.transAxes,
+                  fontsize='small', ha='right', color=txtcol)
 
         fig4.tight_layout()
         if plot4:
@@ -1614,14 +1643,19 @@ if __name__ == "__main__":
                   label="Guess 3D" if not opts.seeingPrior else "Prior 3D")
         #plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, None)
-        ax6a.text(0.97, 0.15, 'Guess: %s' %
-                  (', '.join(['a%d=%.2f' % (i, a) for i, a
-                              in enumerate(guessAlphaCoeffs)])),
-                  transform=ax6a.transAxes, fontsize='small', ha='right')
-        ax6a.text(0.97, 0.05, 'Fit: %s' %
-                  (', '.join(['a%d=%.2f' % (i, a) for i, a
-                              in enumerate(fitpar[6 + ellDeg:npar_psf])])),
-                  transform=ax6a.transAxes, fontsize='small', ha='right')
+        txt = 'Guess: %s' % \
+          (', '.join([ 'a%d=%.2f' % (i, a)
+                       for i, a in enumerate(guessAlphaCoeffs) ])) + \
+          '\n' + \
+          'Fit: %s' % \
+          (', '.join([ 'a%d=%.2f' % (i, a)
+                       for i, a in enumerate(fitpar[6 + ellDeg:npar_psf]) ]))
+        txtcol = 'k'
+        if accountant.test_warning('seeing'):
+            txt += '\n%s' % accountant.get_warning('seeing')
+            txtcol = MPL.red
+        ax6a.text(0.95, 0.8, txt, transform=ax6a.transAxes,
+                  fontsize='small', ha='right', color=txtcol)
         ax6a.legend(loc='best', fontsize='small', frameon=False)
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
@@ -1635,16 +1669,15 @@ if __name__ == "__main__":
         ax6b.plot(meta_cube.lbda, guessEll, 'k--')
         #plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, None)
-        ax6b.text(0.97, 0.3,
-                  'Guess: %s' % (', '.join(
-                      ['e%d=%.2f' % (i, e)
-                       for i, e in enumerate(guessEllCoeffs)])),
-                  transform=ax6b.transAxes, fontsize='small', ha='right')
-        ax6b.text(0.97, 0.1,
-                  'Fit: %s' % (', '.join(
-                      ['e%d=%.2f' % (i, e)
-                       for i, e in enumerate(fitpar[5:6 + ellDeg])])),
-                  transform=ax6b.transAxes, fontsize='small', ha='right')
+        txt = 'Guess: %s' % \
+          (', '.join([ 'e%d=%.2f' % (i, e)
+                       for i, e in enumerate(guessEllCoeffs) ])) + \
+          '\n' + \
+          'Fit: %s' % \
+          (', '.join([ 'e%d=%.2f' % (i, e)
+                       for i, e in enumerate(fitpar[5:6 + ellDeg]) ]))
+        ax6b.text(0.95, 0.1, txt, transform=ax6b.transAxes,
+                  fontsize='small', ha='right', va='bottom')
         P.setp(ax6b.get_yticklabels(), fontsize='x-small')
 
         if good.any():
@@ -1658,9 +1691,10 @@ if __name__ == "__main__":
         plot_conf_interval(ax6c,
                            N.asarray([meta_cube.lstart, meta_cube.lend]),
                            N.ones(2) * fitpar[4], N.ones(2) * err_xy)
-        ax6c.text(0.97, 0.1,
-                  u'Guess: xy=%4.2f  Fit: xy=%4.2f' % (xy, fitpar[4]),
-                  transform=ax6c.transAxes, fontsize='small', ha='right')
+        ax6c.text(0.95, 0.1,
+                  u'Guess: xy=%4.2f\nFit: xy=%4.2f' % (xy, fitpar[4]),
+                  transform=ax6c.transAxes,
+                  fontsize='small', ha='right', va='bottom')
         P.setp(ax6c.get_xticklabels() + ax6c.get_yticklabels(),
                fontsize='x-small')
 
@@ -1721,9 +1755,8 @@ if __name__ == "__main__":
                         ms=1, ls='None')  # Sky
             P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                    fontsize='x-small', horizontalalignment='left',
-                    transform=ax.transAxes)
+            ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                    fontsize='x-small', transform=ax.transAxes)
             if opts.method != 'psf':
                 ax.axvline(radius / spxSize, color=orange, lw=2)
             if ax.is_last_row() and ax.is_first_col():
@@ -1772,9 +1805,8 @@ if __name__ == "__main__":
                             marker='.', mfc=orange, mec=orange, ls='None')
                 P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                        fontsize='x-small', horizontalalignment='left',
-                        transform=ax.transAxes)
+                ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                        fontsize='x-small', transform=ax.transAxes)
                 if opts.method != 'psf':
                     ax.axvline(radius / spxSize, color=orange, lw=2)
                 if ax.is_last_row() and ax.is_first_col():
@@ -1804,9 +1836,8 @@ if __name__ == "__main__":
                         marker='.', ls='none', mfc=blue, mec=blue)
                 P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                        fontsize='xx-small')
-                ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                        fontsize='x-small', horizontalalignment='left',
-                        transform=ax.transAxes)
+                ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                        fontsize='x-small', transform=ax.transAxes)
                 if opts.method != 'psf':
                     ax.axvline(radius / spxSize, color=orange, lw=2)
                 if ax.is_last_row() and ax.is_first_col():
@@ -1824,7 +1855,7 @@ if __name__ == "__main__":
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
         fig8 = P.figure()
-        fig8.suptitle("Contour plot [%s, airmass=%.2f]" % (objname, airmass))
+        fig8.suptitle("Data and fit [%s, airmass=%.2f]" % (objname, airmass))
 
         extent = (meta_cube.x.min() - 0.5, meta_cube.x.max() + 0.5,
                   meta_cube.y.min() - 0.5, meta_cube.y.max() + 0.5)
@@ -1848,9 +1879,8 @@ if __name__ == "__main__":
                                               fc='None', ec=orange, lw=2))
             P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                    fontsize='x-small', horizontalalignment='left',
-                    transform=ax.transAxes)
+            ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                    fontsize='x-small', transform=ax.transAxes)
             ax.axis(extent)
             if ax.is_last_row() and ax.is_first_col():
                 ax.set_xlabel("I [spx]", fontsize='small')
@@ -1890,9 +1920,8 @@ if __name__ == "__main__":
             ax.plot((xfit[i],), (yfit[i],), marker='*', color=green)
             P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                    fontsize='xx-small')
-            ax.text(0.1, 0.1, u"%.0f Å" % meta_cube.lbda[i],
-                    fontsize='x-small', horizontalalignment='left',
-                    transform=ax.transAxes)
+            ax.text(0.05, 0.85, u"%.0f Å" % meta_cube.lbda[i],
+                    fontsize='x-small', transform=ax.transAxes)
             ax.axis(extent)
 
             # Axis management
