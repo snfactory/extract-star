@@ -611,9 +611,9 @@ if __name__ == "__main__":
                       "(req. powerlaw-PSF) [%default]",
                       default=0.)
     parser.add_option("--seeingPrior", type=float,
-                      help="Additional seeing prior (from Exposure.Seeing) [\"]")
+                      help="Seeing prior (from Exposure.Seeing) [\"]")
     parser.add_option("--positionPrior", type=str,
-                      help="Additional position prior ('x,y' or 'DDT')")
+                      help="Position prior ('lref,x,y' or 'DDT')")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
@@ -825,18 +825,21 @@ if __name__ == "__main__":
                 posPrior = adr.refract(   # Back-propagate to ref. wavelength
                     ddtlxy[1], ddtlxy[2], ddtlxy[0],
                     backward=True, unit=spxSize)  # x,y
-                print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
-                          (lmid, position[0], position[1]), 1)
         else:
             try:
-                posPrior = _, _ = tuple(
+                lxy = _, _, _ = tuple(
                     float(val) for val in opts.positionPrior.split(',') )
             except ValueError as err:
                 parser.error(
                     "Cannot parse position prior '%s'" % opts.positionPrior)
             else:
-                print_msg("  Prior on position [%.0f A]: %.2f x %.2f spx" %
-                          (lmid, posPrior[0], posPrior[1]), 1)
+                print_msg("  Predicted position [%.0f A]: %.2f x %.2f spx" %
+                          posPrior, 1)
+                posPrior = adr.refract(   # Back-propagate to ref. wavelength
+                    lxy[1], lxy[2], lxy[0],
+                    backward=True, unit=spxSize)  # x,y
+        print_msg("  Prior on position [%.0f A]: %.2f x %.2f spx" %
+                  (lmid, posPrior[0], posPrior[1]), 0)
 
     # 2D-fit ------------------------------
 
@@ -1567,7 +1570,7 @@ if __name__ == "__main__":
             txt += '\n%s' % accountant.get_warning('airmass')
             txtcol = MPL.red
         if accountant.test_warning('parangle'):
-            txt += '\n%s' % accountant.get_warning('airmass')
+            txt += '\n%s' % accountant.get_warning('parangle')
             txtcol = MPL.red
         ax4c.text(0.95, 0.8, txt, transform=ax4c.transAxes,
                   fontsize='small', ha='right', color=txtcol)
