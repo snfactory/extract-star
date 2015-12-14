@@ -6,7 +6,7 @@
 # Description:       Standard star spectrum extraction
 # Author:            Yannick Copin <y.copin@ipnl.in2p3.fr>
 # Created at:        $Date$
-# Modified at:       2012/11/16 16:13:34
+# Modified at:       11-12-2015 14:57:16
 # $Id$
 ##############################################################################
 
@@ -100,6 +100,7 @@ import libExtractStar as libES
 import ToolBox.Atmosphere as TA
 from ToolBox.Arrays import metaslice
 from ToolBox.Misc import make_method, warning2stdout
+from libRecord import Accountant
 
 import warnings
 warnings.showwarning = warning2stdout   # Redirect warnings to stdout
@@ -272,7 +273,7 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     # Global parameters
     # lmin  lmax  delta +/- ddelta  ...  alphaN +/- dalphaN chi2|RSS
     names = ['delta', 'theta', 'xc', 'yc', 'xy'] + \
-            [   'ell%d' % d for d in xrange(ellDeg + 1)   ] + \
+            ['ell%d' % d for d in xrange(ellDeg + 1)] + \
             ['alpha%d' % d for d in xrange(alphaDeg + 1)]
     labels = '# lmin  lmax' + \
         '  '.join('%8s +/- d%-8s' % (n, n) for n in names)
@@ -433,107 +434,6 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
                 bounds[n] = [vmin, vmax]
                 print "WARNING: Constraining PSF param[%d] in %f,%f" % \
                       (n, vmin, vmax)
-
-
-class Accountant(object):
-    """
-    The *Accountant* complete the YAML file used for DB-registration with
-    "record_quality" entries from warnings.
-
-    >>> accountant = Accountant("accountant.yml", output_filename)
-    >>> accountant.add_warning("Snurp rules!")
-    >>> accountant.finalize()
-    """
-
-    def __init__(self, filename, outname):
-        """
-        Open accountant YAML file *filename*, and set output file to *outname*.
-        """
-
-        if filename:
-            try:
-                self.stream = open(filename, 'a')  # YAML file
-            except IOError:
-                raise IOError("Cannot open accountant file '%s'" % filename)
-        else:
-            self.stream = None
-        self.outname = outname                 # Main out file name
-        self.warnings = []
-
-    def __str__(self):
-
-        if self.stream:
-            s = "Accountant: '%s' (%s), %s" % (
-                self.stream.name,
-                'closed' if self.stream.closed else 'open',
-                "%d warnings" % len(self.warnings)
-                if self.warnings else "no warning")
-            s += "\n  Parent file: %s" % self.outname
-        else:
-            s = "Virtual accountant: %s" % (
-                "%d warnings" % len(self.warnings) 
-                if self.warnings else "no warning")
-
-        return s
-
-    def add_warning(self, warning):
-        """Add a warning to the internal list of warnings."""
-
-        print "Accountant: adding warning '%s'" % warning
-        self.warnings.append(warning)
-
-    def test_warning(self, string):
-        """Test if string is in internal list of warnings."""
-
-        return any( string in msg for msg in self.warnings )
-
-    def get_warning(self, string):
-
-        if self.test_warning(string):
-            idx = [ i for i, msg in enumerate(self.warnings) if string in msg ]
-            return self.warnings[idx[0]]   # Return 1st warning
-        else:
-            raise IndexError("Cannot find '%s' in warnings" % string)
-    
-    def write(self, quality, quality_s, maxlen=30):
-        """Add a "record_quality" entry to accountant file."""""
-
-        if self.stream and self.stream.closed:
-            raise IOError("Accountant file '%s' is already closed" %
-                          self.stream.name)
-
-        if len(quality_s) > maxlen:
-            quality_s = quality_s[:maxlen]
-            warnings.warn(
-                "Truncating accountant message to %d characters:\n  %s" %
-                (maxlen, quality_s))
-
-        if self.stream:
-            self.stream.write("""\
-- type: record_quality
-  filename: %s
-  quality: %s
-  quality_s: %s
-""" % (self.outname, quality, quality_s))
-
-    def finalize(self, index=0, quality=2, maxlen=30):
-        """Dump selected warning to accountant file and close it."""""
-
-        print "Accountant: finalizing (%d warnings)" % len(self.warnings)
-        
-        if not self.stream:
-            return
-        
-        if self.stream.closed:
-            raise IOError("Accountant file '%s' is already closed" %
-                          self.stream.name)
-
-        if self.warnings:
-            quality_s = self.warnings[index]
-            self.write(quality, quality_s, maxlen=maxlen)
-
-        self.stream.close()
-
 
 # ########## MAIN ##############################
 
@@ -1109,8 +1009,7 @@ if __name__ == "__main__":
                     "Point-source %.2fx%.2f is %.2f spx away " \
                     "from position prior %.2fx%.2f" % \
                     (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
-                accountant.add_warning(
-                    "ES position %.2f spx from prior" % dprior)
+                accountant.add_warning("ES_PRIOR_POSITION")
         # Tests on seeing
         if opts.seeingPrior:
             fac = (seeing / opts.seeingPrior - 1)*1e2
@@ -1118,14 +1017,14 @@ if __name__ == "__main__":
                 print "WARNING: " \
                     "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
                     (seeing, fac, opts.seeingPrior)
-                accountant.add_warning("ES seeing %.0f%% from prior" % fac)
+                accountant.add_warning("ES_PRIOR_SEEING")
         # Tests on ADR parameters
         fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1)*1e2
         if not abs(fac) < 20:
             print "WARNING: " \
                 "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
                 (adr.get_airmass(), fac, adr.get_airmass(delta0))
-            accountant.add_warning("ES airmass %.0f%% from prior" % fac)
+            accountant.add_warning("ES_PRIOR_AIRMASS")
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
@@ -1133,12 +1032,12 @@ if __name__ == "__main__":
             print "WARNING: " \
                 "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
                 (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
-            accountant.add_warning("ES parangle %+.0fdeg from prior" % err)
+            accountant.add_warning("ES_PRIOR_PARANGLE")
 
     if not (abs(fitpar[2]) < 6 and abs(fitpar[3]) < 6):
         print "WARNING: Point-source %.2fx%.2f mis-centered" % \
             (fitpar[2], fitpar[3])
-        accountant.add_warning("ES position mis-centered")
+        accountant.add_warning("ES_MIS-CENTERED")
 
     try:
         # Tests on seeing and airmass
@@ -1372,7 +1271,7 @@ if __name__ == "__main__":
             if meta_cube.var is not None:
                 ax.errorband(
                     sno, data, N.sqrt(meta_cube.var[i, :]), color=blue)
-            ax.plot(sno, fit,  color=red, ls='-')   # Model
+            ax.plot(sno, fit, color=red, ls='-')   # Model
             if skyDeg >= 0 and sky_spec.data.any():
                 ax.plot(sno, psf2[i, :], color=green, ls='-')  # PSF alone
                 ax.plot(sno, bkg2[i, :], color=orange, ls='-')  # Background
@@ -1446,7 +1345,7 @@ if __name__ == "__main__":
             corrpar = covpar / N.outer(dfitpar, dfitpar)
             parnames = data_model.func[0].parnames  # PSF param names
             if skyDeg >= 0:                 # Add background param names
-                coeffnames = [ "00" ] + \
+                coeffnames = ["00"] + \
                              ["%d%d" % (d - j, j)
                               for d in range(1, skyDeg + 1) for j in range(d + 1)]
                 parnames += ["b%02d_%s" % (s + 1, c)
@@ -1563,14 +1462,14 @@ if __name__ == "__main__":
           u'Fit: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
           (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
         txtcol = 'k'
-        if accountant.test_warning('position'):
-            txt += '\n%s' % accountant.get_warning('position')
+        if accountant.test_warning('ES_PRIOR_POSITION'):
+            txt += '\n%s' % accountant.get_warning('ES_PRIOR_POSITION')
             txtcol = MPL.red
-        if accountant.test_warning('airmass'):
-            txt += '\n%s' % accountant.get_warning('airmass')
+        if accountant.test_warning('ES_PRIOR_AIRMASS'):
+            txt += '\n%s' % accountant.get_warning('ES_PRIOR_AIRMASS')
             txtcol = MPL.red
-        if accountant.test_warning('parangle'):
-            txt += '\n%s' % accountant.get_warning('parangle')
+        if accountant.test_warning('ES_PRIOR_PARANGLE'):
+            txt += '\n%s' % accountant.get_warning('ES_PRIOR_PARANGLE')
             txtcol = MPL.red
         ax4c.text(0.95, 0.8, txt, transform=ax4c.transAxes,
                   fontsize='small', ha='right', color=txtcol)
@@ -1647,15 +1546,15 @@ if __name__ == "__main__":
         #plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, None)
         txt = 'Guess: %s' % \
-          (', '.join([ 'a%d=%.2f' % (i, a)
-                       for i, a in enumerate(guessAlphaCoeffs) ])) + \
+              (', '.join(['a%d=%.2f' % (i, a)
+                          for i, a in enumerate(guessAlphaCoeffs)])) + \
           '\n' + \
           'Fit: %s' % \
-          (', '.join([ 'a%d=%.2f' % (i, a)
-                       for i, a in enumerate(fitpar[6 + ellDeg:npar_psf]) ]))
+          (', '.join(['a%d=%.2f' % (i, a)
+                      for i, a in enumerate(fitpar[6 + ellDeg:npar_psf])]))
         txtcol = 'k'
-        if accountant.test_warning('seeing'):
-            txt += '\n%s' % accountant.get_warning('seeing')
+        if accountant.test_warning('ES_PRIOR_SEEING'):
+            txt += '\n%s' % accountant.get_warning('ES_PRIOR_SEEING')
             txtcol = MPL.red
         ax6a.text(0.95, 0.8, txt, transform=ax6a.transAxes,
                   fontsize='small', ha='right', color=txtcol)
@@ -1673,12 +1572,12 @@ if __name__ == "__main__":
         #plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, None)
         txt = 'Guess: %s' % \
-          (', '.join([ 'e%d=%.2f' % (i, e)
-                       for i, e in enumerate(guessEllCoeffs) ])) + \
+          (', '.join(['e%d=%.2f' % (i, e)
+                      for i, e in enumerate(guessEllCoeffs)])) + \
           '\n' + \
           'Fit: %s' % \
-          (', '.join([ 'e%d=%.2f' % (i, e)
-                       for i, e in enumerate(fitpar[5:6 + ellDeg]) ]))
+          (', '.join(['e%d=%.2f' % (i, e)
+                      for i, e in enumerate(fitpar[5:6 + ellDeg])]))
         ax6b.text(0.95, 0.1, txt, transform=ax6b.transAxes,
                   fontsize='small', ha='right', va='bottom')
         P.setp(ax6b.get_yticklabels(), fontsize='x-small')
@@ -1793,7 +1692,7 @@ if __name__ == "__main__":
                 rfit = ellRadius(cube_fit.x, cube_fit.y,
                                  xfit[i], yfit[i], fit_ell[i], fitpar[4])
                 # Binned values
-                rb, db = radialbin(r,    meta_cube.data[i])
+                rb, db = radialbin(r, meta_cube.data[i])
                 rfb, fb = radialbin(rfit, cube_fit.data[i])
                 tb = N.cumsum(rb * db)
                 norm = tb.max()
@@ -1803,7 +1702,7 @@ if __name__ == "__main__":
                     rfb, pb = radialbin(rfit, psf[i])
                     rfb, bb = radialbin(rfit, bkg[i])
                     ax.plot(rfb, 1 - N.cumsum(rfb * pb) / norm,
-                            marker='.', mfc=green,   mec=green, ls='None')
+                            marker='.', mfc=green, mec=green, ls='None')
                     ax.plot(rfb, 1 - N.cumsum(rfb * bb) / norm,
                             marker='.', mfc=orange, mec=orange, ls='None')
                 P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
@@ -1833,7 +1732,7 @@ if __name__ == "__main__":
                 rfit = ellRadius(cube_fit.x, cube_fit.y,
                                  xfit[i], yfit[i], fit_ell[i], fitpar[4])
                 chi2 = (meta_cube.slice2d(i, coord='p') -
-                        cube_fit.slice2d(i, coord='p') ) ** 2 / \
+                        cube_fit.slice2d(i, coord='p')) ** 2 / \
                     meta_cube.slice2d(i, coord='p', var=True)
                 ax.plot(rfit, chi2.flatten(),
                         marker='.', ls='none', mfc=blue, mec=blue)
