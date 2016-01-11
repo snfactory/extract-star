@@ -105,8 +105,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             raise NotImplementedError
         if seeingPrior:
             print "  Seeing prior: %.2f\"" % seeingPrior
-        if posPrior:
-            print "  Position prior: %+.2f x %+.2f spx" % posPrior
+        if posPrior is not None:
+            print "  Position prior: %+.2f x %+.2f spx" % tuple(posPrior)
 
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -190,7 +190,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             hyper = {psf_fn.name: hterm}
             if seeingPrior:
                 alpha = hterm.predict_alpha(cube.lbda[i])
-            if posPrior:
+            if posPrior is not None:
                 xc, yc = posPrior
 
         # Filling in the guess parameter arrays (px) and bounds arrays (bx)

@@ -5,8 +5,7 @@
 # Version:           $Revision$
 # Description:       Standard star spectrum extraction
 # Author:            Yannick Copin <y.copin@ipnl.in2p3.fr>
-# Created at:        $Date$
-# Modified at:       11-12-2015 14:57:16
+# Modified at:       $Date$
 # $Id$
 ##############################################################################
 
@@ -100,7 +99,6 @@ import libExtractStar as libES
 import ToolBox.Atmosphere as TA
 from ToolBox.Arrays import metaslice
 from ToolBox.Misc import make_method, warning2stdout
-from libRecord import Accountant
 
 import warnings
 warnings.showwarning = warning2stdout   # Redirect warnings to stdout
@@ -168,7 +166,6 @@ def write_fits(self, filename=None, header=None):
 
     # 2nd (compressed) extension 'COVAR': covariance (lower triangle)
     if hasattr(self, 'cov'):
-        #hducov = F.CompImageHDU(N.tril(self.cov), name='COVAR')
         hducov = F.ImageHDU(N.tril(self.cov), name='COVAR')
         hducov.header['CRVAL1'] = self.start
         hducov.header['CDELT1'] = self.step
@@ -185,8 +182,10 @@ def write_fits(self, filename=None, header=None):
 
 @make_method(pySNIFS.SNIFS_cube)
 def flag_nans(cube, varflag=0, name='cube'):
-    """Flag non-finite values (NaN or Inf) in `cube.data|var` in with
-    `varflag` in `cube.var`."""
+    """
+    Flag non-finite values (NaN or Inf) in `cube.data|var` in with `varflag` in
+    `cube.var`.
+    """
 
     # bad = (cube.data == 0) & (cube.var != 0)
     # if bad.any():
@@ -396,7 +395,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
                 hdr['ES_PRIXY'] = ("DDT",
                                    "Use DDT[X|Y]P as priors on position")
             else:
-                hdr['ES_PRIXY'] = ("%+.2f,%+.2f" % posprior,
+                hdr['ES_PRIXY'] = ("%+.2f,%+.2f" % tuple(posprior),
                                    "Priors on position")
     if opts.psf3Dconstraints:
         for i, constraint in enumerate(opts.psf3Dconstraints):
@@ -654,11 +653,18 @@ if __name__ == "__main__":
     print "  PSF: '%s', sub-sampled x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
 
-    accountant = Accountant(opts.accountant, opts.out)
+    accountant = None
     if opts.accountant:
-        import atexit
-        print accountant
-        atexit.register(accountant.finalize)
+        try:
+            from libRecord import Accountant
+        except ImportError:
+            print "WARNING: libRecord is not accessible, accounting disabled"
+        else:
+            import atexit
+
+            accountant = Accountant(opts.accountant, opts.out)
+            print accountant
+            atexit.register(accountant.finalize)
 
     # 2D-model fitting ========================================================
 
@@ -718,7 +724,7 @@ if __name__ == "__main__":
             except KeyError as err:
                 raise
                 # print "WARNING: cannot read DDT-related keywords"
-                #ddtpos = None
+                # ddtpos = None
             else:
                 print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
                           ddtlxy, 0)
@@ -734,7 +740,7 @@ if __name__ == "__main__":
                     "Cannot parse position prior '%s'" % opts.positionPrior)
             else:
                 print_msg("  Predicted position [%.0f A]: %.2f x %.2f spx" %
-                          posPrior, 1)
+                          lxy, 1)
                 posPrior = adr.refract(   # Back-propagate to ref. wavelength
                     lxy[1], lxy[2], lxy[0],
                     backward=True, unit=spxSize)  # x,y
@@ -753,12 +759,12 @@ if __name__ == "__main__":
         airmass=airmass, verbosity=opts.verbosity)
     print_msg("", 1)
 
-    params = params.T                      # (nparam,nslice)
-    xc_vec, yc_vec = params[2:4]            # PSF centroid position
+    params = params.T                         # (nparam,nslice)
+    xc_vec, yc_vec = params[2:4]              # PSF centroid position
     xy_vec, ell_vec, alpha_vec = params[4:7]  # PSF shape parameters
-    int_vec = params[7]                    # PSF intensity
+    int_vec = params[7]                       # PSF intensity
     if skyDeg >= 0:
-        sky_vec = params[8:]            # Background parameters
+        sky_vec = params[8:]                  # Background parameters
 
     # Save 2D adjusted parameter file ------------------------------
 
@@ -1009,22 +1015,25 @@ if __name__ == "__main__":
                     "Point-source %.2fx%.2f is %.2f spx away " \
                     "from position prior %.2fx%.2f" % \
                     (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
-                accountant.add_warning("ES_PRIOR_POSITION")
+                if accountant:
+                    accountant.add_warning("ES_PRIOR_POSITION")
         # Tests on seeing
         if opts.seeingPrior:
-            fac = (seeing / opts.seeingPrior - 1)*1e2
+            fac = (seeing / opts.seeingPrior - 1) * 1e2
             if not abs(fac) < 40:
                 print "WARNING: " \
                     "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
                     (seeing, fac, opts.seeingPrior)
-                accountant.add_warning("ES_PRIOR_SEEING")
+                if accountant:
+                    accountant.add_warning("ES_PRIOR_SEEING")
         # Tests on ADR parameters
-        fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1)*1e2
+        fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1) * 1e2
         if not abs(fac) < 20:
             print "WARNING: " \
                 "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
                 (adr.get_airmass(), fac, adr.get_airmass(delta0))
-            accountant.add_warning("ES_PRIOR_AIRMASS")
+            if accountant:
+                accountant.add_warning("ES_PRIOR_AIRMASS")
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
@@ -1032,12 +1041,14 @@ if __name__ == "__main__":
             print "WARNING: " \
                 "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
                 (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
-            accountant.add_warning("ES_PRIOR_PARANGLE")
+            if accountant:
+                accountant.add_warning("ES_PRIOR_PARANGLE")
 
     if not (abs(fitpar[2]) < 6 and abs(fitpar[3]) < 6):
         print "WARNING: Point-source %.2fx%.2f mis-centered" % \
             (fitpar[2], fitpar[3])
-        accountant.add_warning("ES_MIS-CENTERED")
+        if accountant:
+            accountant.add_warning("ES_MIS-CENTERED")
 
     try:
         # Tests on seeing and airmass
@@ -1453,24 +1464,24 @@ if __name__ == "__main__":
         ax4c.set_autoscale_on(False)
         ax4c.plot((xc,), (yc,), 'k+')
         ax4c.add_patch(M.patches.Circle((xmid, ymid), radius=rmax,
-                                        ec='0.8', fc='None')) # ADR selection
+                                        ec='0.8', fc='None'))  # ADR selection
         ax4c.add_patch(M.patches.Rectangle((-7.5, -7.5), 15, 15,
                                            ec='0.8', lw=2, fc='None'))  # FoV
         txt = u'Guess: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
-          (xc, yc, airmass, theta0 * TA.RAD2DEG) + \
-          '\n' + \
-          u'Fit: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
-          (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
+              (xc, yc, airmass, theta0 * TA.RAD2DEG)
+        txt += u'\nFit: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
+              (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
         txtcol = 'k'
-        if accountant.test_warning('ES_PRIOR_POSITION'):
-            txt += '\n%s' % accountant.get_warning('ES_PRIOR_POSITION')
-            txtcol = MPL.red
-        if accountant.test_warning('ES_PRIOR_AIRMASS'):
-            txt += '\n%s' % accountant.get_warning('ES_PRIOR_AIRMASS')
-            txtcol = MPL.red
-        if accountant.test_warning('ES_PRIOR_PARANGLE'):
-            txt += '\n%s' % accountant.get_warning('ES_PRIOR_PARANGLE')
-            txtcol = MPL.red
+        if accountant:
+            if accountant.test_warning('ES_PRIOR_POSITION'):
+                txt += '\n%s' % accountant.get_warning('ES_PRIOR_POSITION')
+                txtcol = MPL.red
+            if accountant.test_warning('ES_PRIOR_AIRMASS'):
+                txt += '\n%s' % accountant.get_warning('ES_PRIOR_AIRMASS')
+                txtcol = MPL.red
+            if accountant.test_warning('ES_PRIOR_PARANGLE'):
+                txt += '\n%s' % accountant.get_warning('ES_PRIOR_PARANGLE')
+                txtcol = MPL.red
         ax4c.text(0.95, 0.8, txt, transform=ax4c.transAxes,
                   fontsize='small', ha='right', color=txtcol)
 
@@ -1543,17 +1554,16 @@ if __name__ == "__main__":
                       marker='.', mfc=red, mec=red, ls='None', label="_")
         ax6a.plot(meta_cube.lbda, guessAlpha, 'k--',
                   label="Guess 3D" if not opts.seeingPrior else "Prior 3D")
-        #plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
+        # plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, err_alpha)
         plot_conf_interval(ax6a, meta_cube.lbda, fit_alpha, None)
         txt = 'Guess: %s' % \
-              (', '.join(['a%d=%.2f' % (i, a)
-                          for i, a in enumerate(guessAlphaCoeffs)])) + \
-          '\n' + \
-          'Fit: %s' % \
-          (', '.join(['a%d=%.2f' % (i, a)
-                      for i, a in enumerate(fitpar[6 + ellDeg:npar_psf])]))
+              (', '.join([ 'a%d=%.2f' % (i, a)
+                           for i, a in enumerate(guessAlphaCoeffs) ]))
+        txt += '\nFit: %s' % \
+               (', '.join([ 'a%d=%.2f' % (i, a)
+                            for i, a in enumerate(fitpar[6 + ellDeg:npar_psf]) ]))
         txtcol = 'k'
-        if accountant.test_warning('ES_PRIOR_SEEING'):
+        if accountant and accountant.test_warning('ES_PRIOR_SEEING'):
             txt += '\n%s' % accountant.get_warning('ES_PRIOR_SEEING')
             txtcol = MPL.red
         ax6a.text(0.95, 0.8, txt, transform=ax6a.transAxes,
@@ -1569,15 +1579,14 @@ if __name__ == "__main__":
             ax6b.plot(meta_cube.lbda[bad], ell_vec[bad],
                       marker='.', mfc=red, mec=red, ls='None')
         ax6b.plot(meta_cube.lbda, guessEll, 'k--')
-        #plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, err_ell)
+        # plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, err_ell)
         plot_conf_interval(ax6b, meta_cube.lbda, fit_ell, None)
         txt = 'Guess: %s' % \
-          (', '.join(['e%d=%.2f' % (i, e)
-                      for i, e in enumerate(guessEllCoeffs)])) + \
-          '\n' + \
-          'Fit: %s' % \
-          (', '.join(['e%d=%.2f' % (i, e)
-                      for i, e in enumerate(fitpar[5:6 + ellDeg])]))
+              (', '.join([ 'e%d=%.2f' % (i, e)
+                           for i, e in enumerate(guessEllCoeffs) ]))
+        txt += '\nFit: %s' % \
+               (', '.join([ 'e%d=%.2f' % (i, e)
+                            for i, e in enumerate(fitpar[5:6 + ellDeg]) ]))
         ax6b.text(0.95, 0.1, txt, transform=ax6b.transAxes,
                   fontsize='small', ha='right', va='bottom')
         P.setp(ax6b.get_yticklabels(), fontsize='x-small')
