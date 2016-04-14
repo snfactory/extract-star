@@ -113,6 +113,18 @@ LbdaRef = libES.LbdaRef
 # theta_DTCS + 5°
 DTHETA = {'B': 2.6, 'R': 5.0}             # [deg]
 
+MAX_POSITION_PRIOR_OFFSET = 1    # Max position offset wrt. prior [spx]
+MAX_SEEING_PRIOR_OFFSET = 40     # Max seeing offset wrt. prior [%]
+MAX_AIRMASS_PRIOR_OFFSET = 20    # Max airmass offset wrt. prior [%]
+MAX_PARANG_PRIOR_OFFSET = 20     # Max parangle offset wrt. prior [deg]
+MAX_POSITION = 6                 # Max position wrt. FoV center [spx]
+
+MIN_SEEING = 0.3                 # Min reasonable seeing ['']
+MAX_SEEING = 4.0                 # Max reasonable seeing ['']
+MAX_AIRMASS = 4.                 # Max reasonable airmass
+MIN_ELLIPTICITY = 0.2            # Min reasonable ellipticity
+MAX_ELLIPTICITY = 5.0            # Max reasonable ellipticity
+
 # Definitions ================================================================
 
 
@@ -123,8 +135,10 @@ def print_msg(str, limit):
 
 
 def spec_covariance(cube, psf, skyDeg, covpar):
-    """Compute point-source spectrum full covariance from
-    parameter covariance."""
+    """
+    Compute point-source spectrum full covariance from parameter
+    covariance.
+    """
 
     psfFn, psfCtes, fitpar = psf
 
@@ -141,8 +155,10 @@ def spec_covariance(cube, psf, skyDeg, covpar):
 
 @make_method(pySNIFS.spectrum)
 def write_fits(self, filename=None, header=None):
-    """Overrides pySNIFS_fit.spectrum.WR_fits_file. Allows full header
-    propagation (including comments) and covariance matrix storage."""
+    """
+    Overrides pySNIFS_fit.spectrum.WR_fits_file. Allows full header
+    propagation (including comments) and covariance matrix storage.
+    """
 
     assert not (self.start is None or self.step is None or self.data is None)
 
@@ -183,8 +199,8 @@ def write_fits(self, filename=None, header=None):
 @make_method(pySNIFS.SNIFS_cube)
 def flag_nans(cube, varflag=0, name='cube'):
     """
-    Flag non-finite values (NaN or Inf) in `cube.data|var` in with `varflag` in
-    `cube.var`.
+    Flag non-finite values (NaN or Inf) in `cube.data|var` in with
+    `varflag` in `cube.var`.
     """
 
     # bad = (cube.data == 0) & (cube.var != 0)
@@ -379,10 +395,10 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
     if opts.method.endswith('aperture'):
         hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [" or sigma]')
 
-    tflux, sflux = fluxes
-    hdr['ES_TFLUX'] = (tflux, 'Total spectrum flux')
+    tflux, sflux = fluxes       # Total point-source and sky flux
+    hdr['ES_TFLUX'] = (tflux, 'Total point-source flux')
     if opts.skyDeg >= 0:
-        hdr['ES_SFLUX'] = (sflux, 'Total sky flux')
+        hdr['ES_SFLUX'] = (sflux, 'Total sky flux/arcsec^2')
 
     hdr['SEEING'] = (seeing, 'Estimated seeing @lbdaRef ["] (extract_star)')
 
@@ -403,12 +419,14 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
 
 
 def setPSF3Dconstraints(psfConstraints, params, bounds):
-    """Decipher psf3Dconstraints=[constraint] option and set initial
+    """
+    Decipher psf3Dconstraints=[constraint] option and set initial
     guess params and/or bounds accordingly. Each constraint is a
     string 'n:val' (strict constraint) or 'n:val1,val2' (loose
     constraint), for n=0 (delta), 1 (theta), 2,3 (position), 4 (xy),
-    5...6+ellDeg (ellipticity polynomial coefficients) and
-    7+ellDeg...8+ellDeg+alphaDeg (alpha polynomial coefficients)."""
+    5...6+ellDeg (ellipticity polynomial coefficients) and 7+ellDeg
+    ... 8+ellDeg+alphaDeg (alpha polynomial coefficients).
+    """
 
     for psfConstraint in psfConstraints:
         try:
@@ -1010,7 +1028,7 @@ if __name__ == "__main__":
         # Test position of point-source
         if opts.positionPrior:
             dprior = N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1])
-            if dprior > 1:
+            if dprior > MAX_POSITION_PRIOR_OFFSET:
                 print "WARNING: " \
                     "Point-source %.2fx%.2f is %.2f spx away " \
                     "from position prior %.2fx%.2f" % \
@@ -1020,7 +1038,7 @@ if __name__ == "__main__":
         # Tests on seeing
         if opts.seeingPrior:
             fac = (seeing / opts.seeingPrior - 1) * 1e2
-            if not abs(fac) < 40:
+            if abs(fac) > MAX_SEEING_PRIOR_OFFSET:
                 print "WARNING: " \
                     "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
                     (seeing, fac, opts.seeingPrior)
@@ -1028,7 +1046,7 @@ if __name__ == "__main__":
                     accountant.add_warning("ES_PRIOR_SEEING")
         # Tests on ADR parameters
         fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1) * 1e2
-        if not abs(fac) < 20:
+        if abs(fac) > MAX_AIRMASS_PRIOR_OFFSET:
             print "WARNING: " \
                 "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
                 (adr.get_airmass(), fac, adr.get_airmass(delta0))
@@ -1037,14 +1055,14 @@ if __name__ == "__main__":
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
-        if abs(err) > 20:
+        if abs(err) > MAX_PARANG_PRIOR_OFFSET:
             print "WARNING: " \
                 "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
                 (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
             if accountant:
                 accountant.add_warning("ES_PRIOR_PARANGLE")
 
-    if not (abs(fitpar[2]) < 6 and abs(fitpar[3]) < 6):
+    if not (abs(fitpar[2]) < MAX_POSITION and abs(fitpar[3]) < MAX_POSITION):
         print "WARNING: Point-source %.2fx%.2f mis-centered" % \
             (fitpar[2], fitpar[3])
         if accountant:
@@ -1052,9 +1070,9 @@ if __name__ == "__main__":
 
     try:
         # Tests on seeing and airmass
-        if not 0.3 < seeing < 4.:
+        if not MIN_SEEING < seeing < MAX_SEEING:
             raise ValueError("Unphysical seeing (%.2f\")" % seeing)
-        if not 1. <= adr.get_airmass() < 4.:
+        if not 1. <= adr.get_airmass() < MAX_AIRMASS:
             raise ValueError(
                 "Unphysical airmass (%.2f)" % adr.get_airmass())
         # Test positivity of alpha and ellipticity
@@ -1062,17 +1080,17 @@ if __name__ == "__main__":
             raise ValueError(
                 "Alpha is negative (%.2f) at %.0f A" %
                 (fit_alpha.min(), meta_cube.lbda[fit_alpha.argmin()]))
-        if fit_ell.min() < 0.2:
+        if fit_ell.min() < MIN_ELLIPTICITY:
             raise ValueError(
                 "Unphysical ellipticity (%.2f) at %.0f A" %
                 (fit_ell.min(), meta_cube.lbda[fit_ell.argmin()]))
-        if fit_ell.max() > 5.:
+        if fit_ell.max() > MAX_ELLIPTICITY:
             raise ValueError(
                 "Unphysical ellipticity (%.2f) at %.0f A" %
                 (fit_ell.max(), meta_cube.lbda[fit_ell.argmax()]))
-    except ValueError as notPertinentException:
+    except ValueError as nonPertinentException:
         if opts.ignorePertinenceTests:
-            sys.stderr.write("ERROR: %s\n" % str(notPertinentException))
+            sys.stderr.write("ERROR: %s\n" % str(nonPertinentException))
         else:
             raise               # Will reraise input exception
 

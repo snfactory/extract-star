@@ -346,7 +346,7 @@ def extract_specs(cube, psf, skyDeg=0,
     # General linear least-squares fit: data = I*PSF + sky [ + a*x + b*y + ...]
     # See Numerical Recipes (2nd ed.), sect.15.4
 
-    spxSize = psf_ctes[0]               # Spaxel size [arcsec]
+    spxSize = psf_ctes[0]              # Spaxel size [arcsec]
     cube.x = cube.i - 7                # x in spaxel
     cube.y = cube.j - 7                # y in spaxel
     model = psf_fn(psf_ctes, cube)
