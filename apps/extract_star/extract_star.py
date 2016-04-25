@@ -125,6 +125,7 @@ MAX_AIRMASS = 4.                 # Max reasonable airmass
 MIN_ELLIPTICITY = 0.2            # Min reasonable ellipticity
 MAX_ELLIPTICITY = 5.0            # Max reasonable ellipticity
 
+
 # Definitions ================================================================
 
 
@@ -238,7 +239,10 @@ def create_2Dlog(opts, cube, params, dparams, chi2):
     logfile.write('# airmass : %.3f \n' % cube.e3d_data_header["AIRMASS"])
     logfile.write('# efftime : %.3f \n' % cube.e3d_data_header["EFFTIME"])
 
-    npar_sky = (opts.skyDeg + 1) * (opts.skyDeg + 2) / 2
+    if opts.skyDeg == -2:       # Step background
+        npar_sky = 2
+    else:                       # Polynomial background (or none)
+        npar_sky = (opts.skyDeg + 1) * (opts.skyDeg + 2) / 2
 
     delta, theta = params[:2]
     xc, yc = params[2:4]
@@ -316,7 +320,10 @@ def create_3Dlog(opts, cube, cube_fit, fitpar, dfitpar, chi2):
     # Metaslice parameters
     # lbda  I -/- dI  sky0 +/- dsky0  sky1 +/- dsky1  ...  chi2|RSS
     npar_psf = 7 + ellDeg + alphaDeg
-    npar_sky = (opts.skyDeg + 1) * (opts.skyDeg + 2) / 2
+    if opts.skyDeg == -2:       # Step background
+        npar_sky = 2
+    else:                       # Polynomial background (or none)
+        npar_sky = (opts.skyDeg + 1) * (opts.skyDeg + 2) / 2
 
     names = ['I'] + ['sky%d' % d for d in range(npar_sky)]
     labels = '# lbda  ' + '  '.join('%8s +/- d%-8s' % (n, n) for n in names)
@@ -367,7 +374,8 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
         c_ell = param[5:6]              # Simple constant
     if opts.alphaDeg and not psfname.endswith('powerlaw'):
         c_alp = libES.polyConvert(
-            param[6 + opts.ellDeg:7 + opts.ellDeg + opts.alphaDeg], trans=(a, b))
+            param[6 + opts.ellDeg:7 + opts.ellDeg + opts.alphaDeg],
+            trans=(a, b))
     else:
         c_alp = param[6 + opts.ellDeg:7 + opts.ellDeg + opts.alphaDeg]
 
@@ -395,9 +403,9 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
     if opts.method.endswith('aperture'):
         hdr['ES_APRAD'] = (opts.radius, 'Aperture radius [" or sigma]')
 
-    tflux, sflux = fluxes       # Total point-source and sky flux
+    tflux, sflux = fluxes       # Total point-source and sky fluxes
     hdr['ES_TFLUX'] = (tflux, 'Total point-source flux')
-    if opts.skyDeg >= 0:
+    if sflux:
         hdr['ES_SFLUX'] = (sflux, 'Total sky flux/arcsec^2')
 
     hdr['SEEING'] = (seeing, 'Estimated seeing @lbdaRef ["] (extract_star)')
@@ -473,7 +481,8 @@ if __name__ == "__main__":
 
     # PSF parameters
     parser.add_option("-S", "--skyDeg", type=int,
-                      help="Sky polynomial background degree [%default]",
+                      help="Sky polynomial background degree "
+                      "(-1: none, -2: step) [%default]",
                       default=0)
     parser.add_option("-A", "--alphaDeg", type=int,
                       help="Alpha polynomial degree [%default]",
@@ -568,8 +577,8 @@ if __name__ == "__main__":
     elif opts.plot:
         opts.graph = 'pylab'
 
-    if opts.skyDeg < 0:
-        opts.skyDeg = -1
+    if opts.skyDeg < -2:
+        opts.skyDeg = -1        # No sky background
         if opts.sky:
             print "WARNING: Cannot extract sky spectrum in no-sky mode."
 
@@ -634,12 +643,17 @@ if __name__ == "__main__":
     npar_psf = 7 + ellDeg + alphaDeg
 
     skyDeg = opts.skyDeg
-    npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2
+    if skyDeg == -2:            # Step background
+        npar_sky = 2
+    else:                       # Polynomial background (or none)
+        npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2
+    hasSky = skyDeg != -1       # Sky component
 
     # Test channel and set default output name
     if channel not in ('B', 'R'):
-        parser.error("Input datacube %s has no valid CHANNEL keyword (%s)" %
-                     (opts.input, channel))
+        parser.error(
+            "Input datacube %s has no valid CHANNEL keyword (%s)" %
+            (opts.input, channel))
     if not opts.out:                    # Default output
         opts.out = 'spec_%s.fits' % (channel)
 
@@ -670,8 +684,18 @@ if __name__ == "__main__":
         (objname, efftime, airmass)
     print "  PSF: '%s', sub-sampled x%d" % \
         (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
+    if opts.skyDeg > 0:
+        print "  Sky: polynomial, degree %d" % opts.skyDeg
+    elif opts.skyDeg == 0:
+        print "  Sky: uniform"
+    elif opts.skyDeg == -1:
+        print "  Sky: none"
+    elif opts.skyDeg == -2:
+        print "  Sky: uniform + step in J at %s" % (libES.STEPJ,)
+    else:
+        parser.error("Invalid sky degree '%d'" % opts.skyDeg)
 
-    accountant = None
+    # Accounting
     if opts.accountant:
         try:
             from libRecord import Accountant
@@ -683,6 +707,8 @@ if __name__ == "__main__":
             accountant = Accountant(opts.accountant, opts.out)
             print accountant
             atexit.register(accountant.finalize)
+    else:
+        accountant = None
 
     # 2D-model fitting ========================================================
 
@@ -707,7 +733,7 @@ if __name__ == "__main__":
     # Normalisation of the signal and variance in order to avoid numerical
     # problems with too small numbers
     norm = ( N.abs(meta_cube.data.mean(axis=None)) +
-             N.abs(meta_cube.data.mean(axis=-1)) ).reshape(-1, 1)  # (nmeta,1)
+             N.abs(meta_cube.data.mean(axis=-1)) ).reshape(-1, 1)  # (nmeta, 1)
     print_msg("  Meta-slice normalization (|mean|+|mean_slice|): %s" %
               (norm.squeeze()), 1)
     meta_cube.data /= norm                           # (nmeta,nspx)
@@ -781,7 +807,7 @@ if __name__ == "__main__":
     xc_vec, yc_vec = params[2:4]              # PSF centroid position
     xy_vec, ell_vec, alpha_vec = params[4:7]  # PSF shape parameters
     int_vec = params[7]                       # PSF intensity
-    if skyDeg >= 0:
+    if hasSky:
         sky_vec = params[8:]                  # Background parameters
 
     # Save 2D adjusted parameter file ------------------------------
@@ -908,25 +934,31 @@ if __name__ == "__main__":
 
     psfCtes = [spxSize, lmid, alphaDeg, ellDeg]
     func = ['%s;%s' %
-            (psfFn.name, ','.join('%f' % p for p in psfCtes))]  # PSF
+            (psfFn.name, ','.join(str(p) for p in psfCtes))]  # PSF
     param = [p1]
     bounds = [b1]
 
-    if skyDeg >= 0:
+    myfunc = {psfFn.name: psfFn}
+
+    if hasSky:
         p2 = N.ravel(sky_vec.T)
-        b2 = ([[0, None]] + [[None, None]] * (npar_sky - 1)) * nmeta
-        func += ['poly2D;%d' % skyDeg]  # Add background
+        if skyDeg == -2:        # Step along J-direction
+            b2 = ([[0, None], [None, None]]) * nmeta  # Mean > 0 and diff.
+            func += ['stepJ;%d,%d' % libES.STEPJ]
+            myfunc.update(((libES.StepJ.name, libES.StepJ),))
+        else:                   # Add polynomial background
+            b2 = ([[0, None]] + [[None, None]] * (npar_sky - 1)) * nmeta
+            func += ['poly2D;%d' % skyDeg]
         param += [p2]
         bounds += [b2]
 
     print_msg("  Adjusted parameters: delta,theta,xc,yc,xy,"
               "%d ellCoeffs,%d alphaCoeffs,%d intensities, %d bkgndCoeffs" %
-              (ellDeg + 1, alphaDeg + 1,
-               nmeta, npar_sky * nmeta if skyDeg >= 0 else 0), 2)
+              (ellDeg + 1, alphaDeg + 1, nmeta, npar_sky * nmeta), 2)
     print_msg("  Initial guess [PSF]: %s" % p1[:npar_psf], 2)
     print_msg("  Initial guess [Intensities]: %s" %
               p1[npar_psf:npar_psf + nmeta], 3)
-    if skyDeg >= 0:
+    if hasSky:
         print_msg("  Initial guess [Bkgnd]: %s" % p2, 3)
 
     # Actual fit ------------------------------
@@ -955,7 +987,7 @@ if __name__ == "__main__":
     # Instantiate the model and perform the 3D-fit (fmin_tnc)
     data_model = pySNIFS_fit.model(data=meta_cube, func=func,
                                    param=param, bounds=bounds,
-                                   myfunc={psfFn.name: psfFn},
+                                   myfunc=myfunc,
                                    hyper=hyper)
 
     if opts.verbosity >= 4:
@@ -991,7 +1023,7 @@ if __name__ == "__main__":
     print_msg("  Fit result [PSF param]: %s" % fitpar[:npar_psf], 2)
     print_msg("  Fit result [Intensities]: %s" %
               fitpar[npar_psf:npar_psf + nmeta], 3)
-    if skyDeg >= 0:
+    if hasSky:
         print_msg("  Fit result [Background]: %s" %
                   fitpar[npar_psf + nmeta:], 3)
     if opts.usePriors:
@@ -1109,7 +1141,7 @@ if __name__ == "__main__":
             radius = opts.radius        # [arcsec]
             method = '%s r=%.2f"' % (opts.method, radius)
     print "Extracting the point-source spectrum (method=%s)..." % method
-    if skyDeg < 0:
+    if not hasSky:
         print "WARNING: No background adjusted."
 
     # Spectrum extraction (point-source, sky, etc.)
@@ -1119,9 +1151,12 @@ if __name__ == "__main__":
         radius=radius, chi2fit=opts.chi2fit,
         verbosity=opts.verbosity)
 
-    if skyDeg >= 0:          # Convert sky spectrum to "per arcsec**2"
+    if hasSky:        # Convert (mean) sky spectrum to "per arcsec**2"
         sigspecs[:, 1] /= spxSize ** 2
         varspecs[:, 1] /= spxSize ** 4
+        if skyDeg == -2:        # (lower - upper) differential sky spectrum
+            sigspecs[:, 2] /= 0.5 * spxSize ** 2
+            varspecs[:, 2] /= 0.5 * spxSize ** 4
 
     # Full covariance matrix of point-source spectrum
     if opts.covariance:
@@ -1148,19 +1183,21 @@ if __name__ == "__main__":
     psf = psf_model.comp(fitpar[:psf_model.npar])
     cube_fit.data = psf.copy()
 
-    if skyDeg >= 0:
+    if skyDeg >= 0:             # Polynomial background
         bkg_model = pySNIFS_fit.poly2D(skyDeg, cube_fit)
-        bkg = bkg_model.comp(
-            fitpar[psf_model.npar:psf_model.npar + bkg_model.npar])
-        cube_fit.data += bkg
+    elif skyDeg == -2:          # Step background
+        bkg_model = libES.StepJ(libES.STEPJ, cube_fit)
+    bkg = bkg_model.comp(
+        fitpar[psf_model.npar:psf_model.npar + bkg_model.npar])
+    cube_fit.data += bkg
 
     # Update header ------------------------------
 
-    tflux = sigspecs[:, 0].sum()     # Total flux of extracted spectrum
-    if skyDeg >= 0:
-        sflux = sigspecs[:, 1].sum()  # Total flux of sky (per arcsec**2)
+    tflux = sigspecs[:, 0].sum()      # Total point-source flux
+    if hasSky:
+        sflux = sigspecs[:, 1].sum()  # Total sky flux (per arcsec**2)
     else:
-        sflux = 0                   # Not stored anyway
+        sflux = 0                     # Not stored
 
     fill_header(inhdr, psfFn, fitpar[:npar_psf], adr, meta_cube, opts,
                 chi2, seeing, posPrior, (tflux, sflux))
@@ -1178,14 +1215,14 @@ if __name__ == "__main__":
 
     # Save background spectrum ------------------------------
 
-    if skyDeg >= 0:
-        if not opts.sky:
+    if hasSky:
+        if not opts.sky:        # Use default sky spectrum name
             opts.sky = 'sky_%s.fits' % (channel)
         print "Saving output sky spectrum to '%s'" % opts.sky
-
         # Store variance as extension to signal
         sky_spec = pySNIFS.spectrum(data=sigspecs[:, 1], var=varspecs[:, 1],
                                     start=lbda[0], step=step)
+        # TODO: add extra sky components to extensions
         sky_spec.write_fits(opts.sky, inhdr)
 
     # Save 3D adjusted parameter file ------------------------------
@@ -1239,13 +1276,13 @@ if __name__ == "__main__":
 
         fig1 = P.figure()
 
-        if skyDeg >= 0 and sky_spec.data.any():
-            axS = fig1.add_subplot(3, 1, 1)
-            axB = fig1.add_subplot(3, 1, 2)
-            axN = fig1.add_subplot(3, 1, 3)
+        if hasSky and sky_spec.data.any():
+            axS = fig1.add_subplot(3, 1, 1)  # Point-source
+            axB = fig1.add_subplot(3, 1, 2)  # Sky
+            axN = fig1.add_subplot(3, 1, 3)  # S/N
         else:
-            axS = fig1.add_subplot(2, 1, 1)
-            axN = fig1.add_subplot(2, 1, 2)
+            axS = fig1.add_subplot(2, 1, 1)  # Point-source
+            axN = fig1.add_subplot(2, 1, 2)  # S/N
 
         axS.text(0.95, 0.8, os.path.basename(opts.input),
                  fontsize='small', ha='right', transform=axS.transAxes)
@@ -1255,14 +1292,20 @@ if __name__ == "__main__":
                       color=blue)
         axN.plot(star_spec.x, star_spec.data / N.sqrt(star_spec.var), blue)
 
-        if skyDeg >= 0 and sky_spec.data.any():
+        if hasSky and sky_spec.data.any():
             axB.plot(sky_spec.x, sky_spec.data, green)
             axB.errorband(sky_spec.x, sky_spec.data, N.sqrt(sky_spec.var),
                           color=green)
             axB.set(title=u"Background spectrum (per arcsec²)",
                     xlim=(sky_spec.x[0], sky_spec.x[-1]),
                     xticklabels=[])
+            # Sky S/N
             axN.plot(sky_spec.x, sky_spec.data / N.sqrt(sky_spec.var), green)
+            if skyDeg == -2:
+                axB.plot(sky_spec.x, sigspecs[:, 2], red)
+                axB.errorband(
+                    sky_spec.x, sigspecs[:, 2], N.sqrt(varspecs[:, 2]),
+                    color=red)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (objname, method),
                 xlim=(star_spec.x[0], star_spec.x[-1]), xticklabels=[])
@@ -1288,9 +1331,13 @@ if __name__ == "__main__":
         # Compute PSF & bkgnd models on incomplete cube
         sno = N.sort(meta_cube.no)
         psf2 = psfFn(psfCtes, cube=meta_cube).comp(fitpar[:psf_model.npar])
-        if skyDeg >= 0 and sky_spec.data.any():
-            bkg2 = pySNIFS_fit.poly2D(skyDeg, meta_cube).comp(
-                fitpar[psf_model.npar:psf_model.npar + bkg_model.npar])
+        if hasSky and sky_spec.data.any():
+            if skyDeg == -2:    # Step background
+                bkg2 = libES.StepJ(libES.STEPJ, meta_cube).comp(
+                    fitpar[psf_model.npar:psf_model.npar + bkg_model.npar])
+            else:               # Polynomial background
+                bkg2 = pySNIFS_fit.poly2D(skyDeg, meta_cube).comp(
+                    fitpar[psf_model.npar:psf_model.npar + bkg_model.npar])
 
         for i in xrange(nmeta):        # Loop over meta-slices
             data = meta_cube.data[i, :]
@@ -1301,8 +1348,8 @@ if __name__ == "__main__":
                 ax.errorband(
                     sno, data, N.sqrt(meta_cube.var[i, :]), color=blue)
             ax.plot(sno, fit, color=red, ls='-')   # Model
-            if skyDeg >= 0 and sky_spec.data.any():
-                ax.plot(sno, psf2[i, :], color=green, ls='-')  # PSF alone
+            if hasSky and sky_spec.data.any():
+                ax.plot(sno, psf2[i, :], color=green, ls='-')   # PSF alone
                 ax.plot(sno, bkg2[i, :], color=orange, ls='-')  # Background
             P.setp(ax.get_xticklabels() + ax.get_yticklabels(),
                    fontsize='xx-small')
@@ -1373,12 +1420,17 @@ if __name__ == "__main__":
             # Parameter correlation matrix
             corrpar = covpar / N.outer(dfitpar, dfitpar)
             parnames = data_model.func[0].parnames  # PSF param names
-            if skyDeg >= 0:                 # Add background param names
+            if skyDeg >= 0:    # Add polynomial background param names
                 coeffnames = ["00"] + \
-                             ["%d%d" % (d - j, j)
-                              for d in range(1, skyDeg + 1) for j in range(d + 1)]
-                parnames += ["b%02d_%s" % (s + 1, c)
-                             for c in coeffnames for s in range(nmeta)]
+                             [ "%d%d" % (d - j, j)
+                               for d in range(1, skyDeg + 1)
+                               for j in range(d + 1) ]
+                parnames += [ "b%02d_%s" % (s + 1, c)
+                              for c in coeffnames for s in range(nmeta) ]
+            elif skydeg == -2:
+                coeffnames = ["mean", "diff"]
+                parnames += [ "b%02d_%s" % (s + 1, c)
+                              for c in coeffnames for s in range(nmeta) ]
 
             assert len(parnames) == corrpar.shape[0]
             # Remove some of the names for clarity
@@ -1677,7 +1729,7 @@ if __name__ == "__main__":
             ax.plot(rfit, cube_fit.data[i],
                     marker='.', mfc=red, mec=red, ms=1, ls='None')  # Model
             # ax.set_autoscale_on(False)
-            if skyDeg >= 0 and sky_spec.data.any():
+            if hasSky and sky_spec.data.any():
                 ax.plot(rfit, psf[i], marker='.', mfc=green, mec=green,
                         ms=1, ls='None')  # PSF alone
                 ax.plot(rfit, bkg[i], marker='.', mfc=orange, mec=orange,
@@ -1725,7 +1777,7 @@ if __name__ == "__main__":
                 norm = tb.max()
                 ax.plot(rb, 1 - tb / norm, 'c.')
                 ax.plot(rfb, 1 - N.cumsum(rfb * fb) / norm, 'm.')
-                if skyDeg >= 0 and sky_spec.data.any():
+                if hasSky and sky_spec.data.any():
                     rfb, pb = radialbin(rfit, psf[i])
                     rfb, bb = radialbin(rfit, bkg[i])
                     ax.plot(rfb, 1 - N.cumsum(rfb * pb) / norm,

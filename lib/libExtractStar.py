@@ -27,15 +27,22 @@ import ToolBox.Atmosphere as TA
 LbdaRef = 5000.               # Use constant ref. wavelength for easy comparison
 SpxSize = SNIFS_cube.spxSize  # Spaxel size in arcsec
 
+STEPJ = (7, 7)                # Definition of step limit (i, j)
 
-def print_msg(str, limit, verb=0):
+MIN_ELLIPTICITY = 0.2
+MAX_ELLIPTICITY = 5.
+MIN_ALPHA = 0.1
+MAX_ALPHA = 15.
+MAX_POSITION = 9.
+
+def print_msg(astr, limit, verb=0):
     """
     Print message 'str' if verbosity level (typically opts.verbosity)
     >= limit.
     """
 
     if verb >= limit:
-        print str
+        print astr
 
 # PSF fitting ==============================
 
@@ -52,12 +59,14 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     from scipy.ndimage.filters import median_filter
     import pySNIFS_fit
 
-    assert skyDeg >= -1, \
-        "skyDeg=%d is invalid (should be >=-1)" % skyDeg
+    assert skyDeg >= -2, \
+        "skyDeg=%d is invalid (should be >=-2)" % skyDeg
 
-    npar_psf = 7                        # Number of parameters of the psf
-    # Nb. param. in polynomial bkgnd
-    npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2
+    npar_psf = 7               # Number of parameters of the psf
+    if skyDeg == -2:           # Nb of parameters in step background (per slice)
+        npar_sky = 2           # = StepJ.npar_ind
+    else:                      # Nb of params in polynomial background
+        npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2
 
     cube_sky = SNIFS_cube()             # 1-slice cube for background fit
     cube_sky.x = cube.x
@@ -83,8 +92,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
     # Nb of edge spx used for sky estimate
     if nsky > 7:
         raise ValueError('The number of edge pixels should be less than 7')
-    skySpx = (cube_sky.i < nsky) | (cube_sky.i >= 15 - nsky) | \
-             (cube_sky.j < nsky) | (cube_sky.j >= 15 - nsky)
+    skySpx = ( (cube_sky.i < nsky) | (cube_sky.i >= 15 - nsky) |
+               (cube_sky.j < nsky) | (cube_sky.j >= 15 - nsky) )
 
     print_msg("  Set initial guess from 2D-Gaussian + Cte fit", 2, verbosity)
     parnames = ['delta=0', 'theta=0', 'xc', 'yc', 'xy', 'y2', 'alpha', 'I'] + \
@@ -126,7 +135,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         if skyDeg > 0:
             # Fit a 2D polynomial of degree skyDeg on the edge pixels
             # of a given cube slice.
-            cube_sky.var[:, ~skySpx] = 0  # Discard central spaxels
+            cube_sky.var[:, ~skySpx] = 0  # Do not adjust central spaxels
             if not chi2fit:
                 cube_sky.var[cube_sky.var > 0] = 1  # Least-square
             model_sky = pySNIFS_fit.model(
@@ -210,6 +219,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         param = [p1]
         bounds = [b1]
 
+        myfunc = {psf_fn.name: psf_fn}  # Pointer to PSF function
+
         # Background initial guess
         if skyDeg >= 0:
             # Use estimate from prev. polynomial fit
@@ -219,6 +230,13 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                 p2 = [skyLev]
             b2 = [[0, None]] + [[None, None]] * (npar_sky - 1)
             func += ['poly2D;%d' % skyDeg]
+            param += [p2]
+            bounds += [b2]
+        elif skyDeg == -2:              # Step background
+            p2 = [skyLev, 0]            # Mean and difference
+            b2 = [[0, None], [None, None]]
+            func += ['stepJ;%d,%d' % STEPJ]
+            myfunc.update(((StepJ.name, StepJ),))  # Pointer to StepJ function
             param += [p2]
             bounds += [b2]
         else:                           # No background
@@ -233,7 +251,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Instantiate the model class and fit current slice
         model_star = pySNIFS_fit.model(data=cube_star, func=func,
                                        param=param, bounds=bounds,
-                                       myfunc={psf_fn.name: psf_fn},
+                                       myfunc=myfunc,
                                        hyper=hyper)
 
         if verbosity >= 4:
@@ -258,12 +276,12 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         # Check fit results
         if not model_star.success:      # Fit failure
             pass
-        elif not 0.2 < model_star.fitpar[5] < 5:
+        elif not MIN_ELLIPTICITY < model_star.fitpar[5] < MAX_ELLIPTICITY:
             model_star.success = False
             model_star.status = -1
             model_star.res.message = "ellipticity is invalid (%.2f)" % \
                                      model_star.fitpar[5]
-        elif not 0.1 < model_star.fitpar[6] < 15:
+        elif not MIN_ALPHA < model_star.fitpar[6] < MAX_ALPHA:
             model_star.success = False
             model_star.status = -2
             model_star.res.message = "alpha is invalid (%.2f)" % \
@@ -272,12 +290,13 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             model_star.success = False
             model_star.status = -3
             model_star.res.message = "intensity is null"
-        elif not (abs(model_star.fitpar[2]) < 9 and
-                  abs(model_star.fitpar[3]) < 9):
+        elif not (abs(model_star.fitpar[2]) < MAX_POSITION and
+                  abs(model_star.fitpar[3]) < MAX_POSITION):
             model_star.success = False
             model_star.status = -3
             model_star.res.message = "source is outside FoV (%.2f,%.2f)" % \
-                                     (model_star.fitpar[2], model_star.fitpar[3])
+                                     (model_star.fitpar[2],
+                                      model_star.fitpar[3])
 
         # Error computation and metaslice clipping
         if model_star.success:
@@ -318,14 +337,14 @@ def extract_specs(cube, psf, skyDeg=0,
     'optimal'). For aperture related methods, *radius* gives aperture
     radius in arcsec.
 
-    Returns (lbda,sigspecs,varspecs) where sigspecs and varspecs are
-    (nslice,npar+1).
+    Returns (lbda, sigspecs, varspecs) where sigspecs and varspecs are
+    (nslice, npar+1).
     """
 
     assert method in ('psf', 'aperture', 'subaperture', 'optimal'), \
         "Unknown extraction method '%s'" % method
-    assert skyDeg >= -1, \
-        "skyDeg=%d is invalid (should be >=-1)" % skyDeg
+    assert skyDeg >= -2, \
+        "skyDeg=%d is invalid (should be >=-2)" % skyDeg
 
     if (N.isnan(cube.var).any()):
         print "WARNING: discarding NaN variances in extract_specs"
@@ -350,33 +369,38 @@ def extract_specs(cube, psf, skyDeg=0,
     cube.x = cube.i - 7                # x in spaxel
     cube.y = cube.j - 7                # y in spaxel
     model = psf_fn(psf_ctes, cube)
-    psf = model.comp(param, normed=True)  # nslice,nlens
+    psf = model.comp(param, normed=True)  # (nslice, nlens)
 
-    npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2  # Nb param. in polynomial bkgnd
+    if skyDeg == -2:            # Step background
+        npar_sky = 2
+    else:                       # Polynomial background (or none)
+        npar_sky = (skyDeg + 1) * (skyDeg + 2) / 2
 
-    # Basis function matrix: BF (nslice,nlens,npar+1) (so-called X in NR)
+    # Basis function matrix: BF (nslice, nlens, npar + 1) (so-called X in NR)
     BF = N.zeros((cube.nslice, cube.nlens, npar_sky + 1), 'd')
     BF[:, :, 0] = psf                     # Intensity
-    if npar_sky:                        # =0 when no background (skyDeg<=-1)
-        BF[:, :, 1] = 1                   # Constant background
+    if skyDeg >= 0:                       # Build up polynomial background
+        BF[:, :, 1] = 1                   # Constant term
         n = 2
         for d in xrange(1, skyDeg + 1):
             for j in xrange(d + 1):
                 # Background polynomials as function of spaxel (centered)
                 # position [spx]
-                BF[:, :, n] = cube.x ** (d - j) * cube.y ** j
-                n += 1                  # Finally: n = npar_sky + 1
+                BF[:, :, n] = cube.x**(d - j) * cube.y**j
+                n += 1                    # Finally: n = npar_sky + 1
+    elif skyDeg == -2:                    # Step background
+        BF[:, :, 1:] = 1
 
     # Chi2 (variance-weighted) vs. Least-square (unweighted) fit
     # *Note* that weight is actually 1/sqrt(var) (see NR)
     if chi2fit:
-        weight = N.where(cube.var > 0, cube.var**-0.5, 0)  # nslice,nlens
+        weight = N.where(cube.var > 0, cube.var**(-0.5), 0)  # (nslice, nlens)
     else:
         weight = N.where(cube.var > 0, 1, 0)  # nslice,nlens
 
     # Design matrix (basis functions normalized by std errors)
-    A = BF * weight[..., N.newaxis]      # nslice,nlens,npar+1
-    b = weight * cube.data                # nslice,nlens
+    A = BF * weight[..., N.newaxis]      # (nslice, nlens, npar + 1)
+    b = weight * cube.data               # (nslice, nlens)
 
     # The linear least-squares fit AX = b could be done directly using
     #
@@ -398,23 +422,23 @@ def extract_specs(cube, psf, skyDeg=0,
     # advocates to never invert a matrix directly: that's why we use
     # SVD-based inversion SL.pinv2.
 
-    # Alpha = N.einsum('...jk,...jl',A,A)              # ~x2 slower
-    Alpha = N.array([N.dot(aa.T, aa) for aa in A])  # nslice,npar+1,npar+1
+    # Alpha = N.einsum('...jk,...jl',A,A)           # ~x2 slower
+    Alpha = N.array([N.dot(aa.T, aa) for aa in A])  # (nslice, npar+1, npar+1)
     #Beta = N.einsum('...jk,...j',A,b)
-    Beta = N.array([N.dot(aa.T, bb) for aa, bb in zip(A, b)])  # nslice,npar+1
+    Beta = N.array([N.dot(aa.T, bb) for aa, bb in zip(A, b)])  # (ns, npar+1)
     try:
-        Cov = N.array([SL.pinv2(aa) for aa in Alpha])  # ns,np+1,np+1
+        Cov = N.array([SL.pinv2(aa) for aa in Alpha])  # (ns, npar+1, npar+1)
     except SL.LinAlgError:
         raise SL.LinAlgError("Singular matrix during spectrum extraction")
     # sigspecs & varspecs = nslice x [Star,Sky,[slope_x...]]
     sigspecs = N.array([N.dot(cc, bb)
-                        for cc, bb in zip(Cov, Beta)])  # nslice,npar+1
-    varspecs = N.array([N.diag(cc) for cc in Cov])  # nslice,npar+1
+                        for cc, bb in zip(Cov, Beta)])  # (nslice, npar+1)
+    varspecs = N.array([N.diag(cc) for cc in Cov])      # (nslice, npar+1)
 
     # Compute the least-square variance using the chi2-case method
     # (errors are meaningless in pure least-square case)
     if not chi2fit:
-        weight = N.where(cube.var > 0, cube.var**-0.5, 0)
+        weight = N.where(cube.var > 0, cube.var**(-0.5), 0)
         A = BF * weight[..., N.newaxis]
         Alpha = N.array([N.dot(aa.T, aa) for aa in A])
         try:
@@ -471,8 +495,8 @@ def extract_specs(cube, psf, skyDeg=0,
     if npar_sky:
         for d in xrange(1, npar_sky + 1):  # Loop over sky components
             bkgnd += (BF[:, :, d].T * sigspecs[:, d]).T
-            var_bkgnd += (BF[:, :, d].T ** 2 * varspecs[:, d]).T
-    subData = cube.data - bkgnd         # Bkgnd subtraction (nslice,nlens)
+            var_bkgnd += (BF[:, :, d].T**2 * varspecs[:, d]).T
+    subData = cube.data - bkgnd         # Bkgnd subtraction (nslice, nlens)
     subVar = cube.var.copy()
     good = cube.var > 0
     subVar[good] += var_bkgnd[good]     # Variance of bkgnd-sub. signal
@@ -490,13 +514,13 @@ def extract_specs(cube, psf, skyDeg=0,
     print_msg("Aperture radius: %.2f arcsec = %.2f spx" % (radius, aperRad),
               1, verbosity)
     # Aperture center after ADR offset from lmid [spx] (nslice,)
-    x0 = psf_param[2] + psf_param[0] * \
-        N.cos(psf_param[1]) * model.ADRscale[:, 0]
-    y0 = psf_param[3] - psf_param[0] * \
-        N.sin(psf_param[1]) * model.ADRscale[:, 0]
-    # Radial distance from center [spx] (nslice,nlens)
+    x0 = ( psf_param[2] + psf_param[0] *
+           N.cos(psf_param[1]) * model.ADRscale[:, 0] )
+    y0 = ( psf_param[3] - psf_param[0] *
+           N.sin(psf_param[1]) * model.ADRscale[:, 0] )
+    # Radial distance from center [spx] (nslice, nlens)
     r = N.hypot((model.x.T - x0).T, (model.y.T - y0).T)
-    # Circular aperture (nslice,nlens)
+    # Circular aperture (nslice, nlens)
     # Use r<aperRad[:,N.newaxis] if radius is a (nslice,) vec.
     frac = (r < aperRad).astype('float')
 
@@ -508,8 +532,8 @@ def extract_specs(cube, psf, skyDeg=0,
         frac = newfrac[:, w]
 
     # Check if aperture hits the FoV edges
-    hit = ((x0 - aperRad) < -7.5) | ((x0 + aperRad) > 7.5) | \
-          ((y0 - aperRad) < -7.5) | ((y0 + aperRad) > 7.5)
+    hit = ( ((x0 - aperRad) < -7.5) | ((x0 + aperRad) > 7.5) |
+            ((y0 - aperRad) < -7.5) | ((y0 + aperRad) > 7.5) )
     if hit.any():
         # Find the closest edge
         ld = (x0 - aperRad + 7.5).min()  # Dist. to left edge (<0 if outside)
@@ -542,15 +566,15 @@ def extract_specs(cube, psf, skyDeg=0,
         print_msg("  Extend FoV by %d spx: nlens=%d -> %d" %
                   (ns, model.nlens, extnlens), 1, verbosity)
 
-        # Compute PSF on extended range (nslice,extnlens)
+        # Compute PSF on extended range (nslice, extnlens)
         # Extended model
         extModel = psf_fn(psf_ctes, cube, coords=(extx, exty))
-        extPsf = extModel.comp(param, normed=True)  # nslice,extnlens
+        extPsf = extModel.comp(param, normed=True)  # (nslice, extnlens)
 
         # Embed background-subtracted data in extended model PSF
         origData = subData.copy()
         origVar = subVar.copy()
-        # Extended model, nslice,extnlens
+        # Extended model, (nslice, extnlens)
         subData = (sigspecs[:, 0] * extPsf.T).T
         subVar = N.zeros((extModel.nslice, extModel.nlens))
         for i in xrange(model.nlens):
@@ -567,7 +591,7 @@ def extract_specs(cube, psf, skyDeg=0,
     if method.endswith('aperture'):
         # Replace signal and variance estimates from plain summation
         sigspecs[:, 0] = (frac * subData).sum(axis=1)
-        varspecs[:, 0] = (frac ** 2 * subVar).sum(axis=1)
+        varspecs[:, 0] = (frac**2 * subVar).sum(axis=1)
 
         return cube.lbda, sigspecs, varspecs       # [Sub]Aperture extraction
 
@@ -576,7 +600,7 @@ def extract_specs(cube, psf, skyDeg=0,
         from scipy.ndimage.filters import median_filter
 
         # Model signal = Intensity*PSF + bkgnd
-        modsig = (sigspecs[:, 0] * psf.T).T + bkgnd  # nslice,nlens
+        modsig = (sigspecs[:, 0] * psf.T).T + bkgnd  # (nslice, nlens)
 
         # One has to have a model of the variance. This can be estimated from
         # a simple 'photon noise + RoN' model on each slice: signal ~ alpha*N
@@ -590,18 +614,18 @@ def extract_specs(cube, psf, skyDeg=0,
                           for s in xrange(cube.nslice)])
         coeffs = median_filter(coeffs, (5, 1))  # A bit of smoothing...
         modvar = N.array([N.polyval(coeffs[s], modsig[s])
-                          for s in xrange(cube.nslice)])  # nslice,nlens
+                          for s in xrange(cube.nslice)])  # (nslice, nlens)
 
         # Optimal weighting
         norm = (frac * psf).sum(axis=1)  # PSF norm, nslice
-        npsf = (psf.T / norm).T         # nslice,nlens
-        weight = frac * npsf / modvar   # Unormalized weights, nslice,nlens
-        norm = (weight * npsf).sum(axis=1)  # Weight norm, nslice
-        weight = (weight.T / norm).T    # Normalized weights, nslice,nlens
+        npsf = (psf.T / norm).T          # (nslice, nlens)
+        weight = frac * npsf / modvar    # Unormalized weights (nslice, nlens)
+        norm = (weight * npsf).sum(axis=1)  # Weight norm, (nslice,)
+        weight = (weight.T / norm).T     # Normalized weights (nslice, nlens)
 
         # Replace signal and variance estimates from optimal summation
         sigspecs[:, 0] = (weight * subData).sum(axis=1)
-        varspecs[:, 0] = (weight ** 2 * subVar).sum(axis=1)
+        varspecs[:, 0] = (weight**2 * subVar).sum(axis=1)
 
         return cube.lbda, sigspecs, varspecs       # Optimal extraction
 
@@ -623,13 +647,13 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
     from ToolBox.Arrays import rebin
 
     # Resample spaxel center positions, originally [-7:7]
-    f = 2 ** f
+    f = 2**f
     epsilon = 0.5 / f
     border = nspaxel / 2.
     r = N.linspace(-border + epsilon, border - epsilon, nspaxel * f)
 
     x, y = N.meshgrid(r, r)        # (x,y) positions of resampled array
-    frac = N.ones(x.shape) / f ** 2  # Spaxel fraction
+    frac = N.ones(x.shape) / f**2  # Spaxel fraction
 
     xc = N.atleast_1d(xc)
     yc = N.atleast_1d(yc)
@@ -737,8 +761,8 @@ def read_psf_ctes(hdr):
 
     # Count up alpha/ell coefficients (ES_Ann/ES_Enn) to get the
     # polynomial degrees
-    countKeys = lambda regexp: \
-        len([k for k in hdr.keys() if re.match(regexp, k)])
+    countKeys = ( lambda regexp:
+                  len([k for k in hdr.keys() if re.match(regexp, k)]) )
 
     adeg = countKeys('ES_A\d+$') - 1
     edeg = countKeys('ES_E\d+$') - 1
@@ -750,8 +774,8 @@ def read_psf_ctes(hdr):
 
 def read_psf_param(hdr):
     """
-    Read (7+ellDeg+alphaDeg) PSF parameters from header:
-    delta,theta,xc,yc,xy,e0,...en,a0,...an.
+    Read (7+ellDeg+alphaDeg) PSF parameters from header: delta, theta,
+    xc, yc, xy, e0, ..., en, a0, ..., an.
     """
 
     # Chromatic expansion coefficients
@@ -838,14 +862,14 @@ def read_DDTpos(inhdr):
 def polyEval(coeffs, x):
     """
     Evaluate polynom sum_i ci*x**i on x. It uses 'natural' convention
-    for polynomial coeffs: [c0,c1...,cn] (opposite to N.polyfit).
+    for polynomial coeffs: [c0, c1, ..., cn] (opposite to N.polyfit).
     """
 
     if N.isscalar(x):
         y = 0                           # Faster on scalar
         for i, c in enumerate(coeffs):
             # Incremental computation of x**i is only slightly faster
-            y += c * x ** i
+            y += c * x**i
     else:                               # Faster on arrays
         y = N.polyval(coeffs[::-1], x)  # Beware coeffs order!
 
@@ -865,7 +889,7 @@ def polyConvMatrix(n, trans=(0, 1)):
     m = N.zeros((n, n), dtype='d')
     for r in range(n):
         for c in range(r, n):
-            m[r, c] = comb(c, r) * b ** r * a ** (c - r)
+            m[r, c] = comb(c, r) * b**r * a**(c - r)
     return m
 
 
@@ -893,7 +917,7 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
     """
     Least squares polynomial fit with sigma-clipping (if
     clip>0). Returns polynomial coeffs w/ same convention as
-    N.polyfit: [cn,...,c1,c0].
+    N.polyfit: [cn, ..., c1, c0].
     """
 
     good = N.ones(y.shape, dtype='bool')
@@ -952,19 +976,19 @@ def powerLawEval(coeffs, x):
     Note that f(1) = pars[-1] = alpha(lref) with x = lbda/lref.
     """
 
-    return coeffs[-1] * x ** N.polyval(coeffs[:-1], x - 1)
+    return coeffs[-1] * x**N.polyval(coeffs[:-1], x - 1)
 
 
 def powerLawJac(coeffs, x):
 
-    ncoeffs = len(coeffs)                          # M
+    ncoeffs = len(coeffs)                            # M
     jac = N.empty((ncoeffs, len(x)), dtype=x.dtype)  # M×N
-    jac[-1] = x ** N.polyval(coeffs[:-1], x - 1)       # df/dcoeffs[-1]
+    jac[-1] = x**N.polyval(coeffs[:-1], x - 1)     # df/dcoeffs[-1]
     jac[-2] = coeffs[-1] * jac[-1] * N.log(x)        # df/dcoeffs[-2]
     for i in range(-3, -ncoeffs - 1, -1):
         jac[i] = jac[i + 1] * (x - 1)
 
-    return jac                          # M×N
+    return jac                  # M×N
 
 
 def powerLawFit(x, y, deg=2, guess=None):
@@ -1008,15 +1032,15 @@ def quadEllipse(a, b, c, d, f, g):
         #raise ValueError("Input quadratic curve correspond to a circle")
         pass
 
-    b2mac = b ** 2 - a * c
+    b2mac = b**2 - a*c
     # Center of the ellipse
-    x0 = (c * d - b * f) / b2mac
-    y0 = (a * f - b * d) / b2mac
+    x0 = (c*d - b*f) / b2mac
+    y0 = (a*f - b*d) / b2mac
     # Semi-axes lengthes
-    ap = N.sqrt(2 * (a * f ** 2 + c * d ** 2 + g * b ** 2 - 2 * b * d * f - a * c * g) /
-                (b2mac * (N.sqrt((a - c) ** 2 + 4 * b ** 2) - (a + c))))
-    bp = N.sqrt(2 * (a * f ** 2 + c * d ** 2 + g * b ** 2 - 2 * b * d * f - a * c * g) /
-                (b2mac * (-N.sqrt((a - c) ** 2 + 4 * b ** 2) - (a + c))))
+    ap = N.sqrt(2 * (a * f**2 + c * d**2 + g * b**2 - 2*b*d*f - a*c*g) /
+                (b2mac * (N.sqrt((a - c)**2 + 4 * b**2) - (a + c))))
+    bp = N.sqrt(2 * (a * f**2 + c * d**2 + g * b**2 - 2*b*d*f - a*c*g) /
+                (b2mac * (-N.sqrt((a - c)**2 + 4 * b**2) - (a + c))))
     # Position angle
     if b == 0:
         phi = 0
@@ -1067,10 +1091,11 @@ class ExposurePSF:
         cube:     Input cube. This is a `SNIFS_cube` object.
         coords:   if not None, should be (x,y).
         """
-        self.spxSize = psf_ctes[0]      # Spaxel size [arcsec]
-        self.lmid = psf_ctes[1]      # Reference wavelength [AA]
+
+        self.spxSize = psf_ctes[0]        # Spaxel size [arcsec]
+        self.lmid = psf_ctes[1]           # Reference wavelength [AA]
         self.alphaDeg = int(psf_ctes[2])  # Alpha polynomial degree
-        self.ellDeg = int(psf_ctes[3])  # y**2 (aka 'Ell') polynomial degree
+        self.ellDeg = int(psf_ctes[3])    # y**2 (aka 'Ell') polynomial degree
 
         self.npar_cor = 7 + self.ellDeg + self.alphaDeg  # PSF parameters
         self.npar_ind = 1               # Intensity parameters per slice
@@ -1078,15 +1103,14 @@ class ExposurePSF:
         self.npar = self.npar_cor + self.npar_ind * self.nslice
 
         # Name of PSF parameters
-        self.parnames = ['delta', 'theta', 'xc', 'yc', 'xy'] + \
-                        ['e%d' % i for i in range(self.ellDeg + 1)] + \
-                        ['a%d' % i for i in range(self.alphaDeg + 1)] + \
-                        ['i%02d' % (i + 1) for i in range(self.nslice)]
+        self.parnames = ( ['delta', 'theta', 'xc', 'yc', 'xy'] +
+                          ['e%d' % i for i in range(self.ellDeg + 1)] +
+                          ['a%d' % i for i in range(self.alphaDeg + 1)] +
+                          ['i%02d' % (i + 1) for i in range(self.nslice)] )
 
         # Spaxel coordinates [spx]
         if coords is None:
             self.nlens = cube.nlens
-            # nslice,nlens
             self.x = N.resize(cube.x, (self.nslice, self.nlens))
             self.y = N.resize(cube.y, (self.nslice, self.nlens))
         else:
@@ -1095,9 +1119,8 @@ class ExposurePSF:
             assert len(x) == len(y), \
                 "Incompatible coordinates (%d/%d)" % (len(x), len(y))
             self.nlens = len(x)
-            self.x = N.resize(x, (self.nslice, self.nlens))  # nslice,nlens
+            self.x = N.resize(x, (self.nslice, self.nlens))
             self.y = N.resize(y, (self.nslice, self.nlens))
-        # nslice,nlens
         self.l = N.resize(cube.lbda, (self.nlens, self.nslice)).T
 
         if self.nslice > 1:
@@ -1108,7 +1131,7 @@ class ExposurePSF:
             self.lmin, self.lmax = -1, +1
             self.lrel = self.l
 
-        # ADR in spaxels (nslice,nlens)
+        # ADR in spaxels (nslice, nlens)
         if hasattr(cube, 'e3d_data_header'):  # Read from cube if possible
             pressure, temp = read_PT(cube.e3d_data_header)
         else:
@@ -1146,7 +1169,7 @@ class ExposurePSF:
         xc = self.param[2]           # Position at lmid
         yc = self.param[3]
         # Position at current wavelength
-        x0 = xc + delta * N.sin(theta) * self.ADRscale  # nslice,nlens
+        x0 = xc + delta * N.sin(theta) * self.ADRscale  # (nslice, nlens)
         y0 = yc - delta * N.cos(theta) * self.ADRscale
 
         # Other params
@@ -1154,7 +1177,7 @@ class ExposurePSF:
         ellCoeffs = self.param[5:6 + self.ellDeg]
         alphaCoeffs = self.param[6 + self.ellDeg:self.npar_cor]
 
-        ell = polyEval(ellCoeffs, self.lrel)  # nslice,nlens
+        ell = polyEval(ellCoeffs, self.lrel)  # (nslice, nlens)
         if not self.model.endswith('powerlaw'):
             alpha = polyEval(alphaCoeffs, self.lrel)
         else:
@@ -1187,20 +1210,20 @@ class ExposurePSF:
             dy = self.y - y0 + epsy
             # CAUTION: ell & PA are not the true ellipticity and position
             # angle!
-            r2 = dx ** 2 + ell * dy ** 2 + 2 * xy * dx * dy
-            gaussian = N.exp(-0.5 * r2 / sigma ** 2)
-            moffat = (1 + r2 / alpha ** 2) ** (-beta)
+            r2 = dx**2 + ell * dy**2 + 2*xy*dx*dy
+            gaussian = N.exp(-0.5 * r2 / sigma**2)
+            moffat = (1 + r2 / alpha**2)**(-beta)
             # Function
             val += moffat + eta * gaussian
 
-        val *= self.param[self.npar_cor:, N.newaxis] / self.subsampling ** 2
+        val *= self.param[self.npar_cor:, N.newaxis] / self.subsampling**2
 
         # The 3D psf model is not normalized to 1 in integral. The result must
         # be renormalized by (2*eta*sigma**2 + alpha**2/(beta-1)) *
         # N.pi/sqrt(ell)
         if normed:
-            val /= N.pi * \
-                (2 * eta * sigma ** 2 + alpha ** 2 / (beta - 1)) / N.sqrt(ell)
+            val /= ( N.pi / N.sqrt(ell) *
+                     (2 * eta * sigma**2 + alpha**2 / (beta - 1)) )
 
         return val
 
@@ -1221,7 +1244,7 @@ class ExposurePSF:
         yc = self.param[3]
         costheta = N.cos(theta)
         sintheta = N.sin(theta)
-        x0 = xc + delta * sintheta * self.ADRscale  # nslice,nlens
+        x0 = xc + delta * sintheta * self.ADRscale  # (nslice, nlens)
         y0 = yc - delta * costheta * self.ADRscale
 
         # Other params
@@ -1255,18 +1278,19 @@ class ExposurePSF:
         beta = b0 + b1 * alpha
         eta = e0 + e1 * alpha
 
-        totgrad = N.zeros((self.npar_cor + self.npar_ind,) + self.x.shape, 'd')
+        totgrad = N.zeros(
+            (self.npar_cor + self.npar_ind,) + self.x.shape, 'd')
         for epsx, epsy in self.subgrid:
             # Gaussian + Moffat
             dx = self.x - x0 + epsx
             dy = self.y - y0 + epsy
-            dy2 = dy ** 2
-            r2 = dx ** 2 + ell * dy2 + 2 * xy * dx * dy
-            sigma2 = sigma ** 2
+            dy2 = dy**2
+            r2 = dx**2 + ell * dy2 + 2 * xy * dx * dy
+            sigma2 = sigma**2
             gaussian = N.exp(-0.5 * r2 / sigma2)
-            alpha2 = alpha ** 2
+            alpha2 = alpha**2
             ea = 1 + r2 / alpha2
-            moffat = ea ** (-beta)
+            moffat = ea**(-beta)
 
             # Derivatives
             grad = N.zeros(
@@ -1274,25 +1298,26 @@ class ExposurePSF:
             j1 = eta / sigma2
             j2 = 2 * beta / ea / alpha2
             tmp = gaussian * j1 + moffat * j2
-            grad[2] = tmp * (dx + xy * dy)  # dPSF/dxc
+            grad[2] = tmp * (dx + xy * dy)        # dPSF/dxc
             grad[3] = tmp * (ell * dy + xy * dx)  # dPSF/dyc
-            grad[0] = self.ADRscale * \
-                (sintheta * grad[2] - costheta * grad[3])
-            grad[1] = delta * self.ADRscale * \
-                (sintheta * grad[3] + costheta * grad[2])
-            grad[4] = -tmp * dx * dy        # dPSF/dxy
+            grad[0] = ( self.ADRscale *
+                        (sintheta * grad[2] - costheta * grad[3]) )
+            grad[1] = ( delta * self.ADRscale *
+                        (sintheta * grad[3] + costheta * grad[2]) )
+            grad[4] = -tmp * dx * dy           # dPSF/dxy
             for i in xrange(self.ellDeg + 1):  # dPSF/dei
-                grad[5 + i] = -tmp / 2 * dy2 * self.lrel ** i
-            dalpha = gaussian * ( e1 + s1 * r2 * j1 / sigma ) + \
-                moffat * (-b1 * N.log(ea) + r2 * j2 / alpha)  # dPSF/dalpha
+                grad[5 + i] = -tmp / 2 * dy2 * self.lrel**i
+            # dPSF/dalpha
+            dalpha = ( gaussian * (e1 + s1 * r2 * j1 / sigma) +
+                       moffat * (-b1 * N.log(ea) + r2 * j2 / alpha) )
             if not self.model.endswith('powerlaw'):
                 for i in xrange(self.alphaDeg + 1):  # dPSF/dai, i=<0,alphaDeg>
-                    grad[6 + self.ellDeg + i] = dalpha * self.lrel ** i
+                    grad[6 + self.ellDeg + i] = dalpha * self.lrel**i
             else:
                 lrel = self.l / LbdaRef
                 imax = 6 + self.ellDeg + self.alphaDeg
-                grad[imax] = dalpha * \
-                    lrel ** N.polyval(alphaCoeffs[:-1], lrel - 1)
+                grad[imax] = ( dalpha *
+                               lrel**N.polyval(alphaCoeffs[:-1], lrel - 1) )
                 if self.alphaDeg:
                     grad[imax - 1] = grad[imax] * alphaCoeffs[-1] * N.log(lrel)
                     for i in range(imax - 2, imax - self.alphaDeg - 1, -1):
@@ -1304,7 +1329,7 @@ class ExposurePSF:
 
         totgrad[:self.npar_cor] *= self.param[N.newaxis,
                                               self.npar_cor:, N.newaxis]
-        totgrad /= self.subsampling ** 2
+        totgrad /= self.subsampling**2
 
         return totgrad
 
@@ -1334,8 +1359,8 @@ class ExposurePSF:
         sigma = s0 + s1 * alpha
         beta = b0 + b1 * alpha
         eta = e0 + e1 * alpha
-        gaussian = N.exp(-0.5 * r ** 2 / sigma ** 2)
-        moffat = (1 + r ** 2 / alpha ** 2) ** (-beta)
+        gaussian = N.exp(-0.5 * r**2 / sigma**2)
+        moffat = (1 + r**2 / alpha**2)**(-beta)
 
         # PSF=moffat + eta*gaussian, maximum is 1+eta
         return moffat + eta * gaussian - (eta + 1) / 2
@@ -1345,8 +1370,8 @@ class ExposurePSF:
 
         alphaCoeffs = param[6 + self.ellDeg:self.npar_cor]
         # Compute FWHM from radial profile
-        fwhm = 2 * \
-            SO.fsolve(func=self._HWHM_fn, x0=1., args=(alphaCoeffs, lbda))
+        fwhm = 2 * SO.fsolve(
+            func=self._HWHM_fn, x0=1., args=(alphaCoeffs, lbda))
 
         # Beware: scipy-0.8.0 fsolve returns a size 1 array
         return N.squeeze(fwhm)  # In spaxels
@@ -1364,8 +1389,8 @@ class ExposurePSF:
             sigma = cls.sigma0 + cls.sigma1 * alpha
             beta = cls.beta0 + cls.beta1 * alpha
             eta = cls.eta0 + cls.eta1 * alpha
-            gaussian = N.exp(-0.5 * r ** 2 / sigma ** 2)
-            moffat = (1 + r ** 2 / alpha ** 2) ** (-beta)
+            gaussian = N.exp(-0.5 * r**2 / sigma**2)
+            moffat = (1 + r**2 / alpha**2)**(-beta)
             # PSF=moffat + eta*gaussian, maximum is 1+eta
             return moffat + eta * gaussian - (eta + 1) / 2
 
@@ -1648,7 +1673,7 @@ class Hyper_PSF3D_PL(object):
             print "  Parameters: p0=%+.3f  p1=%+.3f  p2=%+.3f" % \
                   tuple(self.plpars)
             print "  ~dParams:  dp0=% .3f dp1=% .3f dp2=% .3f" % \
-                  tuple(self.plicov.diagonal() ** -0.5)
+                  tuple(self.plicov.diagonal()**(-0.5))
 
     def _predict_shape(self, inhdr, verbose=False):
         """
@@ -1702,11 +1727,11 @@ class Hyper_PSF3D_PL(object):
         """
 
         # Term from ADR parameters
-        hadr = ( (param[0] - self.delta) / self.ddelta ) ** 2 + \
-               ((param[1] - self.theta) / self.dtheta) ** 2
+        hadr = ( ((param[0] - self.delta) / self.ddelta)**2 +
+                 ((param[1] - self.theta) / self.dtheta)**2 )
         # Term from shape parameters
-        hsha = ( (param[4] - self.xy) / self.dxy ) ** 2 + \
-               ((param[5] - self.y2) / self.dy2) ** 2
+        hsha = ( ((param[4] - self.xy) / self.dxy)**2 +
+                 ((param[5] - self.y2) / self.dy2)**2 )
         if self.plpars is not None:
             # Term from PL parameters
             dalpha = param[self.alphaSlice] - self.plpars
@@ -1716,8 +1741,8 @@ class Hyper_PSF3D_PL(object):
             hpl = 0.
         # Term from position
         if self.position is not None:
-            hpos = ( (param[2] - self.position[0]) / self.dposition[0] ) ** 2 + \
-                   ((param[3] - self.position[1]) / self.dposition[1]) ** 2
+            hpos = ( ((param[2] - self.position[0]) / self.dposition[0])**2 +
+                     ((param[3] - self.position[1]) / self.dposition[1])**2 )
         else:
             hpos = 0.
 
@@ -1728,19 +1753,19 @@ class Hyper_PSF3D_PL(object):
         hjac = N.zeros(len(param))      # Half jacobian
 
         # ADR parameter jacobian
-        hjac[0] = (param[0] - self.delta) / self.ddelta ** 2
-        hjac[1] = (param[1] - self.theta) / self.dtheta ** 2
+        hjac[0] = (param[0] - self.delta) / self.ddelta**2
+        hjac[1] = (param[1] - self.theta) / self.dtheta**2
         # Shape parameter jacobian
-        hjac[4] = (param[4] - self.xy) / self.dxy ** 2
-        hjac[5] = (param[5] - self.y2) / self.dy2 ** 2
+        hjac[4] = (param[4] - self.xy) / self.dxy**2
+        hjac[5] = (param[5] - self.y2) / self.dy2**2
         if self.plpars is not None:
             # PL-expansion parameter jacobian
             hjac[self.alphaSlice] = N.dot(
                 self.plicov, param[self.alphaSlice] - self.plpars)
         # Position jacobian
         if self.position is not None:
-            hjac[2] = (param[2] - self.position[0]) / self.dposition[0] ** 2
-            hjac[3] = (param[3] - self.position[1]) / self.dposition[1] ** 2
+            hjac[2] = (param[2] - self.position[0]) / self.dposition[0]**2
+            hjac[3] = (param[3] - self.position[1]) / self.dposition[1]**2
 
         return self.scale * 2 * hjac        # (npar,)
 
@@ -1753,7 +1778,7 @@ class Hyper_PSF3D_PL(object):
         s += "\n  Shape: xy=% 5.3f +/- %.3f" % (self.xy, self.dxy)
         s += "\n         y2=% 5.3f +/- %.3f" % (self.y2, self.dy2)
         if self.plpars is not None:
-            dplpars = self.plicov.diagonal() ** -0.5  # Approximate variance
+            dplpars = self.plicov.diagonal()**(-0.5)  # Approximate variance
             s += "\n  PL: p0=%+.3f +/- %.3f" % (self.plpars[0], dplpars[0])
             s += "\n      p1=%+.3f +/- %.3f" % (self.plpars[1], dplpars[1])
             s += "\n      p2=%+.3f +/- %.3f" % (self.plpars[2], dplpars[2])
@@ -1814,28 +1839,28 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
         """
 
         # Terms from xy- and y2-parameters
-        h = (((param[4] - self.xy) / self.dxy) ** 2 +
-             ((param[5] - self.y2) / self.dy2) ** 2)
+        h = (((param[4] - self.xy) / self.dxy)**2 +
+             ((param[5] - self.y2) / self.dy2)**2)
         if self.plpars is not None:
             # Term from alpha
-            h += ((param[6] - self.alpha) / self.dalpha) ** 2
+            h += ((param[6] - self.alpha) / self.dalpha)**2
         if self.position is not None:
             # Term from point-source position
-            h += (((param[2] - self.position[0]) / self.dposition[0] ) ** 2 +
-                  ((param[3] - self.position[1]) / self.dposition[1]) ** 2)
+            h += ( ((param[2] - self.position[0]) / self.dposition[0])**2 +
+                   ((param[3] - self.position[1]) / self.dposition[1])**2 )
 
         return self.scale * h
 
     def deriv(self, param):
 
         hjac = N.zeros(len(param))      # Half jacobian
-        hjac[4] = (param[4] - self.xy) / self.dxy ** 2
-        hjac[5] = (param[5] - self.y2) / self.dy2 ** 2
+        hjac[4] = (param[4] - self.xy) / self.dxy**2
+        hjac[5] = (param[5] - self.y2) / self.dy2**2
         if self.plpars is not None:
-            hjac[6] = (param[6] - self.alpha) / self.dalpha ** 2
+            hjac[6] = (param[6] - self.alpha) / self.dalpha**2
         if self.position is not None:
-            hjac[2] = (param[2] - self.position[0]) / self.dposition[0] ** 2
-            hjac[3] = (param[3] - self.position[1]) / self.dposition[1] ** 2
+            hjac[2] = (param[2] - self.position[0]) / self.dposition[0]**2
+            hjac[3] = (param[3] - self.position[1]) / self.dposition[1]**2
 
         return self.scale * 2 * hjac        # (npar,)
 
@@ -1856,3 +1881,57 @@ class Hyper_PSF2D_PL(Hyper_PSF3D_PL):
                                                     self.dposition[1])
 
         return s
+
+
+class StepJ:
+
+    name = 'stepJ'
+    parnames = ['mean', 'diff']
+    npar_cor = 0          # Cube-level parameters
+    npar_ind = 2          # Slice-level parameters
+
+    def __init__(self, ijlim=(7, 7), cube=None):
+
+        self.ilim, self.jlim = ijlim
+
+        self.nlens = cube.nlens    # Spatial dimension (# of spx)
+        self.nslice = cube.nslice  # Wavelength dimension (# of wavelengths)
+        self.npar = self.npar_cor + self.npar_ind * self.nslice  # Total
+
+        # Spaxel coordinates (nlens,)
+        self.i = cube.i
+        self.j = cube.j
+        self.lower_part = self.in_lower_part(self.i, self.j)
+
+    def in_lower_part(self, i, j):
+        """Step definition."""
+
+        return (j < self.jlim) | ((j == self.jlim) & (i > self.ilim))
+
+    def comp(self, param):
+        """
+        Step background.
+
+        - param[:nslice]: mean intensities '(lower + upper)/2'
+        - param[nslice:]: intensity differences wrt mean '(lower - upper)/2'
+        """
+
+        self.param = N.asarray(param)
+
+        mean = self.param[:self.nslice]
+        diff = self.param[self.nslice:]
+
+        bkgnd = N.empty((self.nslice, self.nlens), dtype='d')
+        bkgnd[:, self.lower_part] = (mean + diff)[:, N.newaxis]
+        bkgnd[:,~self.lower_part] = (mean - diff)[:, N.newaxis]
+
+        return bkgnd            # (nslice, nlens)
+
+    def deriv(self, param):
+
+        self.param = N.asarray(param)
+
+        jac = N.ones((2, self.nslice, self.nlens), dtype='d')
+        jac[1, :, ~self.lower_part] = -1  # dStep/ddiff
+
+        return jac              # (2*nslice, nslice, nlens)

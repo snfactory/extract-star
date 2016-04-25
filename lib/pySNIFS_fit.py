@@ -304,8 +304,8 @@ class poly2D:
         for d in N.arange(self.deg)+1:
             for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
-                val = val + tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
-                n=n+1
+                val += tab_param_ind[:,n+1:n+2] * self.x**(d-j) * self.y**(j)
+                n += 1
         return val
 
     def deriv(self,param):
@@ -314,12 +314,10 @@ class poly2D:
         @param param: Input parameters of the polynomial. A list of (deg+1)*(deg+2)/2 numbers.
         """
         self.param = param
-        tab_param_ind = N.reshape(N.transpose(param),
-                                  (self.npar_ind,self.nslice)).T
-        n = 0
         grad = N.ones((self.npar_ind,)+N.shape((self.x)),'d')
         #print str(self.param[0])
 
+        n = 0
         for d in N.arange(self.deg)+1:
             for j in range(d+1):
                 #print str(self.param[n+1])+'x^'+str(d-j)+'y^'+str(j)
