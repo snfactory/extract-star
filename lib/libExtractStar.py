@@ -35,6 +35,7 @@ MIN_ALPHA = 0.1
 MAX_ALPHA = 15.
 MAX_POSITION = 9.
 
+
 def print_msg(astr, limit, verb=0):
     """
     Print message 'str' if verbosity level (typically opts.verbosity)
@@ -389,14 +390,16 @@ def extract_specs(cube, psf, skyDeg=0,
                 BF[:, :, n] = cube.x**(d - j) * cube.y**j
                 n += 1                    # Finally: n = npar_sky + 1
     elif skyDeg == -2:                    # Step background
-        BF[:, :, 1:] = 1
+        bkgnd = StepJ(STEPJ, cube)
+        BF[:, :, 1:] = 1                  # Mean background spectrum
+        BF[:, ~bkgnd.lower_part, 2] = -1  # Differential background spectrum
 
     # Chi2 (variance-weighted) vs. Least-square (unweighted) fit
     # *Note* that weight is actually 1/sqrt(var) (see NR)
     if chi2fit:
         weight = N.where(cube.var > 0, cube.var**(-0.5), 0)  # (nslice, nlens)
     else:
-        weight = N.where(cube.var > 0, 1, 0)  # nslice,nlens
+        weight = N.where(cube.var > 0, 1, 0)                 # (nslice, nlens)
 
     # Design matrix (basis functions normalized by std errors)
     A = BF * weight[..., N.newaxis]      # (nslice, nlens, npar + 1)
@@ -404,18 +407,18 @@ def extract_specs(cube, psf, skyDeg=0,
 
     # The linear least-squares fit AX = b could be done directly using
     #
-    #   sigspecs = N.array([ N.linalg.lstsq(aa,bb)[0] for aa,bb in zip(A,b) ])
+    #   sigspecs = N.array([ N.linalg.lstsq(aa, bb)[0] for aa, bb in zip(A, b) ])
     #
-    # but Alpha=dot(A.T,A) is needed anyway to compute covariance
-    # matrix Cov=1/Alpha. Furthermore, linear resolution
+    # but Alpha = dot(A.T, A) is needed anyway to compute covariance
+    # matrix Cov = 1 / Alpha. Furthermore, linear resolution
     #
-    #   [ N.linalg.solve(aa,bb) for aa,bb in zip(Alpha,Beta) ]
+    #   [ N.linalg.solve(aa, bb) for aa, bb in zip(Alpha, Beta) ]
     #
     # can be replace by faster (~x10) matrix product
     #
-    #   [ N.dot(cc,bb) for cc,bb in zip(Cov,Beta) ]
+    #   [ N.dot(cc, bb) for cc, bb in zip(Cov, Beta) ]
     #
-    # since Cov=1/Alpha is readily available.
+    # since Cov = 1 / Alpha is readily available.
     #
     # "Solving Ax = b: inverse vs cholesky factorization" thread
     # (http://thread.gmane.org/gmane.comp.python.numeric.general/41365)
@@ -424,10 +427,10 @@ def extract_specs(cube, psf, skyDeg=0,
 
     # Alpha = N.einsum('...jk,...jl',A,A)           # ~x2 slower
     Alpha = N.array([N.dot(aa.T, aa) for aa in A])  # (nslice, npar+1, npar+1)
-    #Beta = N.einsum('...jk,...j',A,b)
-    Beta = N.array([N.dot(aa.T, bb) for aa, bb in zip(A, b)])  # (ns, npar+1)
+    # Beta = N.einsum('...jk,...j',A,b)
+    Beta = N.array([N.dot(aa.T, bb) for aa, bb in zip(A, b)])  # (nslice, npar+1)
     try:
-        Cov = N.array([SL.pinv2(aa) for aa in Alpha])  # (ns, npar+1, npar+1)
+        Cov = N.array([SL.pinv2(aa) for aa in Alpha])  # (nslice, npar+1, npar+1)
     except SL.LinAlgError:
         raise SL.LinAlgError("Singular matrix during spectrum extraction")
     # sigspecs & varspecs = nslice x [Star,Sky,[slope_x...]]
@@ -444,8 +447,7 @@ def extract_specs(cube, psf, skyDeg=0,
         try:
             Cov = N.array([SL.pinv2(aa) for aa in Alpha])
         except SL.LinAlgError:
-            raise SL.LinAlgError("Singular matrix "
-                                 "during variance extraction")
+            raise SL.LinAlgError("Singular matrix during variance extraction")
         varspecs = N.array([N.diag(cc) for cc in Cov])
 
     # Now, what about negative sky? The pb arises for short-exposures,
@@ -456,7 +458,7 @@ def extract_specs(cube, psf, skyDeg=0,
     #
     # One could also use a NNLS fit to force parameter non-negativity:
     #
-    #   [ pySNIFS_fit.fnnls(aa,bb)[0] for aa,bb in zip(Alpha,Beta) ]
+    #   [ pySNIFS_fit.fnnls(aa, bb)[0] for aa, bb in zip(Alpha, Beta) ]
     #
     # *BUT*:
     # 1. It is incompatible w/ non-constant sky (since it will force
@@ -468,7 +470,7 @@ def extract_specs(cube, psf, skyDeg=0,
     #    always lead to a null sky, an NNLS fit is then equivalent to
     #    a standard 'PSF' fit without sky.
 
-    if skyDeg == 0:
+    if skyDeg in (0, -2):
         negSky = sigspecs[:, 1] < 0   # Test for presence of negative sky
         if negSky.any():  # and 'long' not in psf_fn.name.lower():
             print "WARNING: %d slices w/ sky<0 in extract_specs" % \
@@ -482,7 +484,7 @@ def extract_specs(cube, psf, skyDeg=0,
                             for aa, bb in zip(A[negSky, :, 0], b[negSky])])
             Cov = 1 / Alpha
             sigspecs[negSky, 0] = Cov * Beta   # Linear fit without sky
-            sigspecs[negSky, 1] = 0          # Set sky to null
+            sigspecs[negSky, 1] = 0            # Set sky to null
             varspecs[negSky, 0] = Cov
             varspecs[negSky, 1] = 0
 
@@ -496,10 +498,10 @@ def extract_specs(cube, psf, skyDeg=0,
         for d in xrange(1, npar_sky + 1):  # Loop over sky components
             bkgnd += (BF[:, :, d].T * sigspecs[:, d]).T
             var_bkgnd += (BF[:, :, d].T**2 * varspecs[:, d]).T
-    subData = cube.data - bkgnd         # Bkgnd subtraction (nslice, nlens)
+    subData = cube.data - bkgnd            # Bkgnd subtraction (nslice, nlens)
     subVar = cube.var.copy()
     good = cube.var > 0
-    subVar[good] += var_bkgnd[good]     # Variance of bkgnd-sub. signal
+    subVar[good] += var_bkgnd[good]        # Variance of bkgnd-sub. signal
 
     # Replace invalid data (var=0) by model PSF = Intensity*PSF
     if not good.all():
@@ -536,12 +538,12 @@ def extract_specs(cube, psf, skyDeg=0,
             ((y0 - aperRad) < -7.5) | ((y0 + aperRad) > 7.5) )
     if hit.any():
         # Find the closest edge
-        ld = (x0 - aperRad + 7.5).min()  # Dist. to left edge (<0 if outside)
+        ld = +(x0 - aperRad + 7.5).min()  # Dist. to left edge (<0 if outside)
         rd = -(x0 + aperRad - 7.5).max()  # Dist. to right edge
-        bd = (y0 - aperRad + 7.5).min()  # Dist. to bottom edge
+        bd = +(y0 - aperRad + 7.5).min()  # Dist. to bottom edge
         td = -(y0 + aperRad - 7.5).max()  # Dist. to top edge
-        cd = -min(ld, rd, bd, td)          # Should be positive
-        ns = int(cd) + 1                # Additional spaxels
+        cd = -min(ld, rd, bd, td)         # Should be positive
+        ns = int(cd) + 1                  # Additional spaxels
         print "WARNING: Aperture (r=%.2f spx) hits FoV edges by %.2f spx" % \
               (aperRad, cd)
 
@@ -559,7 +561,7 @@ def extract_specs(cube, psf, skyDeg=0,
 
         # Extend usual range by ns spx on each side
         nw = 15 + 2 * ns                  # New FoV size in spaxels
-        mid = (7 + ns)                  # FoV center
+        mid = (7 + ns)                    # FoV center
         extRange = N.arange(nw) - mid
         extx, exty = N.meshgrid(extRange[::-1], extRange)  # nw,nw
         extnlens = extx.size                 # = nlens' = nw**2
@@ -1029,7 +1031,7 @@ def quadEllipse(a, b, c, d, f, g):
         #                 "an ellipse: D=%f!=0, J=%f>0, D/I=%f<0" % (D,J,D/I))
         return 0, 0, -1, -1, 0
     elif a == c and b == 0:
-        #raise ValueError("Input quadratic curve correspond to a circle")
+        # raise ValueError("Input quadratic curve correspond to a circle")
         pass
 
     b2mac = b**2 - a*c

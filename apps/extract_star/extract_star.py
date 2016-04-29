@@ -1222,8 +1222,13 @@ if __name__ == "__main__":
         # Store variance as extension to signal
         sky_spec = pySNIFS.spectrum(data=sigspecs[:, 1], var=varspecs[:, 1],
                                     start=lbda[0], step=step)
-        # TODO: add extra sky components to extensions
         sky_spec.write_fits(opts.sky, inhdr)
+        # Save differential background spectrum
+        if skyDeg == -2 and opts.verbosity >= 1:
+            print "Saving differential background spectrum to 'step_%s'" % opts.sky
+            step_spec = pySNIFS.spectrum(data=sigspecs[:, 2], var=varspecs[:, 2],
+                                         start=lbda[0], step=step)
+            step_spec.write_fits('step_' + opts.sky, inhdr)
 
     # Save 3D adjusted parameter file ------------------------------
 
@@ -1299,13 +1304,14 @@ if __name__ == "__main__":
             axB.set(title=u"Background spectrum (per arcsec²)",
                     xlim=(sky_spec.x[0], sky_spec.x[-1]),
                     xticklabels=[])
+            if skyDeg == -2:
+                axB.plot(sky_spec.x, sigspecs[:, 2] * 10, red, label=u"Differential ×10")
+                axB.errorband(
+                    sky_spec.x, sigspecs[:, 2] * 10, N.sqrt(varspecs[:, 2]) * 10,
+                    color=red)
+                axB.legend(loc='upper right', fontsize='small')
             # Sky S/N
             axN.plot(sky_spec.x, sky_spec.data / N.sqrt(sky_spec.var), green)
-            if skyDeg == -2:
-                axB.plot(sky_spec.x, sigspecs[:, 2], red)
-                axB.errorband(
-                    sky_spec.x, sigspecs[:, 2], N.sqrt(varspecs[:, 2]),
-                    color=red)
 
         axS.set(title="Point-source spectrum [%s, %s]" % (objname, method),
                 xlim=(star_spec.x[0], star_spec.x[-1]), xticklabels=[])
