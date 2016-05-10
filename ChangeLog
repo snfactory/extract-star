@@ -1,5 +1,8 @@
 2016-05-10  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
+	* lib/libExtractStar.py (Hyper_PSF3D_PL): set position prior
+	accuracy to 0.2 spx.
+
 	* apps/extract_star/extract_star.py: option '--positionPrior
 	cubefit' now uses priors from cubefit.
 

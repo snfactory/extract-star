@@ -766,31 +766,21 @@ if __name__ == "__main__":
     posPrior = None
     if opts.positionPrior:
         if opts.positionPrior.lower() == 'cubefit':
-            try:
-                cflxy = libES.read_cubefit_pos(inhdr)  # lref, x, y
-            except KeyError as err:
-                raise
-            else:
-                print_msg(
-                    "  Cubefit-predicted position [%.0f A]: %+.2f x %+.2f spx" %
-                    cflxy, 0)
-                posPrior = adr.refract(   # Back-propagate to ref. wavelength
-                    cflxy[1], cflxy[2], cflxy[0],
-                    backward=True, unit=spxSize)  # x,y
+            cflxy = libES.read_cubefit_pos(inhdr)  # lref, x, y
+            print_msg(
+                "  Cubefit-predicted position [%.0f A]: %+.2f x %+.2f spx" %
+                cflxy, 0)
+            posPrior = adr.refract(   # Back-propagate to ref. wavelength lmid
+                cflxy[1], cflxy[2], cflxy[0],
+                backward=True, unit=spxSize)  # x,y
         elif opts.positionPrior.upper() == 'DDT':
-            try:
-                ddtlxy = libES.read_DDTpos(inhdr)  # lref, x, y
-            except KeyError as err:
-                raise
-                # print "WARNING: cannot read DDT-related keywords"
-                # ddtpos = None
-            else:
-                print_msg(
-                    "  DDT-predicted position [%.0f A]: %+.2f x %+.2f spx" %
-                    ddtlxy, 0)
-                posPrior = adr.refract(   # Back-propagate to ref. wavelength
-                    ddtlxy[1], ddtlxy[2], ddtlxy[0],
-                    backward=True, unit=spxSize)  # x,y
+            ddtlxy = libES.read_DDTpos(inhdr)  # lref, x, y
+            print_msg(
+                "  DDT-predicted position [%.0f A]: %+.2f x %+.2f spx" %
+                ddtlxy, 0)
+            posPrior = adr.refract(   # Back-propagate to ref. wavelength lmid
+                ddtlxy[1], ddtlxy[2], ddtlxy[0],
+                backward=True, unit=spxSize)  # x,y
         else:
             try:
                 lxy = _, _, _ = tuple(
@@ -801,7 +791,7 @@ if __name__ == "__main__":
             else:
                 print_msg(
                     "  Predicted position [%.0f A]: %+.2f x %+.2f spx" % lxy, 1)
-                posPrior = adr.refract(   # Back-propagate to ref. wavelength
+                posPrior = adr.refract(   # Back-propagate to ref. wavelength lmid
                     lxy[1], lxy[2], lxy[0],
                     backward=True, unit=spxSize)  # x,y
         print_msg("  Prior on position [%.0f A]: %+.2f x %+.2f spx" %
@@ -1111,7 +1101,7 @@ if __name__ == "__main__":
                 accountant.add_warning("ES_PRIOR_PARANGLE")
 
     if not (abs(fitpar[2]) < MAX_POSITION and abs(fitpar[3]) < MAX_POSITION):
-        print "WARNING: Point-source %.2fx%.2f mis-centered" % \
+        print "WARNING: Point-source %+.2f x %+.2f mis-centered" % \
             (fitpar[2], fitpar[3])
         if accountant:
             accountant.add_warning("ES_MIS-CENTERED")
@@ -1321,7 +1311,8 @@ if __name__ == "__main__":
                     xlim=(sky_spec.x[0], sky_spec.x[-1]),
                     xticklabels=[])
             if skyDeg == -2:
-                axB.plot(sky_spec.x, sigspecs[:, 2] * 10, red, label=u"Differential ×10")
+                axB.plot(sky_spec.x, sigspecs[:, 2] * 10, red,
+                         label=u"Differential ×10")
                 axB.errorband(
                     sky_spec.x, sigspecs[:, 2] * 10, N.sqrt(varspecs[:, 2]) * 10,
                     color=red)
@@ -1346,7 +1337,9 @@ if __name__ == "__main__":
         nrow = int(N.ceil(nmeta / float(ncol)))
 
         fig2 = P.figure()
-        fig2.suptitle("Slice plots [%s, airmass=%.2f]" % (objname, airmass))
+        fig2.suptitle(
+            "Slice plots [%s, airmass=%.2f]" % (objname, airmass),
+            fontsize='large')
 
         mod = data_model.evalfit()      # Total model (same nb of spx as cube)
 
@@ -1395,8 +1388,9 @@ if __name__ == "__main__":
         if not opts.covariance:     # Plot fit on rows and columns sum
 
             fig3 = P.figure()
-            fig3.suptitle("Rows and columns [%s, airmass=%.2f]" %
-                          (objname, airmass))
+            fig3.suptitle(
+                "Rows and columns [%s, airmass=%.2f]" % (objname, airmass),
+                fontsize='large')
 
             for i in xrange(nmeta):        # Loop over slices
                 ax = fig3.add_subplot(nrow, ncol, i + 1)
@@ -1449,7 +1443,7 @@ if __name__ == "__main__":
                                for j in range(d + 1) ]
                 parnames += [ "b%02d_%s" % (s + 1, c)
                               for c in coeffnames for s in range(nmeta) ]
-            elif skydeg == -2:
+            elif skyDeg == -2:
                 coeffnames = ["mean", "diff"]
                 parnames += [ "b%02d_%s" % (s + 1, c)
                               for c in coeffnames for s in range(nmeta) ]
@@ -1487,10 +1481,10 @@ if __name__ == "__main__":
         # Guessed and adjusted position at current wavelength
         xguess = xc + delta0 * N.sin(theta0) * psf_model.ADRscale[:, 0]
         yguess = yc - delta0 * N.cos(theta0) * psf_model.ADRscale[:, 0]
-        xfit = fitpar[2] + \
-          fitpar[0] * N.sin(fitpar[1]) * psf_model.ADRscale[:, 0]
-        yfit = fitpar[3] - \
-          fitpar[0] * N.cos(fitpar[1]) * psf_model.ADRscale[:, 0]
+        xfit = (fitpar[2] +
+                fitpar[0] * N.sin(fitpar[1]) * psf_model.ADRscale[:, 0])
+        yfit = (fitpar[3] -
+                fitpar[0] * N.cos(fitpar[1]) * psf_model.ADRscale[:, 0])
 
         fig4 = P.figure()
 
@@ -1562,7 +1556,7 @@ if __name__ == "__main__":
         txt = u'Guess: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
               (xc, yc, airmass, theta0 * TA.RAD2DEG)
         txt += u'\nFit: x0,y0=%+4.2f,%+4.2f  airmass=%.2f parangle=%+.0f°' % \
-              (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
+               (fitpar[2], fitpar[3], adr.get_airmass(), adr.get_parangle())
         txtcol = 'k'
         if accountant:
             if accountant.test_warning('ES_PRIOR_POSITION'):
@@ -1660,7 +1654,7 @@ if __name__ == "__main__":
             txtcol = MPL.red
         ax6a.text(0.95, 0.8, txt, transform=ax6a.transAxes,
                   fontsize='small', ha='right', color=txtcol)
-        ax6a.legend(loc='best', fontsize='small', frameon=False)
+        ax6a.legend(loc='upper left', fontsize='small', frameon=False)
         P.setp(ax6a.get_yticklabels(), fontsize='x-small')
 
         if good.any():
@@ -1710,8 +1704,9 @@ if __name__ == "__main__":
         print_msg("Producing radial profile plot %s..." % plot7, 1)
 
         fig7 = P.figure()
-        fig7.suptitle("Radial profile plot [%s, airmass=%.2f]" %
-                      (objname, airmass))
+        fig7.suptitle(
+            "Radial profile plot [%s, airmass=%.2f]" % (objname, airmass),
+            fontsize='large')
 
         def ellRadius(x, y, x0, y0, ell, xy):
             dx = x - x0
@@ -1733,15 +1728,15 @@ if __name__ == "__main__":
                               for iib in ib])  # Mean data
             # Error on bin mean quantities
             # snb = N.sqrt([ len(r[ibins==iib]) for iib in ib ]) # sqrt(#points)
-            #drb = N.array([ r[ibins==iib].std()/n for iib,n in zip(ib,snb) ])
-            #dfb = N.array([ f[ibins==iib].std()/n for iib,n in zip(ib,snb) ])
+            # drb = N.array([ r[ibins==iib].std()/n for iib,n in zip(ib,snb) ])
+            # dfb = N.array([ f[ibins==iib].std()/n for iib,n in zip(ib,snb) ])
             return rb, fb
 
         for i in xrange(nmeta):        # Loop over slices
             ax = fig7.add_subplot(nrow, ncol, i + 1, yscale='log')
             # Use adjusted elliptical radius instead of plain radius
-            #r    = N.hypot(meta_cube.x-xfit[i], meta_cube.y-yfit[i])
-            #rfit = N.hypot(cube_fit.x-xfit[i], cube_fit.y-yfit[i])
+            # r    = N.hypot(meta_cube.x-xfit[i], meta_cube.y-yfit[i])
+            # rfit = N.hypot(cube_fit.x-xfit[i], cube_fit.y-yfit[i])
             r = ellRadius(meta_cube.x, meta_cube.y,
                           xfit[i], yfit[i], fit_ell[i], fitpar[4])
             rfit = ellRadius(cube_fit.x, cube_fit.y,
@@ -1858,7 +1853,9 @@ if __name__ == "__main__":
         print_msg("Producing PSF contour plot %s..." % plot8, 1)
 
         fig8 = P.figure()
-        fig8.suptitle("Data and fit [%s, airmass=%.2f]" % (objname, airmass))
+        fig8.suptitle(
+            "Data and fit [%s, airmass=%.2f]" % (objname, airmass),
+            fontsize='large')
 
         extent = (meta_cube.x.min() - 0.5, meta_cube.x.max() + 0.5,
                   meta_cube.y.min() - 0.5, meta_cube.y.max() + 0.5)
@@ -1903,7 +1900,9 @@ if __name__ == "__main__":
         print_msg("Producing residual plot %s..." % plot5, 1)
 
         fig5 = P.figure()
-        fig5.suptitle("Residual plot [%s, airmass=%.2f]" % (objname, airmass))
+        fig5.suptitle(
+            "Residual plot [%s, airmass=%.2f]" % (objname, airmass),
+            fontsize='large')
 
         images = []
         for i in xrange(nmeta):        # Loop over meta-slices

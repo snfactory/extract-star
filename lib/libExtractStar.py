@@ -1552,7 +1552,7 @@ class Hyper_PSF3D_PL(object):
     point-source position.
     """
 
-    positionAccuracy = 0.5     # Rather arbitrary position prior accuracy [spx]
+    positionAccuracy = 0.2     # Loose position prior accuracy [spx]
 
     def __init__(self, psf_ctes, inhdr, seeing=None, position=None,
                  scale=1., verbose=False):
