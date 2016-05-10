@@ -61,7 +61,7 @@ PSF parameter keywords
 - SEEING: estimated seeing FWHM [\"] at reference wavelength
 - ES_PRIOR: PSF prior hyper-scale (aka 'supernova mode')
 - ES_PRISE: Seeing prior [arcsec]
-- ES_PRIXY: 'x,y' or 'DDT' (see 'DDT[X|Y]P' keywords) priors on position
+- ES_PRIXY: 'x,y' or 'DDT' or 'cubefit' priors on position
 - ES_BNDx: constraints on 3D-PSF parameters
 
 The chromatic evolution of Y2-coefficient can be computed from ES_Exx
@@ -357,7 +357,7 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
     # Convert reference position from lmid = (lmin+lmax)/2 to LbdaRef
     lmin, lmax = cube.lstart, cube.lend   # 1st and last meta-slice wavelength
     xref, yref = adr.refract(param[2], param[3], LbdaRef, unit=cube.spxSize)
-    print_msg("Ref. position [%.0f A]: %.2f x %.2f spx" %
+    print_msg("Ref. position [%.0f A]: %+.2f x %+.2f spx" %
               (LbdaRef, xref, yref), 0)
 
     # "[short|long], classic[-powerlaw]" or "[long|short] [blue|red],
@@ -415,10 +415,13 @@ def fill_header(hdr, psf, param, adr, cube, opts, chi2,
         if opts.seeingPrior is not None:
             hdr['ES_PRISE'] = (opts.seeingPrior, 'Seeing prior [arcsec]')
         if posprior is not None:
-            if posprior == 'DDT':
+            if opts.positionPrior.lower() == 'cubefit':  # refer to cubefit positions
+                hdr['ES_PRIXY'] = ("cubefit",
+                                   "Use CBFT_SN[X|Y] as priors on position")
+            elif opts.positionPrior.upper() == 'DDT':  # refer to DDT positions
                 hdr['ES_PRIXY'] = ("DDT",
                                    "Use DDT[X|Y]P as priors on position")
-            else:
+            else:               # Use explicit position prior
                 hdr['ES_PRIXY'] = ("%+.2f,%+.2f" % tuple(posprior),
                                    "Priors on position")
     if opts.psf3Dconstraints:
@@ -539,7 +542,7 @@ if __name__ == "__main__":
     parser.add_option("--seeingPrior", type=float,
                       help="Seeing prior (from Exposure.Seeing) [\"]")
     parser.add_option("--positionPrior", type=str,
-                      help="Position prior ('lref,x,y' or 'DDT')")
+                      help="Position prior ('lref,x,y'|'DDT'|'cubefit')")
 
     # Expert options
     parser.add_option("--no3Dfit", action='store_true',
@@ -762,7 +765,19 @@ if __name__ == "__main__":
     # Priors on position
     posPrior = None
     if opts.positionPrior:
-        if opts.positionPrior.upper() == 'DDT':
+        if opts.positionPrior.lower() == 'cubefit':
+            try:
+                cflxy = libES.read_cubefit_pos(inhdr)  # lref, x, y
+            except KeyError as err:
+                raise
+            else:
+                print_msg(
+                    "  Cubefit-predicted position [%.0f A]: %+.2f x %+.2f spx" %
+                    cflxy, 0)
+                posPrior = adr.refract(   # Back-propagate to ref. wavelength
+                    cflxy[1], cflxy[2], cflxy[0],
+                    backward=True, unit=spxSize)  # x,y
+        elif opts.positionPrior.upper() == 'DDT':
             try:
                 ddtlxy = libES.read_DDTpos(inhdr)  # lref, x, y
             except KeyError as err:
@@ -770,8 +785,9 @@ if __name__ == "__main__":
                 # print "WARNING: cannot read DDT-related keywords"
                 # ddtpos = None
             else:
-                print_msg("  DDT-predicted position [%.0f A]: %.2f x %.2f spx" %
-                          ddtlxy, 0)
+                print_msg(
+                    "  DDT-predicted position [%.0f A]: %+.2f x %+.2f spx" %
+                    ddtlxy, 0)
                 posPrior = adr.refract(   # Back-propagate to ref. wavelength
                     ddtlxy[1], ddtlxy[2], ddtlxy[0],
                     backward=True, unit=spxSize)  # x,y
@@ -783,12 +799,12 @@ if __name__ == "__main__":
                 parser.error(
                     "Cannot parse position prior '%s'" % opts.positionPrior)
             else:
-                print_msg("  Predicted position [%.0f A]: %.2f x %.2f spx" %
-                          lxy, 1)
+                print_msg(
+                    "  Predicted position [%.0f A]: %+.2f x %+.2f spx" % lxy, 1)
                 posPrior = adr.refract(   # Back-propagate to ref. wavelength
                     lxy[1], lxy[2], lxy[0],
                     backward=True, unit=spxSize)  # x,y
-        print_msg("  Prior on position [%.0f A]: %.2f x %.2f spx" %
+        print_msg("  Prior on position [%.0f A]: %+.2f x %+.2f spx" %
                   (lmid, posPrior[0], posPrior[1]), 0)
 
     # 2D-fit ------------------------------
@@ -864,7 +880,7 @@ if __name__ == "__main__":
         if len(xc_vec[good]) <= alphaDeg + 1 and not opts.usePriors:
             raise ValueError('Not enough points for alpha initial guess')
 
-    print_msg("  Ref. position guess [%.0f A]: %.2f x %.2f spx" %
+    print_msg("  Ref. position guess [%.0f A]: %+.2f x %+.2f spx" %
               (lmid, xc, yc), 1)
 
     # 2) Other parameters
@@ -1029,7 +1045,7 @@ if __name__ == "__main__":
     if opts.usePriors:
         print_msg("  Hyper-term: h=%f" % hterm.comp(fitpar[:npar_psf]), 1)
 
-    print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f x %+.2f±%.2f spx" %
+    print_msg("  Ref. position fit @%.0f A: %+.2f±%.2f × %+.2f±%.2f spx" %
               (lmid, fitpar[2], dfitpar[2], fitpar[3], dfitpar[3]), 1)
     # Update ADR params
     print_msg("  ADR fit: delta=%.2f±%.2f, theta=%.1f±%.1f deg" %

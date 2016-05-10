@@ -839,9 +839,8 @@ def estimate_zdpar(inhdr):
 
 def read_DDTpos(inhdr):
     """
-    Read reference wavelength and DDT-estimated position from DDTLREF
-    and DDT[X|Y]P keywords. Will raise KeyError if keywords are not
-    available.
+    Read reference wavelength and DDT-estimated position from DDTLREF and
+    DDT[X|Y]P keywords.  Will raise KeyError if keywords are not available.
     """
 
     try:
@@ -857,6 +856,41 @@ def read_DDTpos(inhdr):
             "Invalid DDT position: %.2f x %.2f is outside FoV" % (xddt, yddt))
 
     return lddt, xddt, yddt
+
+
+def read_cubefit_pos(inhdr, refwave=5000.):
+    """
+    Read reference wavelength and cubefit-estimated position from CBFT_SN[X|Y]
+    keywords and associated comments.  Will raise KeyError if keywords are not
+    available.
+    """
+
+    import re
+
+    try:
+        xcf = inhdr['CBFT_SNX']
+        ycf = inhdr['CBFT_SNY']
+    except KeyError as err:
+        raise KeyError("File has no cubefit-related keywords (%s)" % err)
+
+    # Some sanity check
+    if not (abs(xcf) < 7 and abs(ycf) < 7):
+        raise KeyError(
+            "Invalid cubefit position: %.2f x %.2f is outside FoV" % (xcf, ycf))
+
+    # Get reference wavelength from comment
+    pattern = "SN x offset from center at (\d+) A \[spaxels\]"
+    try:
+        comment = inhdr.comments['CBFT_SNX']  # Read comment
+        lcf = float(re.match(pattern, comment).group(1))  # Look for ref. wave
+    except (KeyError, AttributeError):  # No comment or no match: use default refwave
+        lcf = refwave
+    except ValueError:          # Match a non-float value
+        raise KeyError(
+            "Invalid cubefit CBFT_SNX comment: '%s'" % comment)
+
+    return lcf, xcf, ycf
+
 
 # Polynomial utilities ======================================================
 
