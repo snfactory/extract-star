@@ -9,11 +9,6 @@
 # $Id$
 ##############################################################################
 
-"""Extract_star classes and functions."""
-
-__author__ = "Y. Copin, C. Buton, E. Pecontal"
-__version__ = '$Id$'
-
 import re
 import itertools                        # product
 import numpy as N
@@ -23,6 +18,11 @@ import scipy.optimize as SO
 from pySNIFS import SNIFS_cube
 
 import ToolBox.Atmosphere as TA
+
+"""Extract_star classes and functions."""
+
+__author__ = "Y. Copin, C. Buton, E. Pecontal"
+__version__ = '$Id$'
 
 LbdaRef = 5000.               # Use constant ref. wavelength for easy comparison
 SpxSize = SNIFS_cube.spxSize  # Spaxel size in arcsec
@@ -1222,12 +1222,12 @@ class ExposurePSF:
         # PSF model
         if self.model == 'chromatic':  # Includes chromatic correlations
             lcheb = chebNorm(self.l, *self.chebRange)
-            b0 = chebEval(self.beta0,  lcheb)
-            b1 = chebEval(self.beta1,  lcheb)
+            b0 = chebEval(self.beta0, lcheb)
+            b1 = chebEval(self.beta1, lcheb)
             s0 = chebEval(self.sigma0, lcheb)
             s1 = chebEval(self.sigma1, lcheb)
-            e0 = chebEval(self.eta0,   lcheb)
-            e1 = chebEval(self.eta1,   lcheb)
+            e0 = chebEval(self.eta0, lcheb)
+            e1 = chebEval(self.eta1, lcheb)
         else:                        # Achromatic correlations
             b0 = self.beta0
             b1 = self.beta1
@@ -1244,9 +1244,8 @@ class ExposurePSF:
             # Gaussian + Moffat
             dx = self.x - x0 + epsx     # Center of sub-spaxel
             dy = self.y - y0 + epsy
-            # CAUTION: ell & PA are not the true ellipticity and position
-            # angle!
-            r2 = dx**2 + ell * dy**2 + 2*xy*dx*dy
+            # CAUTION: ell & PA are not the true ellipticity and position angle!
+            r2 = dx**2 + ell * dy**2 + 2 * xy * dx * dy
             gaussian = N.exp(-0.5 * r2 / sigma**2)
             moffat = (1 + r2 / alpha**2)**(-beta)
             # Function
@@ -1254,11 +1253,11 @@ class ExposurePSF:
 
         val *= self.param[self.npar_cor:, N.newaxis] / self.subsampling**2
 
-        # The 3D psf model is not normalized to 1 in integral. The result must
+        # The 3D psf model is not normalized to 1 in integral.  The result must
         # be renormalized by (2*eta*sigma**2 + alpha**2/(beta-1)) *
-        # N.pi/sqrt(ell)
+        # N.pi/sqrt(ell - xy**2)
         if normed:
-            val /= ( N.pi / N.sqrt(ell) *
+            val /= ( N.pi / N.sqrt(ell - xy**2) *
                      (2 * eta * sigma**2 + alpha**2 / (beta - 1)) )
 
         return val
@@ -1297,12 +1296,12 @@ class ExposurePSF:
         # PSF model
         if self.model == 'chromatic':  # Includes chromatic correlations
             lcheb = chebNorm(self.l, *self.chebRange)
-            b0 = chebEval(self.beta0,  lcheb)
-            b1 = chebEval(self.beta1,  lcheb)
+            b0 = chebEval(self.beta0, lcheb)
+            b1 = chebEval(self.beta1, lcheb)
             s0 = chebEval(self.sigma0, lcheb)
             s1 = chebEval(self.sigma1, lcheb)
-            e0 = chebEval(self.eta0,   lcheb)
-            e1 = chebEval(self.eta1,   lcheb)
+            e0 = chebEval(self.eta0, lcheb)
+            e1 = chebEval(self.eta1, lcheb)
         else:                        # Achromatic correlations
             b0 = self.beta0
             b1 = self.beta1
@@ -1379,12 +1378,12 @@ class ExposurePSF:
 
         if self.model == 'chromatic':
             lcheb = chebNorm(lbda, *self.chebRange)
-            b0 = chebEval(self.beta0,  lcheb)
-            b1 = chebEval(self.beta1,  lcheb)
+            b0 = chebEval(self.beta0, lcheb)
+            b1 = chebEval(self.beta1, lcheb)
             s0 = chebEval(self.sigma0, lcheb)
             s1 = chebEval(self.sigma1, lcheb)
-            e0 = chebEval(self.eta0,   lcheb)
-            e1 = chebEval(self.eta1,   lcheb)
+            e0 = chebEval(self.eta0, lcheb)
+            e1 = chebEval(self.eta1, lcheb)
         else:
             b0 = self.beta0
             b1 = self.beta1
@@ -1694,14 +1693,14 @@ class Hyper_PSF3D_PL(object):
             self.plpars = self.predict_alpha_coeffs(seeing, self.X)
             self.plicov = N.array(              # Precision matrix = 1/Cov
                 [[43.33738708, -66.87684631, -0.23146413],
-                 [-66.87684631, 242.87202454,  4.43127346],
-                 [-0.231464,     4.43127346, 12.65395737]])
+                 [-66.87684631, 242.87202454, 4.43127346],
+                 [-0.231464, 4.43127346, 12.65395737]])
         else:                           # Red
             self.plpars = self.predict_alpha_coeffs(seeing, self.X)
             self.plicov = N.array(              # Precision matrix = 1/Cov
-                [[476.81713867,  19.62824821, 23.05086708],
+                [[476.81713867, 19.62824821, 23.05086708],
                  [19.62825203, 612.26849365, 11.54866409],
-                 [23.05086899,  11.54866314, 11.4956665]])
+                 [23.05086899, 11.54866314, 11.4956665]])
 
         if verbose:
             print "Power-law expansion coefficient predictions:"
@@ -1959,7 +1958,7 @@ class StepJ:
 
         bkgnd = N.empty((self.nslice, self.nlens), dtype='d')
         bkgnd[:, self.lower_part] = (mean + diff)[:, N.newaxis]
-        bkgnd[:,~self.lower_part] = (mean - diff)[:, N.newaxis]
+        bkgnd[:, ~self.lower_part] = (mean - diff)[:, N.newaxis]
 
         return bkgnd            # (nslice, nlens)
 

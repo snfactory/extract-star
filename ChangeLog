@@ -1,3 +1,8 @@
+2016-06-23  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
+
+	* lib/libExtractStar.py (ExposurePSF.comp): error in normalization
+	[#1558, thanks to K. Boone].
+
 2016-05-10  Yannick Copin  <ycopin@lyopc548.in2p3.fr>
 
 	* lib/libExtractStar.py (Hyper_PSF3D_PL): set position prior
