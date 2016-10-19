@@ -1,70 +1,14 @@
 #!/usr/bin/env python
-######################################################################
-## Filename:      setup.py
-## Version:       $Id$
-## Description:   pySNIFS setup script
-## Author:        Yannick Copin <ycopin@ipnl.in2p3.fr>
-## Created at:    Thu Apr 13 13:47:49 2006
-## Modified at:   Wed Apr 14 20:13:02 2010
-## Modified by:   Yannick Copin <ycopin@ipnl.in2p3.fr>
-######################################################################
 
 from distutils.core import setup
-from re import search
-import sys, os
+import os
 
-__author__ = '$Author$'
-__version__ = '$Id$'
-
-if not hasattr(sys, 'version_info') or sys.version_info < (2,3,0,'alpha',0):
-    raise SystemExit, "Python 2.3 or later required to build pySNIFS."
-
-def dolocal():
-    """Adds a command line option --local=<install-dir> which is an
-    abbreviation for 'put all of pySNIFS in <install-dir>/pySNIFS'."""
-    if "--help" in sys.argv:
-        print >>sys.stderr
-        print >>sys.stderr, " options:"
-        print >>sys.stderr, "--local=<install-dir>    same as --install-lib=<install-dir>"
-    for a in sys.argv:
-        if a.startswith("--local="):
-            dir = a.split("=")[1]
-            sys.argv.extend([
-                "--install-lib="+dir,
-                ])
-            sys.argv.remove(a)
-
-
-def main():
-    dolocal()
-    name = 'pySNIFS'
-    try:
-        # Taggued version: pySNIFS-M-m
-        majmin = search('Name: %s-(\d)-(\d)' % name, __version__).groups()
-        version = '.'.join(majmin)
-    except AttributeError:
-        # Developer's version
-        version = 'developer $Revision$'
-    
-    setup(name = name,
-          version = version,
-          description = "SNIFS data handling and processing package",
-          author = "E. Pecontal",
-          author_email = "pecontal@obs.univ-lyon1.fr",
-          platforms = ["Linux"],
-          py_modules = ['pySNIFS', 'pySNIFS_fit', 'pySNIFS_plot', 
-                        'libExtractStar'],
-          package_dir={'':'lib'},
-          scripts=[os.path.join('apps','extract_star','extract_star.py'),
-                   os.path.join('apps','extract_star','extract_host.py'),
-                   os.path.join('apps','extract_star','extract_z.py'),
-                   os.path.join('apps','extract_star','e3dto3d.py'),
-                   os.path.join('apps','extract_star','plot_slices.py'),
-                   os.path.join('apps','extract_star','subtract_psf.py'),
-                   os.path.join('apps','extract_star','extract_fixed_star.py'),
-                   ],
-          )
-
-if __name__ == "__main__":
-    main()
-
+setup(name='extract_star',
+      version='0.1.0.dev',
+      description="Fit a 3-d PSF on a SNFactory data cube",
+      author = "SNFactory",
+      author_email="kylebarbary@gmail.com",
+      py_packages = ['extract_star'],
+      # note: there are more scripts in `scripts`.
+      scripts=[os.path.join('scripts', 'extract_star.py')]
+)
