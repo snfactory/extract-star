@@ -93,9 +93,9 @@ import sys
 import pyfits as F
 import numpy as N
 
-import pySNIFS
-import pySNIFS_fit
-import libExtractStar as libES
+from extract_star import pySNIFS
+from extract_star import pySNIFS_fit
+from extract_star import libExtractStar as libES
 import ToolBox.Atmosphere as TA
 from ToolBox.Arrays import metaslice
 from ToolBox.Misc import make_method, warning2stdout
