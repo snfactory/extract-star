@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 ##############################################################################
 # Filename:      libExtractStar.py
@@ -9,15 +8,16 @@
 # $Id$
 ##############################################################################
 
+from __future__ import print_function
+
 import re
 import itertools                        # product
 import numpy as N
 import scipy.linalg as SL               # More complete than numpy.linalg
 import scipy.optimize as SO
 
-from pySNIFS import SNIFS_cube
-
-import ToolBox.Atmosphere as TA
+from .pySNIFS import SNIFS_cube
+from .extern import Atmosphere as TA
 
 """Extract_star classes and functions."""
 
@@ -43,7 +43,7 @@ def print_msg(astr, limit, verb=0):
     """
 
     if verb >= limit:
-        print astr
+        print(astr)
 
 # PSF fitting ==============================
 
@@ -114,9 +114,9 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
         if not psf_fn.model.endswith('powerlaw'):
             raise NotImplementedError
         if seeingPrior:
-            print "  Seeing prior: %.2f\"" % seeingPrior
+            print("  Seeing prior: %.2f\"" % seeingPrior)
         if posPrior is not None:
-            print "  Position prior: %+.2f x %+.2f spx" % tuple(posPrior)
+            print("  Position prior: %+.2f x %+.2f spx" % tuple(posPrior))
 
     for i in loop:                      # Loop over cube slices
         # Fill-in the meta-slice
@@ -186,8 +186,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
             xc, yc = model_gauss.fitpar[:2]  # Update centroid position
             alpha = max(N.hypot(*model_gauss.fitpar[2:4]), 1.)
         else:
-            print "WARNING: gaussian fit failed (status=%d: %s) " % \
-                (model_gauss.status, model_gauss.res.message)
+            print("WARNING: gaussian fit failed (status=%d: %s) " % \
+                  (model_gauss.status, model_gauss.res.message))
             if alpha is None:
                 alpha = 2.4             # Educated guess from median seeing
 
@@ -256,7 +256,7 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                                        hyper=hyper)
 
         if verbosity >= 4:
-            print "Gradient checks:"    # Includes hyper-term if any
+            print("Gradient checks:")    # Includes hyper-term if any
             model_star.check_grad()
 
         model_star.minimize(verbose=(verbosity >= 2), tol=1e-6,
@@ -311,8 +311,8 @@ def fit_metaslices(cube, psf_fn, skyDeg=0, nsky=2, chi2fit=True,
                 model_star.res.message = "negative covariance diagonal elements"
 
         if not model_star.success:      # Set error to 0 if status
-            print "WARNING: metaslice #%d, status=%d: %s" % \
-                  (i + 1, model_star.status, model_star.res.message,)
+            print("WARNING: metaslice #%d, status=%d: %s" % \
+                  (i + 1, model_star.status, model_star.res.message,))
             model_star.khi2 *= -1       # To be discarded
             dpar = N.zeros(len(dparams.T))
         else:
@@ -348,13 +348,13 @@ def extract_specs(cube, psf, skyDeg=0,
         "skyDeg=%d is invalid (should be >=-2)" % skyDeg
 
     if (N.isnan(cube.var).any()):
-        print "WARNING: discarding NaN variances in extract_specs"
+        print("WARNING: discarding NaN variances in extract_specs")
         cube.var[N.isnan(cube.var)] = 0
     if (cube.var > 1e20).any():
-        print "WARNING: discarding infinite variances in extract_specs"
+        print("WARNING: discarding infinite variances in extract_specs")
         cube.var[cube.var > 1e20] = 0
     if (cube.var < 0).any():              # There should be none anymore
-        print "WARNING: discarding negative variances in extract_specs"
+        print("WARNING: discarding negative variances in extract_specs")
         cube.var[cube.var < 0] = 0
 
     psf_fn, psf_ctes, psf_param = psf   # Unpack PSF description
@@ -473,8 +473,8 @@ def extract_specs(cube, psf, skyDeg=0,
     if skyDeg in (0, -2):
         negSky = sigspecs[:, 1] < 0   # Test for presence of negative sky
         if negSky.any():  # and 'long' not in psf_fn.name.lower():
-            print "WARNING: %d slices w/ sky<0 in extract_specs" % \
-                  (len(negSky.nonzero()[0]))
+            print("WARNING: %d slices w/ sky<0 in extract_specs" %
+                  (len(negSky.nonzero()[0])))
             print_msg(str(cube.lbda[negSky]), 3, verbosity)
         # if 'short' in psf_fn.name:
         if False:
@@ -544,15 +544,15 @@ def extract_specs(cube, psf, skyDeg=0,
         td = -(y0 + aperRad - 7.5).max()  # Dist. to top edge
         cd = -min(ld, rd, bd, td)         # Should be positive
         ns = int(cd) + 1                  # Additional spaxels
-        print "WARNING: Aperture (r=%.2f spx) hits FoV edges by %.2f spx" % \
-              (aperRad, cd)
+        print("WARNING: Aperture (r=%.2f spx) hits FoV edges by %.2f spx" %
+              (aperRad, cd))
 
         if method == 'optimal':
-            print "WARNING: Model extrapolation outside FoV " \
-                  "not implemented for optimal summation."
+            print("WARNING: Model extrapolation outside FoV "
+                  "not implemented for optimal summation.")
         elif method == 'subaperture':
-            print "WARNING: Model extrapolation outside FoV " \
-                  "not implemented for sub-aperture summation."
+            print("WARNING: Model extrapolation outside FoV "
+                  "not implemented for sub-aperture summation.")
 
     if hit.any() and method == 'aperture':
 
@@ -646,7 +646,7 @@ def subaperture(xc, yc, rc, f=0, nspaxel=15):
     :return: spaxel flux fraction on original 15x15 grid
     """
 
-    from ToolBox.Arrays import rebin
+    from .extern.Arrays import rebin
 
     # Resample spaxel center positions, originally [-7:7]
     f = 2**f
@@ -689,8 +689,8 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
 
     pressure = hdr.get('PRESSURE', N.nan)
     if not 550 < pressure < 650:        # Non-std pressure
-        print "WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
-              (pressure, MK_pressure)
+        print("WARNING: non-std pressure (%.0f mbar) updated to %.0f mbar" % \
+              (pressure, MK_pressure))
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
             hdr['PRESSURE'] = MK_pressure
         else:                           # True pyfits header, add comment
@@ -699,8 +699,8 @@ def read_PT(hdr, MK_pressure=616., MK_temp=2.):
 
     temp = hdr.get('TEMP', N.nan)
     if not -20 < temp < 20:             # Non-std temperature
-        print "WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
-              (temp, MK_temp)
+        print("WARNING: non-std temperature (%.0f C) updated to %.0f C" % \
+              (temp, MK_temp))
         if isinstance(hdr, dict):       # pySNIFS.SNIFS_cube.e3d_data_header
             hdr['TEMP'] = MK_temp
         else:                           # True pyfits header, add comment
@@ -720,8 +720,8 @@ def read_psf(hdr):
         psfname = hdr['ES_PSF']
     except KeyError:
         efftime = hdr['EFFTIME']
-        print "WARNING: cannot read 'ES_PSF' keyword, " \
-              "guessing from EFFTIME=%.0fs" % efftime
+        print("WARNING: cannot read 'ES_PSF' keyword, " \
+              "guessing from EFFTIME=%.0fs" % efftime)
         # Assert it's an 'classic' PSF model (i.e. 'long' or 'short')
         psfname = 'long' if efftime > 12. else 'short'
 
@@ -748,8 +748,8 @@ def read_psf(hdr):
         subsampling = 1
     psffn.subsampling = subsampling
 
-    print "PSF name/model: %s/%s [%s], sub x%d" % \
-          (psfname, psfmodel, fnname, subsampling)
+    print("PSF name/model: %s/%s [%s], sub x%d" % \
+          (psfname, psfmodel, fnname, subsampling))
 
     return psffn
 
@@ -768,8 +768,8 @@ def read_psf_ctes(hdr):
 
     adeg = countKeys('ES_A\d+$') - 1
     edeg = countKeys('ES_E\d+$') - 1
-    print "PSF constants: lMid=%.2f A, alphaDeg=%d, ellDeg=%d" % \
-          (lmid, adeg, edeg)
+    print("PSF constants: lMid=%.2f A, alphaDeg=%d, ellDeg=%d" % \
+          (lmid, adeg, edeg))
 
     return [lmid, adeg, edeg]
 
@@ -816,8 +816,8 @@ def read_psf_param(hdr):
     xmid, ymid = adr.refract(
         xref, yref, lref, unit=SpxSize, backward=True)  # [spx]
 
-    print "PSF parameters: airmass=%.3f, parangle=%.1f deg, " \
-          "refpos=%.2fx%.2f spx @%.2f A" % (airmass, parang, xmid, ymid, lmid)
+    print("PSF parameters: airmass=%.3f, parangle=%.1f deg, " \
+          "refpos=%.2fx%.2f spx @%.2f A" % (airmass, parang, xmid, ymid, lmid))
 
     return [adr.delta, adr.theta, xmid, ymid, xy] + ecoeffs + acoeffs
 
@@ -828,7 +828,7 @@ def estimate_zdpar(inhdr):
     header.
     """
 
-    from ToolBox.Astro import Coords
+    from .extern import Coords
     ha, dec = Coords.altaz2hadec(inhdr['ALTITUDE'], inhdr['AZIMUTH'],
                                  phi=inhdr['LATITUDE'], deg=True)
     zd, parangle = Coords.hadec2zdpar(ha, dec,
@@ -968,9 +968,9 @@ def polyfit_clip(x, y, deg, clip=3, nitermax=10):
         if (good == old).all():
             break     # No more changes, stop there
         if niter > nitermax:            # Max. # of iter, stop there
-            print "polyfit_clip reached max. # of iterations: " \
+            print("polyfit_clip reached max. # of iterations: " \
                   "deg=%d, clip=%.2f x %f, %d px removed" % \
-                  (deg, clip, N.std(dy), len((~old).nonzero()[0]))
+                  (deg, clip, N.std(dy), len((~old).nonzero()[0])))
             break
         if y[good].size <= deg + 1:
             raise ValueError("polyfit_clip: Not enough points left (%d) "
@@ -998,7 +998,7 @@ def chebEval(pars, nx, chebpolys=[]):
     from scipy.special import chebyu
 
     if len(chebpolys) < len(pars):
-        print "Initializing Chebychev polynomials up to order %d" % len(pars)
+        print("Initializing Chebychev polynomials up to order %d" % len(pars))
         chebpolys[:] = [chebyu(i) for i in range(len(pars))]
 
     return N.sum([par * cheb(nx) for par, cheb in zip(pars, chebpolys)], axis=0)
@@ -1029,7 +1029,7 @@ def powerLawJac(coeffs, x):
 
 def powerLawFit(x, y, deg=2, guess=None):
 
-    import ToolBox.Optimizer as TO
+    from .extern import Optimizer as TO
 
     if guess is None:
         guess = [0.] * (deg - 1) + [-1., 2.]
@@ -1666,14 +1666,14 @@ class Hyper_PSF3D_PL(object):
         self.dtheta /= TA.RAD2DEG       # [rad]
 
         if verbose:
-            print "ADR parameter predictions:"
-            print "  Header:     δ=% .2f,  θ=%+.2f°" % \
+            print("ADR parameter predictions:")
+            print("  Header:     δ=% .2f,  θ=%+.2f°" % \
                   (N.tan(N.arccos(1. / inhdr['AIRMASS'])),
-                   inhdr['PARANG'] / TA.RAD2DEG)
-            print "  Parameters: δ=% .2f,  θ=%+.2f°" % \
-                  (self.delta, self.theta * TA.RAD2DEG)
-            print "  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
-                  (self.ddelta, self.dtheta * TA.RAD2DEG)
+                   inhdr['PARANG'] / TA.RAD2DEG))
+            print("  Parameters: δ=% .2f,  θ=%+.2f°" % \
+                  (self.delta, self.theta * TA.RAD2DEG))
+            print("  dParam:    Δδ=% .2f, Δθ=% .2f°" % \
+                  (self.ddelta, self.dtheta * TA.RAD2DEG))
 
     def _predict_PL(self, seeing, verbose=False):
         """
@@ -1703,12 +1703,12 @@ class Hyper_PSF3D_PL(object):
                  [23.05086899, 11.54866314, 11.4956665]])
 
         if verbose:
-            print "Power-law expansion coefficient predictions:"
-            print "  Seeing prior: %.2f\"" % seeing
-            print "  Parameters: p0=%+.3f  p1=%+.3f  p2=%+.3f" % \
-                  tuple(self.plpars)
-            print "  ~dParams:  dp0=% .3f dp1=% .3f dp2=% .3f" % \
-                  tuple(self.plicov.diagonal()**(-0.5))
+            print("Power-law expansion coefficient predictions:")
+            print("  Seeing prior: %.2f\"" % seeing)
+            print("  Parameters: p0=%+.3f  p1=%+.3f  p2=%+.3f" % \
+                  tuple(self.plpars))
+            print("  ~dParams:  dp0=% .3f dp1=% .3f dp2=% .3f" % \
+                  tuple(self.plicov.diagonal()**(-0.5)))
 
     def _predict_shape(self, inhdr, verbose=False):
         """
@@ -1730,10 +1730,10 @@ class Hyper_PSF3D_PL(object):
             self.dxy = 0.050
 
         if verbose:
-            print "Shape parameter predictions:"
-            print "  Airmass:       %+.2f" % inhdr['AIRMASS']
-            print "  Parameters: y²=% .3f,  xy=% .3f" % (self.y2, self.xy)
-            print "  dParam:    Δy²=% .3f, Δxy=% .3f" % (self.dy2, self.dxy)
+            print("Shape parameter predictions:")
+            print("  Airmass:       %+.2f" % inhdr['AIRMASS'])
+            print("  Parameters: y²=% .3f,  xy=% .3f" % (self.y2, self.xy))
+            print("  dParam:    Δy²=% .3f, Δxy=% .3f" % (self.dy2, self.dxy))
 
     def _predict_pos(self, position, verbose=False):
         """
@@ -1746,9 +1746,9 @@ class Hyper_PSF3D_PL(object):
             self.positionAccuracy, self.positionAccuracy)  # [spx]
 
         if verbose and self.position is not None:
-            print "Position predictions:"
-            print "  Parameters: x=% .3f,  y=% .3f" % self.position
-            print "  dParam:    Δx=% .3f, Δy=% .3f" % self.dposition
+            print("Position predictions:")
+            print("  Parameters: x=% .3f,  y=% .3f" % self.position)
+            print("  dParam:    Δx=% .3f, Δy=% .3f" % self.dposition)
 
     def comp(self, param):
         """

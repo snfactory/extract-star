@@ -8,7 +8,9 @@
 ## $Id$
 ######################################################################
 
-from pySNIFS import *
+from __future__ import print_function
+
+from .pySNIFS import *
 import numpy as N
 import scipy.special as SS
 import scipy.optimize as SO
@@ -808,14 +810,14 @@ class model:
 
         if param is None:
             param = self.flatparam
-        print "%2s  %15s  %15s  %15s" % \
-              ("##", "Finite diff.","Objgrad","Rel. diff.")
+        print("%2s  %15s  %15s  %15s" %
+              ("##", "Finite diff.","Objgrad","Rel. diff."))
         grad = self.objgrad(param)
         approx = approx_deriv(self.objfun, param, order=3, eps=eps)
         for n in range(N.size(param)):
-            print "%02d  %15.6f  %15.6f  %15.6f" % (
-                n+1, approx[n],grad[n],
-                abs(approx[n]-grad[n])/max(abs(grad[n]),1e-10))
+            print("%02d  %15.6f  %15.6f  %15.6f" %
+                  (n+1, approx[n],grad[n],
+                   abs(approx[n]-grad[n])/max(abs(grad[n]),1e-10)))
 
     def save_fit(self):
         """ Save the last fit parameters (fitpar) into the current parameters
@@ -843,8 +845,8 @@ class model:
         # See SO.tnc.RCSTRINGS for status message
         self.status = rc>2 and rc or 0 # 0,1,2 means "fit has converged"
         if msge>=1:
-            print "fmin_tnc (%d funcalls): %s" % \
-                (nfeval, SO.tnc.RCSTRINGS[rc])
+            print("fmin_tnc (%d funcalls): %s" %
+                  (nfeval, SO.tnc.RCSTRINGS[rc]))
         self.fitpar = N.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF (not including hyper term)
@@ -870,7 +872,7 @@ class model:
                                  iprint= msge==0 and -1 or 0)
         self.status = d['warnflag']
         if msge>=1:
-            print "fmin_l_bfgs_b [%d funcalls]: %s" % (d['funcalls'],d['task'])
+            print("fmin_l_bfgs_b [%d funcalls]: %s" % (d['funcalls'],d['task']))
         self.fitpar = N.asarray(x,'d')
 
         # Reduced khi2 = khi2 / DoF
@@ -904,9 +906,9 @@ class model:
         self.success = self.res.success # Boolean
         self.status = self.res.status   # Integer (can be >0 if successful)
         if verbose:
-            print "minimize[%s]: %d funcalls, success=%s, status=%d: %s" % \
+            print("minimize[%s]: %d funcalls, success=%s, status=%d: %s" %
                   (method, self.res.nfev,
-                   self.success, self.status, self.res.message)
+                   self.success, self.status, self.res.message))
         self.fitpar = self.res.x
 
         # Reduced khi2 = khi2 / DoF (not including hyper term)
@@ -919,7 +921,7 @@ class model:
 
     def facts(self, params=False, names=[]):
 
-        from ToolBox.IO import str_magn
+        from .extern.IO import str_magn
 
         if names:
             assert len(names)==self.nparam
@@ -983,7 +985,7 @@ class model:
             selcov = 2 * SL.pinvh(selhess)
             cov[N.outer(free,free)] = selcov.ravel()
         except SL.LinAlgError:
-            print "WARNING: cannot invert (selected) hessian approximation."
+            print("WARNING: cannot invert (selected) hessian approximation.")
 
         return cov
 

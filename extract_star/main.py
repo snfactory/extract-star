@@ -1,13 +1,4 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
-##############################################################################
-# Filename:          extract_star.py
-# Version:           $Revision$
-# Description:       Standard star spectrum extraction
-# Author:            Yannick Copin <y.copin@ipnl.in2p3.fr>
-# Modified at:       $Date$
-# $Id$
-##############################################################################
 
 """
 3D PSF-based point-source extractor. The PSF is a constrained
@@ -84,23 +75,23 @@ alpha(lbda) = a[-1] * (lbda/lref)**( a[-2] + a[-3]*(lbda/lref - 1) + ...)
 hence alpha(lref) = a[-1].
 """
 
-__author__ = "Y. Copin, C. Buton, E. Pecontal"
-__version__ = '$Id$'
+from __future__ import print_function
 
 import os
 import sys
+import warnings
 
-import pyfits as F
+from astropy.io import fits as F
 import numpy as N
 
-from extract_star import pySNIFS
-from extract_star import pySNIFS_fit
-from extract_star import libExtractStar as libES
-import ToolBox.Atmosphere as TA
-from ToolBox.Arrays import metaslice
-from ToolBox.Misc import make_method, warning2stdout
+from . import pySNIFS
+from . import pySNIFS_fit
+from . import libExtractStar as libES
+from .extern import Atmosphere as TA
+from .extern.Arrays import metaslice
+from .extern.Misc import make_method, warning2stdout
+from .version import __version__
 
-import warnings
 warnings.showwarning = warning2stdout   # Redirect warnings to stdout
 warnings.filterwarnings("ignore", "Overwriting existing file")
 
@@ -125,6 +116,17 @@ MAX_AIRMASS = 4.                 # Max reasonable airmass
 MIN_ELLIPTICITY = 0.2            # Min reasonable ellipticity
 MAX_ELLIPTICITY = 5.0            # Max reasonable ellipticity
 
+# Non-default colors (from Colorbrewer2.org, qualitative)
+class Colors(object):
+    blue   = '#377EB8'
+    red    = '#E41A1C'
+    green  = '#4DAF4A'
+    orange = '#FF7F00'
+    purple = '#984EA3'
+    yellow = '#FFFF33'
+    brown  = '#A65628'
+    pink   = '#F781BF'
+    gray   = '#999999'
 
 # Definitions ================================================================
 
@@ -213,16 +215,16 @@ def flag_nans(cube, varflag=0, name='cube'):
     for label, arr in (('data', cube.data), ('variance', cube.var)):
         bad = ~N.isfinite(arr)
         if bad.any():
-            print "WARNING: %s %s contains %d NaNs/%d Inf values." % \
-                  (name, label, len(arr[N.isnan(arr)]), len(arr[N.isinf(arr)]))
+            print("WARNING: %s %s contains %d NaNs/%d Inf values." % \
+                  (name, label, len(arr[N.isnan(arr)]), len(arr[N.isinf(arr)])))
         cube.var[bad] = varflag
 
     # Look for suspicious variances
     medvar = N.median(cube.var[cube.var > 0])
     bad = cube.var / medvar > 1e6
     if bad.any():
-        print "WARNING: %s contains %d suspicious variance values." % \
-            (name, len(cube.var[bad]))
+        print("WARNING: %s contains %d suspicious variance values." % \
+              (name, len(cube.var[bad])))
         if len(cube.var[bad]) > len(cube.var):
             raise ValueError("%s is too heavily corrupted, aborting" % name)
 
@@ -446,26 +448,26 @@ def setPSF3Dconstraints(psfConstraints, params, bounds):
             vals = map(float, constraintStr.split(','))
             assert len(vals) in (1, 2)
         except (ValueError, AssertionError):
-            print "WARNING: Cannot decipher constraint '%s', discarded" % \
-                  psfConstraints
+            print("WARNING: Cannot decipher constraint '%s', discarded" %
+                  psfConstraints)
             continue
         else:
             if len(vals) == 1:  # Strict constraint: param = val
                 val = vals[0]
                 params[n] = val
                 bounds[n] = [val, val]
-                print "WARNING: Forcing PSF param[%d] to %f" % (n, val)
+                print("WARNING: Forcing PSF param[%d] to %f" % (n, val))
 
             else:               # Loose constraint: vmin <= param <= vmax
                 vmin, vmax = sorted(vals)
                 params[n] = min(max(params[n], vmin), vmax)
                 bounds[n] = [vmin, vmax]
-                print "WARNING: Constraining PSF param[%d] in %f,%f" % \
-                      (n, vmin, vmax)
+                print("WARNING: Constraining PSF param[%d] in %f,%f" %
+                      (n, vmin, vmax))
 
 # ########## MAIN ##############################
 
-if __name__ == "__main__":
+def extract_star():
 
     import optparse
 
@@ -583,7 +585,7 @@ if __name__ == "__main__":
     if opts.skyDeg < -2:
         opts.skyDeg = -1        # No sky background
         if opts.sky:
-            print "WARNING: Cannot extract sky spectrum in no-sky mode."
+            print("WARNING: Cannot extract sky spectrum in no-sky mode.")
 
     if opts.verbosity <= 0:
         N.seterr(all='ignore')
@@ -603,7 +605,7 @@ if __name__ == "__main__":
 
     # Input datacube ==========================================================
 
-    print "Opening datacube %s" % opts.input
+    print("Opening datacube %s" % opts.input)
 
     # The pySNIFS e3d_data_header dictionary is not enough for later
     # updates in fill_header, which requires a *true* pyfits header.
@@ -633,8 +635,8 @@ if __name__ == "__main__":
     try:
         parangle = inhdr['PARANG']        # Sky parallactic angle [deg]
     except KeyError:                      # Not in original headers
-        print "WARNING: Computing PARANG " \
-            "from header ALTITUDE, AZIMUTH and LATITUDE."
+        print("WARNING: Computing PARANG "
+              "from header ALTITUDE, AZIMUTH and LATITUDE.")
         _, inhdr['PARANG'] = libES.estimate_zdpar(inhdr)  # [deg]
 
     channel = inhdr['CHANNEL'][0].upper()  # 'B' or 'R'
@@ -683,18 +685,18 @@ if __name__ == "__main__":
     # Sub-sampling
     psfFn.subsampling = opts.subsampling
 
-    print "  Object: %s, Efftime: %.1fs, Airmass: %.2f" % \
-        (objname, efftime, airmass)
-    print "  PSF: '%s', sub-sampled x%d" % \
-        (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling)
+    print("  Object: %s, Efftime: %.1fs, Airmass: %.2f" %
+          (objname, efftime, airmass))
+    print("  PSF: '%s', sub-sampled x%d" %
+          (', '.join((psfFn.model, psfFn.name)), psfFn.subsampling))
     if opts.skyDeg > 0:
-        print "  Sky: polynomial, degree %d" % opts.skyDeg
+        print("  Sky: polynomial, degree %d" % opts.skyDeg)
     elif opts.skyDeg == 0:
-        print "  Sky: uniform"
+        print("  Sky: uniform")
     elif opts.skyDeg == -1:
-        print "  Sky: none"
+        print("  Sky: none")
     elif opts.skyDeg == -2:
-        print "  Sky: uniform + step in J at %s" % (libES.STEPJ,)
+        print("  Sky: uniform + step in J at %s" % (libES.STEPJ,))
     else:
         parser.error("Invalid sky degree '%d'" % opts.skyDeg)
 
@@ -703,12 +705,12 @@ if __name__ == "__main__":
         try:
             from libRecord import Accountant
         except ImportError:
-            print "WARNING: libRecord is not accessible, accounting disabled"
+            print("WARNING: libRecord is not accessible, accounting disabled")
         else:
             import atexit
 
             accountant = Accountant(opts.accountant, opts.out)
-            print accountant
+            print(accountant)
             atexit.register(accountant.finalize)
     else:
         accountant = None
@@ -718,7 +720,7 @@ if __name__ == "__main__":
     # Meta-slice definition (min,max,step [px]) ------------------------------
 
     slices = metaslice(full_cube.nslice, opts.nmeta, trim=10)
-    print "  Channel: '%s', extracting slices: %s" % (channel, slices)
+    print("  Channel: '%s', extracting slices: %s" % (channel, slices))
 
     if isE3D:
         meta_cube = pySNIFS.SNIFS_cube(e3d_file=opts.input, slices=slices)
@@ -745,7 +747,7 @@ if __name__ == "__main__":
     if opts.keepmodel:                  # Store meta-slices in 3D-cube
         path, name = os.path.split(opts.out)
         outpsf = os.path.join(path, 'meta_' + name)
-        print "Saving meta-slices in 3D-fits cube '%s'..." % outpsf
+        print("Saving meta-slices in 3D-fits cube '%s'..." % outpsf)
         meta_cube.WR_3d_fits(outpsf)
 
     # 2D-fit priors ------------------------------
@@ -799,8 +801,8 @@ if __name__ == "__main__":
 
     # 2D-fit ------------------------------
 
-    print "Meta-slice 2D-fitting (%s)..." % \
-          ('chi2' if opts.chi2fit else 'least-squares')
+    print("Meta-slice 2D-fitting (%s)..." %
+          ('chi2' if opts.chi2fit else 'least-squares'))
     params, chi2s, dparams = libES.fit_metaslices(
         meta_cube, psfFn, skyDeg=skyDeg, chi2fit=opts.chi2fit,
         scalePriors=opts.usePriors,
@@ -819,13 +821,13 @@ if __name__ == "__main__":
     # Save 2D adjusted parameter file ------------------------------
 
     if opts.log2D:
-        print "Producing 2D adjusted parameter logfile %s..." % opts.log2D
+        print("Producing 2D adjusted parameter logfile %s..." % opts.log2D)
         create_2Dlog(opts, meta_cube, params, dparams, chi2s)
 
     # 3D-model fitting ========================================================
 
-    print "Datacube 3D-fitting (%s)..." % \
-          ('chi2' if opts.chi2fit else 'least-squares')
+    print("Datacube 3D-fitting (%s)..." %
+          ('chi2' if opts.chi2fit else 'least-squares'))
 
     # Initial guesses ------------------------------
 
@@ -850,8 +852,8 @@ if __name__ == "__main__":
     good = valid & (r <= rmax)          # Valid fit and reasonable position
     bad = valid & (r > rmax)            # Valid fit but discarded position
     if bad.any():
-        print "WARNING: %d metaslices discarded after ADR selection" % \
-              (len(N.nonzero(bad)))
+        print("WARNING: %d metaslices discarded after ADR selection" %
+              (len(N.nonzero(bad))))
 
     if opts.positionPrior:              # Use prior on position
         xc, yc = posPrior
@@ -863,8 +865,8 @@ if __name__ == "__main__":
         raise ValueError('No position initial guess')
 
     if not good.all():                  # Invalid slices + discarded centroids
-        print "%d/%d centroid positions discarded for initial guess" % \
-              (len(xc_vec[~good]), nmeta)
+        print("%d/%d centroid positions discarded for initial guess" %
+              (len(xc_vec[~good]), nmeta))
         if len(xc_vec[good]) <= ellDeg + 1 and not opts.usePriors:
             raise ValueError('Not enough points for ellipticity initial guess')
         if len(xc_vec[good]) <= alphaDeg + 1 and not opts.usePriors:
@@ -911,7 +913,7 @@ if __name__ == "__main__":
     # Bounds ------------------------------
 
     if opts.no3Dfit:              # Fix all parameters but intensities
-        print "WARNING: no 3D PSF-fit."
+        print("WARNING: no 3D PSF-fit.")
         # This mode completely discards 3D fit. In pratice, a 3D-fit
         # is still performed on intensities, just to be coherent w/
         # the remaining of the code.
@@ -997,21 +999,21 @@ if __name__ == "__main__":
                                    hyper=hyper)
 
     if opts.verbosity >= 4:
-        print "Gradient checks:"        # Include hyper-terms if any
+        print("Gradient checks:")        # Include hyper-terms if any
         data_model.check_grad()
 
     # Minimization: default method is 'TNC'
     data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6,
                         options={'maxiter': 400}, method='TNC')
     if not data_model.success:  # Try with 'L-BFGS-B'
-        print "WARNING: 3D-PSF fit did not converge w/ TNC minimizer " \
-            "(status=%d: %s), trying again with L-BFGS-B minimizer" % \
-            (data_model.status, data_model.res.message)
+        print("WARNING: 3D-PSF fit did not converge w/ TNC minimizer " \
+              "(status=%d: %s), trying again with L-BFGS-B minimizer" % \
+              (data_model.status, data_model.res.message))
         data_model.minimize(verbose=(opts.verbosity >= 2), tol=1e-6,
                             options={'maxiter': 400}, method='L-BFGS-B')
 
     # Print out fit facts
-    print data_model.facts(params=opts.verbosity >= 1, names=parnames)
+    print(data_model.facts(params=opts.verbosity >= 1, names=parnames))
 
     if not data_model.success:
         raise ValueError('3D-PSF fit did not converge (status=%d: %s)' %
@@ -1042,10 +1044,10 @@ if __name__ == "__main__":
               (fitpar[0], dfitpar[0],
                fitpar[1] * TA.RAD2DEG, dfitpar[1] * TA.RAD2DEG), 1)
     adr.set_param(delta=fitpar[0], theta=fitpar[1])
-    print "  Effective airmass: %.2f" % adr.get_airmass()
+    print("  Effective airmass: %.2f" % adr.get_airmass())
     # Estimated seeing (FWHM in arcsec)
     seeing = data_model.func[0].FWHM(fitpar[:npar_psf], LbdaRef) * spxSize
-    print '  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef, seeing)
+    print('  Seeing estimate @%.0f A: %.2f" FWHM' % (LbdaRef, seeing))
 
     # Estimated chromatic profiles
     if not opts.psf.endswith('powerlaw'):
@@ -1067,42 +1069,42 @@ if __name__ == "__main__":
         if opts.positionPrior:
             dprior = N.hypot(fitpar[2] - posPrior[0], fitpar[3] - posPrior[1])
             if dprior > MAX_POSITION_PRIOR_OFFSET:
-                print "WARNING: " \
-                    "Point-source %.2fx%.2f is %.2f spx away " \
-                    "from position prior %.2fx%.2f" % \
-                    (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1])
+                print("WARNING: " \
+                      "Point-source %.2fx%.2f is %.2f spx away " \
+                      "from position prior %.2fx%.2f" % \
+                      (fitpar[2], fitpar[3], dprior, posPrior[0], posPrior[1]))
                 if accountant:
                     accountant.add_warning("ES_PRIOR_POSITION")
         # Tests on seeing
         if opts.seeingPrior:
             fac = (seeing / opts.seeingPrior - 1) * 1e2
             if abs(fac) > MAX_SEEING_PRIOR_OFFSET:
-                print "WARNING: " \
-                    "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
-                    (seeing, fac, opts.seeingPrior)
+                print("WARNING: " \
+                      "Seeing %.2f\" is %+.0f%% away from predicted %.2f\"" % \
+                      (seeing, fac, opts.seeingPrior))
                 if accountant:
                     accountant.add_warning("ES_PRIOR_SEEING")
         # Tests on ADR parameters
         fac = (adr.get_airmass() / adr.get_airmass(delta0) - 1) * 1e2
         if abs(fac) > MAX_AIRMASS_PRIOR_OFFSET:
-            print "WARNING: " \
-                "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
-                (adr.get_airmass(), fac, adr.get_airmass(delta0))
+            print("WARNING: " \
+                  "Airmass %.2f is %+.0f%% away from predicted %.2f" % \
+                  (adr.get_airmass(), fac, adr.get_airmass(delta0)))
             if accountant:
                 accountant.add_warning("ES_PRIOR_AIRMASS")
         # Rewrap angle difference [rad]
         rewrap = lambda dtheta: (dtheta + N.pi) % (2 * N.pi) - N.pi
         err = rewrap(adr.theta - theta0) * TA.RAD2DEG
         if abs(err) > MAX_PARANG_PRIOR_OFFSET:
-            print "WARNING: " \
-                "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
-                (adr.get_parangle(), err, theta0 * TA.RAD2DEG)
+            print("WARNING: " \
+                  "Parangle %.0fdeg is %+.0fdeg away from predicted %.0fdeg" % \
+                  (adr.get_parangle(), err, theta0 * TA.RAD2DEG))
             if accountant:
                 accountant.add_warning("ES_PRIOR_PARANGLE")
 
     if not (abs(fitpar[2]) < MAX_POSITION and abs(fitpar[3]) < MAX_POSITION):
-        print "WARNING: Point-source %+.2f x %+.2f mis-centered" % \
-            (fitpar[2], fitpar[3])
+        print("WARNING: Point-source %+.2f x %+.2f mis-centered" % \
+              (fitpar[2], fitpar[3]))
         if accountant:
             accountant.add_warning("ES_MIS-CENTERED")
 
@@ -1146,9 +1148,9 @@ if __name__ == "__main__":
         else:                   # Aperture radius [arcsec]
             radius = opts.radius        # [arcsec]
             method = '%s r=%.2f"' % (opts.method, radius)
-    print "Extracting the point-source spectrum (method=%s)..." % method
+    print("Extracting the point-source spectrum (method=%s)..." % method)
     if not hasSky:
-        print "WARNING: No background adjusted."
+        print("WARNING: No background adjusted.")
 
     # Spectrum extraction (point-source, sky, etc.)
     lbda, sigspecs, varspecs = libES.extract_specs(
@@ -1166,7 +1168,7 @@ if __name__ == "__main__":
 
     # Full covariance matrix of point-source spectrum
     if opts.covariance:
-        print "Computing point-source spectrum covariance..."
+        print("Computing point-source spectrum covariance...")
         covspec = spec_covariance(full_cube,
                                   (psfFn, psfCtes, fitpar[:npar_psf]), skyDeg,
                                   covpar[:npar_psf, :npar_psf])
@@ -1210,7 +1212,7 @@ if __name__ == "__main__":
 
     # Save point-source spectrum ------------------------------
 
-    print "Saving output point-source spectrum to '%s'" % opts.out
+    print("Saving output point-source spectrum to '%s'" % opts.out)
 
     # Store variance as extension to signal
     star_spec = pySNIFS.spectrum(data=sigspecs[:, 0], var=varspecs[:, 0],
@@ -1224,14 +1226,14 @@ if __name__ == "__main__":
     if hasSky:
         if not opts.sky:        # Use default sky spectrum name
             opts.sky = 'sky_%s.fits' % (channel)
-        print "Saving output sky spectrum to '%s'" % opts.sky
+        print("Saving output sky spectrum to '%s'" % opts.sky)
         # Store variance as extension to signal
         sky_spec = pySNIFS.spectrum(data=sigspecs[:, 1], var=varspecs[:, 1],
                                     start=lbda[0], step=step)
         sky_spec.write_fits(opts.sky, inhdr)
         # Save differential background spectrum
         if skyDeg == -2 and opts.verbosity >= 1:
-            print "Saving differential background spectrum to 'step_%s'" % opts.sky
+            print("Saving differential background spectrum to 'step_%s'" % opts.sky)
             step_spec = pySNIFS.spectrum(data=sigspecs[:, 2], var=varspecs[:, 2],
                                          start=lbda[0], step=step)
             step_spec.write_fits('step_' + opts.sky, inhdr)
@@ -1239,7 +1241,7 @@ if __name__ == "__main__":
     # Save 3D adjusted parameter file ------------------------------
 
     if opts.log3D:
-        print "Producing 3D adjusted parameter logfile %s..." % opts.log3D
+        print("Producing 3D adjusted parameter logfile %s..." % opts.log3D)
         create_3Dlog(opts, meta_cube, cube_fit, fitpar, dfitpar, chi2)
 
     # Save adjusted PSF ------------------------------
@@ -1247,13 +1249,13 @@ if __name__ == "__main__":
     if opts.keepmodel:
         path, name = os.path.split(opts.out)
         outpsf = os.path.join(path, 'psf_' + name)
-        print "Saving adjusted meta-slice PSF in 3D-fits cube '%s'..." % outpsf
+        print("Saving adjusted meta-slice PSF in 3D-fits cube '%s'..." % outpsf)
         cube_fit.WR_3d_fits(outpsf, header=[])  # No header in cube_fit
 
     # Create output graphics =================================================
 
     if opts.plot:
-        print "Producing output figures [%s]..." % opts.graph
+        print("Producing output figures [%s]..." % opts.graph)
 
         import matplotlib as M
         backends = {'png': 'Agg', 'eps': 'PS', 'pdf': 'PDF', 'svg': 'SVG'}
@@ -1274,12 +1276,11 @@ if __name__ == "__main__":
         import matplotlib.pyplot as P
 
         # Non-default colors
-        from ToolBox import MPL
-        blue = MPL.blue
-        red = MPL.red
-        green = MPL.green
-        orange = MPL.orange
-        purple = MPL.purple
+        blue = Colors.blue
+        red = Colors.red
+        green = Colors.green
+        orange = Colors.orange
+        purple = Colors.purple
 
         # Plot of the star and sky spectra -----------------------------------
 
@@ -1561,13 +1562,13 @@ if __name__ == "__main__":
         if accountant:
             if accountant.test_warning('ES_PRIOR_POSITION'):
                 txt += '\n%s' % accountant.get_warning('ES_PRIOR_POSITION')
-                txtcol = MPL.red
+                txtcol = Colors.red
             if accountant.test_warning('ES_PRIOR_AIRMASS'):
                 txt += '\n%s' % accountant.get_warning('ES_PRIOR_AIRMASS')
-                txtcol = MPL.red
+                txtcol = Colors.red
             if accountant.test_warning('ES_PRIOR_PARANGLE'):
                 txt += '\n%s' % accountant.get_warning('ES_PRIOR_PARANGLE')
-                txtcol = MPL.red
+                txtcol = Colors.red
         ax4c.text(0.95, 0.8, txt, transform=ax4c.transAxes,
                   fontsize='small', ha='right', color=txtcol)
 
@@ -1651,7 +1652,7 @@ if __name__ == "__main__":
         txtcol = 'k'
         if accountant and accountant.test_warning('ES_PRIOR_SEEING'):
             txt += '\n%s' % accountant.get_warning('ES_PRIOR_SEEING')
-            txtcol = MPL.red
+            txtcol = Colors.red
         ax6a.text(0.95, 0.8, txt, transform=ax6a.transAxes,
                   fontsize='small', ha='right', color=txtcol)
         ax6a.legend(loc='upper left', fontsize='small', frameon=False)

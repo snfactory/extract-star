@@ -3,6 +3,14 @@ extract-star
 
 Fit a 3-d PSF to a point source in a SNFactory data cube.
 
+Requirements
+------------
+
+- Python 2.7 or 3
+- numpy
+- scipy
+- astropy (for astropy.io.fits)
+
 About
 -----
 

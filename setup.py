@@ -8,7 +8,7 @@ setup(name='extract_star',
       description="Fit a 3-d PSF on a SNFactory data cube",
       author = "SNFactory",
       author_email="kylebarbary@gmail.com",
-      py_packages = ['extract_star'],
+      packages = ['extract_star', 'extract_star.extern'],
       # note: there are more scripts in `scripts`.
-      scripts=[os.path.join('scripts', 'extract_star.py')]
+      scripts=[os.path.join('scripts', 'extract-star')]
 )

@@ -1,11 +1,13 @@
 # -*- coding: utf-8 -*-
 # Select functions copied from SNfactory/Offline/Toolbox/Astro/Coords.py
 # cvs v1.28 on 2015 Nov 4.
+# altaz2hadec copied from the same file on 2016 Oct 19.
 
 import numpy as N
 
 RAD2DEG = 180./N.pi       # 180/pi
 RAD2ARC = RAD2DEG * 3600  # RAD2DEG * 3600 = 206265
+
 
 
 # Angle handling ==============================
@@ -103,3 +105,37 @@ def hadec2zdpar(ha, dec, phi=19.823056, deg=True):
         p *= RAD2DEG
 
     return z, p
+
+
+def altaz2hadec(alt, az, phi=19.823056, deg=True):
+    """
+    Conversion of horizontal coordinates *(alt, az)* (in degrees if *deg*) to
+    equatorial coordinates *(ha, dec)* (in degrees if *deg*), for a given
+    geodetic latitude *phi* (in degrees if *deg*).
+
+    .. Note:: Azimuth is measured EAST of NORTH.
+    """
+
+    if deg:                             # Convert to radians
+        alt = alt / RAD2DEG
+        az = az / RAD2DEG
+        phi = phi / RAD2DEG
+
+    calt, salt = N.cos(alt), N.sin(alt)
+    caz, saz = N.cos(az), N.sin(az)
+    cphi, sphi = N.cos(phi), N.sin(phi)
+
+    sDec =     sphi * salt + cphi * calt * caz
+    cDec_cHa = cphi * salt - sphi * calt * caz
+    cDec_sHa =             -        calt * saz
+
+    cDec, ha = rec2pol(cDec_cHa, cDec_sHa)
+    r, dec =   rec2pol(cDec,     sDec)
+
+    assert N.allclose(r, 1), "Precision error"
+
+    if deg:
+        ha *= RAD2DEG
+        dec *= RAD2DEG
+
+    return ha, dec

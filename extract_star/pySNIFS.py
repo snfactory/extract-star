@@ -7,10 +7,12 @@
 ## $Id$
 ######################################################################
 
+from __future__ import print_function
+
 import numpy as num
 from scipy import interpolate as I
 from scipy.ndimage import filters as F
-import pyfits
+from astropy.io import fits as pyfits
 
 __author__ = '$Author$'
 __version__ = '$Revision$'
@@ -117,9 +119,9 @@ class spectrum:
                         self.var = num.zeros(nx)
                         self.x = start + num.arange(nx)*step
                     else:
-                        print 'WARNING: When nx is given, the data array ' \
-                              'is not taken into account and the ' \
-                              'spectrum data is zet to zeros(nx)'
+                        print('WARNING: When nx is given, the data array '
+                              'is not taken into account and the '
+                              'spectrum data is zet to zeros(nx)')
 
                 else:           # One of start,step,nx is None
                     if data is None:
@@ -751,8 +753,8 @@ class SNIFS_cube:
             else:
                 if coord == 'p':
                     if n%1 != 0:
-                        print "WARNING: slice index %s rounded to int." % \
-                              (str(n))
+                        print("WARNING: slice index %s rounded to int." %
+                              str(n))
                     n = int(num.round(n))
                     n1 = n
                     n2 = n+1
@@ -1006,17 +1008,17 @@ class SNIFS_mask:
             status,output = commands.getstatusoutput(command)
             if status:                  # Something went wrong
                 if grep:                # Grepped output
-                    print '\n'.join([ l for l in output.split('\n')
-                                      if grep in l ])
+                    print('\n'.join([ l for l in output.split('\n')
+                                      if grep in l ]))
                 else:                   # Full output
-                    print output
+                    print(output)
                 raise RuntimeError("Error %d during '%s'." % \
                                    (status, command.split()[0]))
             return status
 
         # Copy mask to tempfile for total selection
         runCmd('cp -f %s tmp_mask.fits' % mask_file)
-        os.chmod('tmp_mask.fits', 0644) # quickmasks are 0444
+        os.chmod('tmp_mask.fits', 0o0644) # quickmasks are 0444
         runCmd('sel_table -in tmp_mask.fits -sel all', grep='ERROR')
         runCmd('plot_optics -mask tmp_mask.fits -offset %f,%f -orders %d,%d ' \
                '-step %d -local -table tmp_tbl.fits ' \
@@ -1199,7 +1201,7 @@ def fit_poly(y,n,deg,x=None):
         y = y[ind]
         l = len(x)
         if l<deg+1:
-            print "WARNING(pySNIFS.fit_poly): not enough points to make a fit!"
+            print("WARNING(pySNIFS.fit_poly): not enough points to make a fit!")
             break
     return poly
 
